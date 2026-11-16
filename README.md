@@ -4,9 +4,11 @@ An analysis tool for a Sleeper NBA fantasy league. It reads your league
 from Sleeper's public read-only API, shows it in a dashboard, and will grow
 into a trade idea and analysis tool.
 
-**Status:** milestone 1 of 5. The league dashboard works (standings, rosters,
-matchups, recent activity). Player stats, valuation and trade analysis are
-not built yet. See [Roadmap](#roadmap).
+**Status:** milestone 2 of 5. The league dashboard works (standings, rosters,
+matchups, recent activity), and player stats are in: fantasy points per game
+under your league's scoring, for rostered players and free agents. Team
+analysis, the trade analyzer and AI suggestions are not built yet. See
+[Roadmap](#roadmap).
 
 ## Run it
 
@@ -27,6 +29,24 @@ and pick your league. The choice is remembered in your browser.
 
 To skip the picker, copy `.env.example` to `.env` and set `SLEEPER_LEAGUE_ID`.
 
+### Player stats
+
+Player stats come from [balldontlie](https://www.balldontlie.io) and need an
+API key on the ALL-STAR plan or higher. Copy `.env.example` to `.env`, set
+`BALLDONTLIE_API_KEY`, and restart the server. Without a key the app still
+works and simply shows no stats.
+
+The first time stats load, the server downloads every game of the season so
+far, which takes a minute or two. After that it only fetches the last few
+days, at most once every six hours.
+
+To confirm the key works and see how many of your league's players were
+matched:
+
+```bash
+npm run check:stats -- <your_league_id>
+```
+
 If the dashboard does not load your league, run the connectivity check and
 look at what it prints:
 
@@ -38,12 +58,14 @@ npm run check:sleeper -- <your_league_id>
 
 ```
 Browser (React app, src/)
-   │  /api/league/:id
+   │  /api/league/:id          /api/league/:id/stats
    ▼
 Local backend (server/)  ──►  cache (.cache/*.json)
-   │  only when the cache is older than an hour, or on Refresh
-   ▼
-Sleeper API (api.sleeper.app)
+   │                                │
+   │ league data: when older        │ game stats: new games only,
+   │ than an hour, or on Refresh    │ every six hours at most
+   ▼                                ▼
+Sleeper API                     balldontlie API
 ```
 
 - The browser never calls Sleeper. It asks the local backend, which answers
@@ -57,6 +79,21 @@ Sleeper API (api.sleeper.app)
 The backend turns Sleeper's raw responses into the shapes in
 `shared/types.ts`, so the UI does not depend on Sleeper's format.
 
+### How fantasy points are calculated
+
+- Each game line from the stats source is scored with your league's Sleeper
+  scoring settings (`server/scoring.ts`). Averages count only finished games
+  the player actually played in.
+- Sleeper and balldontlie use different player IDs, so players are matched by
+  name, with the NBA team as a tiebreaker (`server/stats/match.ts`). A name
+  that fails to match can be fixed by hand in `server/stats/overrides.ts`.
+- Box scores do not include technical or flagrant fouls, so leagues that
+  score those will see slightly higher numbers than Sleeper for a few players.
+  The app says so when it applies.
+- Two assumptions have not been confirmed against Sleeper yet: scoring
+  bonuses stack (a 50-point game earns the 40+ and the 50+ bonus), and a
+  triple-double also earns the double-double bonus.
+
 ## Commands
 
 | Command | What it does |
@@ -66,12 +103,14 @@ The backend turns Sleeper's raw responses into the shapes in
 | `npm test` | Unit tests (cache rules, snapshot assembly) |
 | `npm run typecheck` | TypeScript check for the whole repo |
 | `npm run check:sleeper` | Confirms Sleeper answers for NBA from your machine |
+| `npm run check:stats` | Confirms the stats key works and shows player matching |
 | `npm start` | Builds the React app and serves everything from :8787 |
 
 ## Layout
 
 ```
 server/   Local backend: Sleeper client, cache, snapshot assembly, mock league
+server/stats/  Stats source (balldontlie), player matching, per-player summaries
 shared/   Types used by both backend and frontend
 src/      React app
 scripts/  One-off tools
@@ -79,12 +118,12 @@ scripts/  One-off tools
 
 ## Roadmap
 
-1. **League dashboard** (this milestone).
-2. **Player stats.** Add a stats source behind a `StatsProvider` interface and
-   map its players to Sleeper's player IDs.
-3. **Valuation engine.** Apply the league's scoring settings to player stats to
-   get fantasy value per player, plus team strengths and gaps. Plain code with
-   tests, no AI.
+1. **League dashboard.** Done.
+2. **Player stats.** Done. A stats source behind a `StatsProvider` interface,
+   matched to Sleeper's player IDs, scored with the league's settings.
+3. **Team analysis.** Team strengths and gaps by position, schedule effects,
+   and a value per player that accounts for games played and trend. Plain
+   code with tests, no AI.
 4. **Trade analyzer.** Build a trade, see the impact on both teams.
 5. **AI suggestions.** An LLM proposes and explains moves using the numbers
    from the valuation engine.

@@ -1,5 +1,6 @@
 import type { LeagueSnapshot } from "../../shared/types.ts";
 import { formatPoints, formatRecord } from "../format.ts";
+import { Avatar } from "./Avatar.tsx";
 
 interface Props {
   snapshot: LeagueSnapshot;
@@ -27,15 +28,18 @@ export function Matchups({ snapshot, onOpenTeam }: Props) {
                 const leading = decided && side.points === top;
                 return (
                   <div key={side.rosterId} className={`matchup-side${leading ? " leading" : ""}`}>
-                    <div>
-                      <button type="button" className="team-link" onClick={() => onOpenTeam(side.rosterId)}>
-                        {team?.teamName ?? `Roster ${side.rosterId}`}
-                      </button>
-                      {team && (
-                        <span className="quiet manager">
-                          {formatRecord(team.wins, team.losses, team.ties)}
-                        </span>
-                      )}
+                    <div className="team-cell">
+                      <Avatar url={team?.avatarUrl ?? null} name={team?.teamName ?? "?"} />
+                      <div>
+                        <button type="button" className="team-link" onClick={() => onOpenTeam(side.rosterId)}>
+                          {team?.teamName ?? `Roster ${side.rosterId}`}
+                        </button>
+                        {team && (
+                          <span className="quiet manager">
+                            {formatRecord(team.wins, team.losses, team.ties)}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <span className="num matchup-points">{formatPoints(side.points)}</span>
                   </div>

@@ -12,6 +12,7 @@
     "build": "vite build",
     "start": "npm run build && tsx server/index.ts",
     "check:sleeper": "tsx scripts/check-sleeper.ts",
+    "check:stats": "tsx scripts/check-stats.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run"
   },

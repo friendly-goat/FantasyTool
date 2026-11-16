@@ -1,24 +1,68 @@
-/* Visual language: a coach's whiteboard. Cool white surface, navy ink,
-   one blue marker for anything interactive, green and red only for
-   results. Team names are set in condensed heavy type, like jersey
-   lettering; everything else stays quiet. */
+/* Visual language: a fantasy app in the spirit of Sleeper. Deep navy
+   surfaces in dark mode, cool greys in light mode, rounded cards, team
+   avatars, and one teal accent for anything interactive. Green and red
+   are reserved for results.
+
+   Every color is a variable defined once per theme below. index.html sets
+   data-theme on <html> before the page paints. */
 
 :root {
-  --board: #f1f4f7;
-  --surface: #ffffff;
-  --ink: #16233b;
-  --muted: #5a6880;
-  --line: #d6dde6;
-  --marker: #2459c9;
-  --marker-soft: #e3ebfa;
-  --win: #1b7a55;
-  --loss: #bf3a30;
-  --warn: #7d560c;
-  --warn-soft: #fbf1da;
-  --loss-soft: #fbe9e7;
-
   --font: "Archivo Variable", "Helvetica Neue", Arial, sans-serif;
-  --radius: 6px;
+  --radius: 14px;
+  --radius-small: 8px;
+}
+
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #131a2b;
+  --surface: #1c2538;
+  --surface-raised: #27324b;
+  --text: #f2f5fa;
+  --muted: #9ba7be;
+  --line: #2f3b57;
+  --field-line: #5b6988;
+  --accent: #3fd4c4;
+  --accent-hover: #6ae2d5;
+  --accent-ink: #06211f;
+  --accent-soft: rgba(63, 212, 196, 0.14);
+  --win: #45d190;
+  --loss: #ff7a7a;
+  --loss-soft: rgba(255, 122, 122, 0.14);
+  --warn: #f6c453;
+  --warn-soft: rgba(246, 196, 83, 0.16);
+  --guard: #7fb4ff;
+  --guard-soft: rgba(127, 180, 255, 0.16);
+  --forward: #6fdc9f;
+  --forward-soft: rgba(111, 220, 159, 0.15);
+  --center: #ffad66;
+  --center-soft: rgba(255, 173, 102, 0.16);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #eef1f6;
+  --surface: #ffffff;
+  --surface-raised: #e7ecf4;
+  --text: #131a2b;
+  --muted: #586580;
+  --line: #d6dde9;
+  --field-line: #8a96ad;
+  --accent: #0a7d74;
+  --accent-hover: #086860;
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(10, 125, 116, 0.1);
+  --win: #127a4b;
+  --loss: #c22f2f;
+  --loss-soft: rgba(194, 47, 47, 0.09);
+  --warn: #7a5200;
+  --warn-soft: rgba(214, 158, 20, 0.2);
+  --guard: #1f56b3;
+  --guard-soft: rgba(31, 86, 179, 0.1);
+  --forward: #14703f;
+  --forward-soft: rgba(20, 112, 63, 0.1);
+  --center: #a34a00;
+  --center-soft: rgba(163, 74, 0, 0.1);
 }
 
 * {
@@ -27,8 +71,8 @@
 
 body {
   margin: 0;
-  background: var(--board);
-  color: var(--ink);
+  background: var(--bg);
+  color: var(--text);
   font-family: var(--font);
   font-size: 0.9375rem;
   line-height: 1.5;
@@ -48,27 +92,27 @@ ul {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
   color: inherit;
 }
 
 :focus-visible {
-  outline: 2px solid var(--marker);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
 code {
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   font-size: 0.875em;
-  background: var(--surface);
-  border: 1px solid var(--line);
+  background: var(--surface-raised);
   border-radius: 4px;
-  padding: 0 0.3em;
+  padding: 0.05em 0.35em;
 }
 
 .page {
-  max-width: 68rem;
+  max-width: 70rem;
   margin: 0 auto;
   padding: 2rem 1.25rem 4rem;
 }
@@ -83,6 +127,12 @@ code {
   text-align: right;
 }
 
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
 /* ---- Header ---- */
 
 .league-header {
@@ -95,32 +145,32 @@ code {
 }
 
 .league-name {
-  font-size: 2.125rem;
+  font-size: 1.875rem;
   font-weight: 800;
-  font-stretch: 68%;
-  line-height: 1.1;
-  letter-spacing: 0.005em;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
 }
 
 .league-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.6rem;
 }
 
 .button {
-  border: 1px solid var(--marker);
-  background: var(--marker);
-  color: #fff;
-  font-weight: 600;
-  padding: 0.4rem 0.9rem;
-  border-radius: var(--radius);
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 700;
+  padding: 0.4rem 1rem;
+  border-radius: 999px;
   cursor: pointer;
 }
 
 .button:hover {
-  background: #1c48a6;
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
 }
 
 .button:disabled {
@@ -129,22 +179,24 @@ code {
 }
 
 .button-plain {
-  background: transparent;
-  color: var(--marker);
+  background: var(--surface);
+  color: var(--text);
   border-color: var(--line);
+  font-weight: 600;
 }
 
 .button-plain:hover {
-  background: var(--marker-soft);
+  background: var(--surface-raised);
+  border-color: var(--line);
 }
 
 /* ---- Notices ---- */
 
 .notice {
-  background: var(--marker-soft);
-  border-left: 4px solid var(--marker);
+  background: var(--accent-soft);
+  border-left: 4px solid var(--accent);
   padding: 0.6rem 0.9rem;
-  border-radius: 0 var(--radius) var(--radius) 0;
+  border-radius: var(--radius-small);
   margin-bottom: 1rem;
   max-width: 46rem;
 }
@@ -162,9 +214,13 @@ code {
 /* ---- Tabs ---- */
 
 .tabs {
-  display: flex;
-  gap: 1.5rem;
-  border-bottom: 1px solid var(--line);
+  display: inline-flex;
+  max-width: 100%;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
   margin-bottom: 1.5rem;
   overflow-x: auto;
 }
@@ -172,21 +228,84 @@ code {
 .tab {
   background: none;
   border: 0;
-  border-bottom: 4px solid transparent;
-  border-radius: 2px 2px 0 0;
-  padding: 0.5rem 0;
+  border-radius: 999px;
+  padding: 0.4rem 1rem;
   font-weight: 600;
   color: var(--muted);
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .tab:hover {
-  color: var(--ink);
+  color: var(--text);
 }
 
 .tab[aria-current="page"] {
-  color: var(--ink);
-  border-bottom-color: var(--marker);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 700;
+}
+
+/* ---- Avatars and chips ---- */
+
+.avatar {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  background: var(--surface-raised);
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  object-fit: cover;
+}
+
+.avatar-sm {
+  width: 1.75rem;
+  height: 1.75rem;
+  font-size: 0.6875rem;
+}
+
+.avatar-lg {
+  width: 3.5rem;
+  height: 3.5rem;
+  font-size: 1.0625rem;
+}
+
+.team-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.chip {
+  display: inline-block;
+  min-width: 2.5rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-align: center;
+  background: var(--surface-raised);
+  color: var(--muted);
+}
+
+.chip-guard {
+  background: var(--guard-soft);
+  color: var(--guard);
+}
+
+.chip-forward {
+  background: var(--forward-soft);
+  color: var(--forward);
+}
+
+.chip-center {
+  background: var(--center-soft);
+  color: var(--center);
 }
 
 /* ---- Standings ---- */
@@ -201,7 +320,7 @@ code {
 .standings {
   width: 100%;
   border-collapse: collapse;
-  min-width: 44rem;
+  min-width: 46rem;
 }
 
 .standings th,
@@ -236,7 +355,7 @@ code {
 .rank {
   width: 3.5rem;
   color: var(--muted);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .team-link {
@@ -245,16 +364,14 @@ code {
   border: 0;
   padding: 0;
   text-align: left;
-  font-size: 1.3125rem;
-  font-weight: 750;
-  font-stretch: 68%;
-  line-height: 1.15;
-  letter-spacing: 0.01em;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.25;
   cursor: pointer;
 }
 
 .team-link:hover {
-  color: var(--marker);
+  color: var(--accent);
 }
 
 .manager {
@@ -263,7 +380,6 @@ code {
 
 .record {
   font-weight: 700;
-  font-size: 1.0625rem;
   white-space: nowrap;
 }
 
@@ -301,7 +417,7 @@ code {
   width: 0.875rem;
   height: 0.875rem;
   margin: -0.4375rem 0 0 -0.4375rem;
-  background: var(--marker);
+  background: var(--accent);
   border: 2px solid var(--surface);
   border-radius: 50%;
 }
@@ -325,86 +441,116 @@ code {
 
 .teams {
   display: grid;
-  grid-template-columns: 16rem minmax(0, 1fr);
+  grid-template-columns: 17rem minmax(0, 1fr);
   gap: 1.5rem;
   align-items: start;
 }
 
 .rail-item {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 0.6rem;
   width: 100%;
   background: none;
-  border: 0;
-  border-left: 4px solid transparent;
-  padding: 0.45rem 0.75rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-small);
+  padding: 0.4rem 0.6rem;
   text-align: left;
   cursor: pointer;
 }
 
+.rail-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .rail-item:hover {
-  background: var(--marker-soft);
+  background: var(--surface-raised);
 }
 
 .rail-item[aria-current="true"] {
-  border-left-color: var(--marker);
   background: var(--surface);
+  border-color: var(--accent);
   font-weight: 700;
 }
 
-.rail-rank {
-  color: var(--muted);
-  min-width: 1.25rem;
-  font-weight: 400;
-}
-
 .roster {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
   padding: 1.25rem 1.5rem 1.5rem;
 }
 
 .team-title {
-  font-size: 1.75rem;
+  font-size: 1.5rem;
   font-weight: 800;
-  font-stretch: 68%;
-  line-height: 1.15;
+  line-height: 1.2;
 }
 
-.roster h3 {
-  font-size: 0.9375rem;
-  font-weight: 700;
-  margin: 1.5rem 0 0.25rem;
+.roster-summary {
+  margin-top: 1rem;
 }
 
-.player {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.25rem 0.6rem;
-  padding: 0.45rem 0;
+.roster-scroll {
+  overflow-x: auto;
+}
+
+.roster-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.roster-table th,
+.roster-table td {
+  padding: 0.5rem 0.5rem;
   border-bottom: 1px solid var(--line);
+  text-align: left;
+  font-weight: inherit;
 }
 
-.players .player:last-child {
+.roster-table th:first-child,
+.roster-table td:first-child {
+  padding-left: 0;
+}
+
+.roster-table td.num,
+.roster-table th.num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.roster-table tbody tr:last-child th,
+.roster-table tbody tr:last-child td {
   border-bottom: 0;
 }
 
-.slot {
-  width: 2.75rem;
-  color: var(--muted);
+.roster-table .group-row th {
+  padding-top: 1.5rem;
+  border-bottom: 0;
   font-size: 0.8125rem;
-  font-weight: 600;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.slot {
+  width: 3.25rem;
 }
 
 .player-name {
   font-weight: 600;
+  margin-right: 0.5rem;
 }
 
 .player-meta {
-  margin-left: auto;
+  white-space: nowrap;
+}
+
+.strong {
+  font-weight: 700;
+}
+
+.quiet-cell {
+  color: var(--muted);
 }
 
 .injury {
@@ -413,7 +559,99 @@ code {
   font-size: 0.75rem;
   font-weight: 700;
   padding: 0 0.4rem;
-  border-radius: 4px;
+  border-radius: 6px;
+  margin-right: 0.5rem;
+}
+
+/* ---- Players ---- */
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.filters label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+}
+
+.filters select {
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--field-line);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+  font-weight: 400;
+}
+
+.players-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 56rem;
+}
+
+.players-table th,
+.players-table td {
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  font-weight: inherit;
+  white-space: nowrap;
+}
+
+.players-table td.num,
+.players-table th.num {
+  text-align: right;
+}
+
+.players-table thead th {
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+
+.players-table tbody tr:last-child th,
+.players-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.player-tags {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.2rem;
+}
+
+.sort-button {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.sort-button:hover,
+th[aria-sort] .sort-button {
+  color: var(--text);
+}
+
+.link-button {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--accent);
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.stats-footnote {
+  max-width: 52rem;
+  margin: -0.5rem 0 1rem;
 }
 
 /* ---- Matchups ---- */
@@ -434,6 +672,7 @@ code {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
+  overflow: hidden;
 }
 
 .matchup-side {
@@ -441,27 +680,22 @@ code {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 0.7rem 1rem;
-  border-left: 4px solid transparent;
+  padding: 0.75rem 1rem;
 }
 
 .matchup-side + .matchup-side {
   border-top: 1px solid var(--line);
 }
 
-.matchup-side.leading {
-  border-left-color: var(--win);
-}
-
 .matchup-points {
-  font-size: 1.3125rem;
+  font-size: 1.25rem;
   font-weight: 500;
   color: var(--muted);
 }
 
 .matchup-side.leading .matchup-points {
-  font-weight: 750;
-  color: var(--ink);
+  font-weight: 800;
+  color: var(--win);
 }
 
 /* ---- Activity ---- */
@@ -471,19 +705,15 @@ code {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
+  overflow: hidden;
 }
 
 .activity-item {
   padding: 0.85rem 1rem;
-  border-left: 4px solid var(--line);
 }
 
 .activity-item + .activity-item {
   border-top: 1px solid var(--line);
-}
-
-.activity-item.type-trade {
-  border-left-color: var(--marker);
 }
 
 .activity-head {
@@ -495,6 +725,10 @@ code {
 
 .activity-type {
   font-weight: 700;
+}
+
+.activity-item.type-trade .activity-type {
+  color: var(--accent);
 }
 
 /* ---- League picker ---- */
@@ -522,9 +756,9 @@ code {
 .field-row input {
   flex: 1;
   min-width: 0;
-  padding: 0.45rem 0.6rem;
-  border: 1px solid #8793a6;
-  border-radius: var(--radius);
+  padding: 0.45rem 0.75rem;
+  border: 1px solid var(--field-line);
+  border-radius: var(--radius-small);
   background: var(--surface);
 }
 
@@ -541,6 +775,7 @@ code {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
+  overflow: hidden;
 }
 
 .league-list li + li {
@@ -561,7 +796,7 @@ code {
 }
 
 .league-option:hover {
-  background: var(--marker-soft);
+  background: var(--surface-raised);
 }
 
 .league-option-name {
@@ -572,7 +807,7 @@ code {
 
 @media (max-width: 720px) {
   .league-name {
-    font-size: 1.75rem;
+    font-size: 1.5rem;
   }
 
   .teams {
@@ -581,18 +816,16 @@ code {
 
   .team-rail {
     display: flex;
-    gap: 0.25rem;
+    gap: 0.4rem;
     overflow-x: auto;
     padding-bottom: 0.25rem;
   }
 
   .rail-item {
-    white-space: nowrap;
-    border-left: 0;
-    border-bottom: 4px solid transparent;
+    width: auto;
   }
 
-  .rail-item[aria-current="true"] {
-    border-bottom-color: var(--marker);
+  .rail-name {
+    overflow: visible;
   }
 }

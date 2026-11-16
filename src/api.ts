@@ -1,4 +1,4 @@
-import type { AppConfig, LeagueSnapshot, UserLeagues } from "../shared/types.ts";
+import type { AppConfig, LeagueSnapshot, StatsReport, UserLeagues } from "../shared/types.ts";
 
 // All data comes from the local backend (server/), never from Sleeper directly.
 
@@ -17,6 +17,10 @@ export function getConfig(): Promise<AppConfig> {
 
 export function getLeague(leagueId: string, refresh = false): Promise<LeagueSnapshot> {
   return getJson(`/api/league/${encodeURIComponent(leagueId)}${refresh ? "?refresh=1" : ""}`);
+}
+
+export function getStats(leagueId: string, retry = false): Promise<StatsReport> {
+  return getJson(`/api/league/${encodeURIComponent(leagueId)}/stats${retry ? "?retry=1" : ""}`);
 }
 
 export function getUserLeagues(username: string): Promise<UserLeagues> {
