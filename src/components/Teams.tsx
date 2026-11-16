@@ -1,5 +1,7 @@
 import type { LeagueSnapshot, PlayerRef } from "../../shared/types.ts";
 import { formatPoints, formatRecord } from "../format.ts";
+import { Avatar } from "./Avatar.tsx";
+import { PositionChip } from "./PositionChip.tsx";
 
 interface Props {
   snapshot: LeagueSnapshot;
@@ -10,13 +12,17 @@ interface Props {
 function PlayerLine({ slot, player }: { slot?: string; player: PlayerRef | null }) {
   return (
     <li className="player">
-      {slot && <span className="slot">{slot}</span>}
+      {slot && (
+        <span className="slot">
+          <PositionChip label={slot} />
+        </span>
+      )}
       {player ? (
         <>
           <span className="player-name">{player.name}</span>
           {player.injuryStatus && <span className="injury">{player.injuryStatus}</span>}
           <span className="quiet player-meta">
-            {[player.team ?? "Free agent", player.positions.join("/")].filter(Boolean).join(", ")}
+            {[player.positions.join("/"), player.team ?? "Free agent"].filter(Boolean).join(", ")}
           </span>
         </>
       ) : (
@@ -42,19 +48,25 @@ export function Teams({ snapshot, selectedRosterId, onSelect }: Props) {
               aria-current={candidate.rosterId === team.rosterId ? "true" : undefined}
               onClick={() => onSelect(candidate.rosterId)}
             >
-              <span className="num rail-rank">{candidate.rank}</span>
-              {candidate.teamName}
+              <Avatar url={candidate.avatarUrl} name={candidate.teamName} size="sm" />
+              <span className="rail-name">{candidate.teamName}</span>
+              <span className="num quiet">{formatRecord(candidate.wins, candidate.losses, candidate.ties)}</span>
             </button>
           </li>
         ))}
       </ul>
 
-      <div className="roster">
-        <h2 className="team-title">{team.teamName}</h2>
-        <p className="quiet">
-          {team.managerName}, {formatRecord(team.wins, team.losses, team.ties)}, {formatPoints(team.pointsFor)}{" "}
-          points scored
-        </p>
+      <div className="card roster">
+        <div className="team-cell">
+          <Avatar url={team.avatarUrl} name={team.teamName} size="lg" />
+          <div>
+            <h2 className="team-title">{team.teamName}</h2>
+            <p className="quiet">
+              {team.managerName}, {formatRecord(team.wins, team.losses, team.ties)}, {formatPoints(team.pointsFor)}{" "}
+              points scored
+            </p>
+          </div>
+        </div>
 
         <h3>Starters</h3>
         <ul className="players">
@@ -67,7 +79,7 @@ export function Teams({ snapshot, selectedRosterId, onSelect }: Props) {
         {team.bench.length > 0 ? (
           <ul className="players">
             {team.bench.map((player) => (
-              <PlayerLine key={player.id} player={player} />
+              <PlayerLine key={player.id} slot="BN" player={player} />
             ))}
           </ul>
         ) : (
@@ -79,7 +91,7 @@ export function Teams({ snapshot, selectedRosterId, onSelect }: Props) {
             <h3>Injured reserve</h3>
             <ul className="players">
               {team.reserve.map((player) => (
-                <PlayerLine key={player.id} player={player} />
+                <PlayerLine key={player.id} slot="IR" player={player} />
               ))}
             </ul>
           </>

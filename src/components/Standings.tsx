@@ -1,5 +1,6 @@
 import type { LeagueSnapshot } from "../../shared/types.ts";
 import { formatPoints, formatRecord, formatSigned } from "../format.ts";
+import { Avatar } from "./Avatar.tsx";
 
 interface Props {
   snapshot: LeagueSnapshot;
@@ -39,10 +40,15 @@ export function Standings({ snapshot, onOpenTeam }: Props) {
                 <tr key={team.rosterId}>
                   <td className="num rank">{team.rank}</td>
                   <th scope="row">
-                    <button type="button" className="team-link" onClick={() => onOpenTeam(team.rosterId)}>
-                      {team.teamName}
-                    </button>
-                    <span className="quiet manager">{team.managerName}</span>
+                    <div className="team-cell">
+                      <Avatar url={team.avatarUrl} name={team.teamName} />
+                      <div>
+                        <button type="button" className="team-link" onClick={() => onOpenTeam(team.rosterId)}>
+                          {team.teamName}
+                        </button>
+                        <span className="quiet manager">{team.managerName}</span>
+                      </div>
+                    </div>
                   </th>
                   <td className="num record">{formatRecord(team.wins, team.losses, team.ties)}</td>
                   <td>

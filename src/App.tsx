@@ -7,6 +7,7 @@ import { Matchups } from "./components/Matchups.tsx";
 import { Standings } from "./components/Standings.tsx";
 import { Teams } from "./components/Teams.tsx";
 import { formatAgo, formatDate } from "./format.ts";
+import { useTheme } from "./theme.ts";
 
 const VIEWS = ["Standings", "Teams", "Matchups", "Activity"] as const;
 type View = (typeof VIEWS)[number];
@@ -19,6 +20,7 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<View>("Standings");
   const [selectedRosterId, setSelectedRosterId] = useState<number | null>(null);
+  const { theme, toggleTheme } = useTheme();
 
   useEffect(() => {
     getConfig()
@@ -109,6 +111,9 @@ export function App() {
               Switch league
             </button>
           )}
+          <button type="button" className="button button-plain" onClick={toggleTheme}>
+            {theme === "dark" ? "Light mode" : "Dark mode"}
+          </button>
         </div>
       </header>
 
