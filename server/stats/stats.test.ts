@@ -7,7 +7,7 @@ import { matchPlayers, normalizeName } from "./match.ts";
 import { createMockStats } from "./mock.ts";
 import type { GameLine, StatsProvider } from "./provider.ts";
 import { StatsService } from "./service.ts";
-import { summarize } from "./summary.ts";
+import { playerLog, summarize } from "./summary.ts";
 
 const EMPTY: StatLine = {
   pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tov: 0, tpm: 0, tpa: 0,
@@ -109,6 +109,43 @@ describe("summarize", () => {
   it("omits players with no games", () => {
     expect(summarize([], matches, players, { pts: 1 })).toEqual({});
   });
+
+  it("leaves out games played before the season started", () => {
+    const lines = [
+      gameLine({ date: "2026-10-10", pts: 4 }), // preseason
+      gameLine({ date: "2026-10-12", pts: 6 }), // preseason
+      gameLine({ date: "2026-10-20", pts: 30 }), // opening night counts
+      gameLine({ date: "2026-10-22", pts: 20 }),
+    ];
+    expect(summarize(lines, matches, players, { pts: 1 }).a!.fantasyAvg).toBe(15); // no start date known
+    const stats = summarize(lines, matches, players, { pts: 1 }, "2026-10-20").a!;
+    expect(stats.games).toBe(2);
+    expect(stats.fantasyAvg).toBe(25);
+  });
+});
+
+describe("playerLog", () => {
+  const player = sleeper("a", "Ada Stone", "BOS");
+
+  it("lists counted games newest first, with fantasy points and opponents", () => {
+    const lines = [
+      gameLine({ date: "2026-10-10", pts: 4 }),
+      gameLine({ date: "2026-10-21", pts: 10, teamId: "2", opponentId: "7", home: true }),
+      gameLine({ date: "2026-10-23", pts: 30, teamId: "2", opponentId: "9", opponent: "MIA", home: false }),
+      // Another player's line teaches the log that team 7 is "DEN".
+      gameLine({ playerId: "55", date: "2026-10-21", team: "DEN", teamId: "7" }),
+    ];
+    const log = playerLog(player, "1", lines, { pts: 1 }, "2026-10-20");
+    expect(log.stats!.games).toBe(2);
+    expect(log.games.map((g) => [g.date, g.opponent, g.home, g.fantasyPoints])).toEqual([
+      ["2026-10-23", "MIA", false, 30],
+      ["2026-10-21", "DEN", true, 10],
+    ]);
+  });
+
+  it("returns nothing for a player without a match or games", () => {
+    expect(playerLog(player, undefined, [], { pts: 1 })).toEqual({ stats: null, games: [] });
+  });
 });
 
 describe("balldontlie client", () => {
@@ -140,6 +177,30 @@ describe("balldontlie client", () => {
       minutes: 31,
       stats: { pts: 25, reb: 7, tov: 3, tpm: 4, ast: 0 },
     });
+  });
+
+  it("finds the opponent whether teams arrive as IDs or as objects", () => {
+    const base = { player: { id: 1 }, team: { id: 10, abbreviation: "BOS" } };
+    const byId = toGameLine({
+      ...base,
+      game: { id: 2, date: "2026-10-21", status: "Final", home_team_id: 10, visitor_team_id: 20 },
+    });
+    expect(byId).toMatchObject({ teamId: "10", opponentId: "20", opponent: null, home: true });
+
+    const byObject = toGameLine({
+      ...base,
+      game: {
+        id: 3,
+        date: "2026-10-23",
+        status: "Final",
+        home_team: { id: 30, abbreviation: "MIA" },
+        visitor_team: { id: 10, abbreviation: "BOS" },
+      },
+    });
+    expect(byObject).toMatchObject({ opponentId: "30", opponent: "MIA", home: false });
+
+    const unknown = toGameLine({ ...base, game: { id: 4, date: "2026-10-25" } });
+    expect(unknown).toMatchObject({ opponentId: null, opponent: null, home: null });
   });
 
   it("marks games in progress as not final and skips rows without a game", () => {
@@ -209,6 +270,27 @@ describe("StatsService", async () => {
     // The mock leaves a few players without games; rostered ones are listed.
     expect(report.unmatchedRostered.length).toBeGreaterThan(0);
     expect(report.unmatchedRostered.length).toBeLessThan(10);
+  });
+
+  it("ignores preseason games and serves a player's game log", async () => {
+    const service = new StatsService(createMockStats(rawPlayers), { dir: null });
+    await service.sync("2026");
+
+    const overview = await service.overview("2026", snapshot.league.seasonStartDate);
+    expect(overview.firstDate).toBe("2026-10-10");
+    expect(overview.beforeSeasonStart).toBeGreaterThan(0);
+
+    const starter = snapshot.teams[0]!.starters[0]!.player!;
+    const detail = (await service.playerDetail(snapshot, players, starter.id))!;
+    expect(detail.player.name).toBe(starter.name);
+    expect(detail.games.length).toBe(detail.stats!.games);
+    expect(detail.games.every((game) => game.date >= "2026-10-20")).toBe(true);
+    expect(detail.games[0]!.date > detail.games[detail.games.length - 1]!.date).toBe(true);
+    expect(detail.games[0]!.opponent).toMatch(/^[A-Z]{3}$/);
+
+    const report = await service.report(snapshot, players);
+    expect(report.players[starter.id]!.fantasyAvg).toBeCloseTo(detail.stats!.fantasyAvg);
+    expect(await service.playerDetail(snapshot, players, "no-such-id")).toBeNull();
   });
 
   it("asks only for recent days on later downloads and merges the result", async () => {

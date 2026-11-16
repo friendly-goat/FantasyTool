@@ -35,9 +35,19 @@ export interface Team {
   reserve: PlayerRef[];
 }
 
+export interface MatchupSlot {
+  /** Lineup slot, e.g. "PG", "UTIL", or "BN" for the bench. */
+  slot: string;
+  player: PlayerRef | null;
+  /** Points Sleeper has credited this player for the week, if any yet. */
+  points: number | null;
+}
+
 export interface MatchupSide {
   rosterId: number;
   points: number;
+  starters: MatchupSlot[];
+  bench: MatchupSlot[];
 }
 
 export interface Matchup {
@@ -73,6 +83,8 @@ export interface LeagueSnapshot {
     id: string;
     name: string;
     season: string;
+    /** First day of the regular season (YYYY-MM-DD), when Sleeper reports it. */
+    seasonStartDate: string | null;
     status: string;
     totalRosters: number;
     rosterPositions: string[];
@@ -157,4 +169,25 @@ export interface StatsReport {
   unmatchedRostered: PlayerRef[];
   /** Keyed by Sleeper player ID. Only players with at least one game. */
   players: Record<string, PlayerStats>;
+}
+
+/** One game in a player's game log. */
+export interface PlayerGame {
+  /** YYYY-MM-DD. */
+  date: string;
+  /** Opponent's abbreviation, when the stats source provides it. */
+  opponent: string | null;
+  /** True for a home game, false for away, null when unknown. */
+  home: boolean | null;
+  minutes: number;
+  stats: StatLine;
+  fantasyPoints: number;
+}
+
+export interface PlayerDetail {
+  player: PlayerRef;
+  /** Null when the player has no counted games this season. */
+  stats: PlayerStats | null;
+  /** Newest first. */
+  games: PlayerGame[];
 }

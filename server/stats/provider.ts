@@ -8,6 +8,13 @@ export interface GameLine {
   playerId: string;
   playerName: string;
   team: string | null;
+  /** The player's team and opponent, as the stats source identifies them. */
+  teamId?: string | null;
+  opponentId?: string | null;
+  /** Opponent's abbreviation, when the source includes it on the game. */
+  opponent?: string | null;
+  /** True for a home game, false for away. */
+  home?: boolean | null;
   /** YYYY-MM-DD. */
   date: string;
   /** False while a game is still being played. */

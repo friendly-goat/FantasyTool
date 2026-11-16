@@ -22,6 +22,8 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   against `server/mock.ts` (`npm run dev:mock`), and ask the owner to run
   `npm run check:sleeper` or `npm run check:stats` when live behavior needs
   confirming.
+- Wherever the UI names a player, render it with `PlayerName`
+  (`src/components/PlayerName.tsx`) so the name opens the player's details.
 - UI copy: sentence case, plain language. Visual tokens live at the top of
   `src/styles.css`.
 

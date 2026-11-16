@@ -47,3 +47,10 @@ const oneDecimal = new Intl.NumberFormat("en-US", { minimumFractionDigits: 1, ma
 export function formatAverage(value: number): string {
   return oneDecimal.format(value);
 }
+
+const gameDateFormat = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
+
+/** "2026-11-12" -> "Nov 12". Noon avoids the date shifting across time zones. */
+export function formatGameDate(date: string): string {
+  return gameDateFormat.format(new Date(`${date}T12:00:00`));
+}

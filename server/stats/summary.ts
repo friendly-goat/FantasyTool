@@ -1,4 +1,4 @@
-import type { PlayerRef, PlayerStats, StatLine } from "../../shared/types.ts";
+import type { PlayerGame, PlayerRef, PlayerStats, StatLine } from "../../shared/types.ts";
 import { fantasyPoints } from "../scoring.ts";
 import type { GameLine } from "./provider.ts";
 
@@ -15,43 +15,96 @@ function mean(values: number[]): number {
 }
 
 /**
- * Builds per-player season numbers, keyed by Sleeper player ID.
- * Only finished games in which the player actually played are counted.
+ * Whether a game line counts toward a player's numbers: the game is
+ * finished, the player actually played, and it is not a preseason game
+ * (anything before the season's first day).
  */
+export function counts(line: GameLine, seasonStart: string | null): boolean {
+  return line.final && line.minutes > 0 && (seasonStart === null || line.date >= seasonStart);
+}
+
+/** Groups the lines that count by stats-source player ID, oldest game first. */
+export function countedGames(lines: GameLine[], seasonStart: string | null): Map<string, GameLine[]> {
+  const bySource = new Map<string, GameLine[]>();
+  for (const line of lines) {
+    if (!counts(line, seasonStart)) continue;
+    const games = bySource.get(line.playerId);
+    if (games) games.push(line);
+    else bySource.set(line.playerId, [line]);
+  }
+  for (const games of bySource.values()) games.sort((a, b) => a.date.localeCompare(b.date));
+  return bySource;
+}
+
+function summarizePlayer(
+  player: PlayerRef,
+  games: GameLine[],
+  scoring: Record<string, number>,
+): PlayerStats {
+  const fantasy = games.map((game) => fantasyPoints(game.stats, scoring));
+  const recent = fantasy.slice(-RECENT_WINDOW);
+  const averages = Object.fromEntries(
+    STAT_KEYS.map((key) => [key, mean(games.map((game) => game.stats[key]))]),
+  ) as unknown as StatLine;
+  return {
+    ...player,
+    games: games.length,
+    minutes: mean(games.map((game) => game.minutes)),
+    fantasyAvg: mean(fantasy),
+    recentAvg: recent.length > 0 ? mean(recent) : null,
+    recentGames: recent.length,
+    averages,
+  };
+}
+
+/** Builds per-player season numbers, keyed by Sleeper player ID. */
 export function summarize(
   lines: GameLine[],
   matches: Map<string, string>,
   sleeperPlayers: Record<string, PlayerRef>,
   scoring: Record<string, number>,
+  seasonStart: string | null = null,
 ): Record<string, PlayerStats> {
-  const bySource = new Map<string, GameLine[]>();
-  for (const line of lines) {
-    if (!line.final || line.minutes <= 0) continue;
-    bySource.set(line.playerId, [...(bySource.get(line.playerId) ?? []), line]);
-  }
-
+  const bySource = countedGames(lines, seasonStart);
   const result: Record<string, PlayerStats> = {};
   for (const [sleeperId, sourceId] of matches) {
     const player = sleeperPlayers[sleeperId];
     const games = bySource.get(sourceId);
     if (!player || !games || games.length === 0) continue;
-
-    games.sort((a, b) => a.date.localeCompare(b.date));
-    const fantasy = games.map((game) => fantasyPoints(game.stats, scoring));
-    const recent = fantasy.slice(-RECENT_WINDOW);
-    const averages = Object.fromEntries(
-      STAT_KEYS.map((key) => [key, mean(games.map((game) => game.stats[key]))]),
-    ) as unknown as StatLine;
-
-    result[sleeperId] = {
-      ...player,
-      games: games.length,
-      minutes: mean(games.map((game) => game.minutes)),
-      fantasyAvg: mean(fantasy),
-      recentAvg: recent.length > 0 ? mean(recent) : null,
-      recentGames: recent.length,
-      averages,
-    };
+    result[sleeperId] = summarizePlayer(player, games, scoring);
   }
   return result;
+}
+
+/** One player's season numbers and game log (newest game first). */
+export function playerLog(
+  player: PlayerRef,
+  sourceId: string | undefined,
+  lines: GameLine[],
+  scoring: Record<string, number>,
+  seasonStart: string | null = null,
+): { stats: PlayerStats | null; games: PlayerGame[] } {
+  const games = sourceId ? (countedGames(lines, seasonStart).get(sourceId) ?? []) : [];
+  if (games.length === 0) return { stats: null, games: [] };
+
+  // Opponents may be stored as IDs only; learn each team's abbreviation
+  // from the lines of the players on it.
+  const abbreviations = new Map<string, string>();
+  for (const line of lines) {
+    if (line.teamId && line.team) abbreviations.set(line.teamId, line.team);
+  }
+
+  return {
+    stats: summarizePlayer(player, games, scoring),
+    games: games
+      .map((game) => ({
+        date: game.date,
+        opponent: game.opponent ?? (game.opponentId ? (abbreviations.get(game.opponentId) ?? null) : null),
+        home: game.home ?? null,
+        minutes: game.minutes,
+        stats: game.stats,
+        fantasyPoints: fantasyPoints(game.stats, scoring),
+      }))
+      .reverse(),
+  };
 }

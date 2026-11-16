@@ -5,8 +5,9 @@ from Sleeper's public read-only API, shows it in a dashboard, and will grow
 into a trade idea and analysis tool.
 
 **Status:** milestone 2 of 5. The league dashboard works (standings, rosters,
-matchups, recent activity), and player stats are in: fantasy points per game
-under your league's scoring, for rostered players and free agents. Team
+matchups with side-by-side lineups, recent activity), and player stats are in:
+fantasy points per game under your league's scoring, for rostered players and
+free agents. Click any player's name for their season numbers and game log. Team
 analysis, the trade analyzer and AI suggestions are not built yet. See
 [Roadmap](#roadmap).
 
@@ -45,7 +46,11 @@ matched:
 
 ```bash
 npm run check:stats -- <your_league_id>
+npm run check:stats -- <your_league_id> --player "James Harden"   # adds a game log
 ```
+
+The check also compares the scores Sleeper credited to each starter with the
+game scores this app computes, which shows whether the scoring rules agree.
 
 If the dashboard does not load your league, run the connectivity check and
 look at what it prints:
@@ -84,6 +89,8 @@ The backend turns Sleeper's raw responses into the shapes in
 - Each game line from the stats source is scored with your league's Sleeper
   scoring settings (`server/scoring.ts`). Averages count only finished games
   the player actually played in.
+- Games dated before the season's first day (which Sleeper reports) are
+  treated as preseason and left out.
 - Sleeper and balldontlie use different player IDs, so players are matched by
   name, with the NBA team as a tiebreaker (`server/stats/match.ts`). A name
   that fails to match can be fixed by hand in `server/stats/overrides.ts`.

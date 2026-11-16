@@ -85,13 +85,26 @@ function build() {
     };
   });
 
-  const matchups = rosters.map((roster, i) => ({
-    roster_id: roster.roster_id,
-    matchup_id: Math.floor(i / 2) + 1,
-    points: Math.round((420 + random() * 260) * 100) / 100,
-    starters: roster.starters,
-    players: roster.players,
-  }));
+  // Each starter has a score for the week, or none yet (about one in four).
+  const matchups = rosters.map((roster, i) => {
+    const playersPoints: Record<string, number> = {};
+    for (const id of roster.players) playersPoints[id] = 0;
+    const startersPoints = roster.starters.map((id) => {
+      const played = random() > 0.25;
+      const score = played ? Math.round((18 + random() * 40) * 100) / 100 : 0;
+      playersPoints[id] = score;
+      return score;
+    });
+    return {
+      roster_id: roster.roster_id,
+      matchup_id: Math.floor(i / 2) + 1,
+      points: Math.round(startersPoints.reduce((sum, value) => sum + value, 0) * 100) / 100,
+      starters: roster.starters,
+      players: roster.players,
+      starters_points: startersPoints,
+      players_points: playersPoints,
+    };
+  });
 
   const day = 24 * 60 * 60 * 1000;
   const base = Date.UTC(2026, 10, 14, 18, 0, 0);
@@ -164,7 +177,14 @@ const data = build();
 
 export const fetchFromMock: FetchJson = async (path) => {
   if (path === "/state/nba") {
-    return { week: WEEK, leg: WEEK, season: "2026", league_season: "2026", season_type: "regular" };
+    return {
+      week: WEEK,
+      leg: WEEK,
+      season: "2026",
+      league_season: "2026",
+      season_type: "regular",
+      season_start_date: "2026-10-20",
+    };
   }
   if (path === "/players/nba") return data.players;
   if (/^\/user\/[^/]+$/.test(path)) return { user_id: "u1", username: "dana", display_name: "Dana" };

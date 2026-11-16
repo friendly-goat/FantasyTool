@@ -2,6 +2,7 @@ import type {
   LeagueSnapshot,
   LeagueSummary,
   Matchup,
+  MatchupSlot,
   PlayerRef,
   StarterSlot,
   Team,
@@ -143,11 +144,36 @@ export function buildTeams(
   return teams;
 }
 
-export function buildMatchups(raw: RawMatchup[]): Matchup[] {
+export function buildMatchups(
+  raw: RawMatchup[],
+  league: RawLeague = {},
+  players: PlayerMap = {},
+): Matchup[] {
+  const startingSlots = (league.roster_positions ?? []).filter(
+    (slot) => !NON_STARTING_SLOTS.has(slot),
+  );
   const byId = new Map<number, Matchup>();
   for (const entry of raw) {
     // A null matchup_id means the team has a bye this week.
     if (entry.matchup_id == null || entry.roster_id == null) continue;
+
+    const starterIds = entry.starters ?? [];
+    const credited = (id: string, index?: number): number | null =>
+      entry.players_points?.[id] ?? (index != null ? entry.starters_points?.[index] : null) ?? null;
+
+    const starters: MatchupSlot[] = starterIds.map((id, index) => {
+      const filled = Boolean(id) && id !== "0";
+      return {
+        slot: startingSlots[index] ?? "UTIL",
+        player: filled ? lookup(players, id) : null,
+        points: filled ? credited(id, index) : null,
+      };
+    });
+    const starting = new Set(starterIds);
+    const bench: MatchupSlot[] = (entry.players ?? [])
+      .filter((id) => !starting.has(id))
+      .map((id) => ({ slot: "BN", player: lookup(players, id), points: credited(id) }));
+
     const matchup = byId.get(entry.matchup_id) ?? {
       matchupId: entry.matchup_id,
       sides: [],
@@ -155,6 +181,8 @@ export function buildMatchups(raw: RawMatchup[]): Matchup[] {
     matchup.sides.push({
       rosterId: entry.roster_id,
       points: entry.custom_points ?? entry.points ?? 0,
+      starters,
+      bench,
     });
     byId.set(entry.matchup_id, matchup);
   }
@@ -252,6 +280,7 @@ export async function buildSnapshot(
       id: league.league_id,
       name: league.name ?? "Unnamed league",
       season: league.season ?? state?.season ?? "",
+      seasonStartDate: state?.season_start_date ?? null,
       status: league.status ?? "unknown",
       totalRosters: league.total_rosters ?? asArray(rosters).length,
       rosterPositions: league.roster_positions ?? [],
@@ -259,7 +288,7 @@ export async function buildSnapshot(
     },
     week,
     teams: buildTeams(league, asArray<RawRoster>(rosters), asArray<RawUser>(users), players),
-    matchups: buildMatchups(asArray<RawMatchup>(matchups)),
+    matchups: buildMatchups(asArray<RawMatchup>(matchups), league, players),
     transactions: buildTransactions(
       weeks.map((w, index) => ({
         week: w,
