@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import type { AppConfig, LeagueSnapshot, StatsReport } from "../shared/types.ts";
+import type { AppConfig, LeagueSnapshot, PlayerRef, StatsReport } from "../shared/types.ts";
 import { getConfig, getLeague, getStats, loadSavedLeagueId, saveLeagueId } from "./api.ts";
 import { Activity } from "./components/Activity.tsx";
 import { LeaguePicker } from "./components/LeaguePicker.tsx";
 import { Matchups } from "./components/Matchups.tsx";
+import { OpenPlayerContext } from "./components/PlayerName.tsx";
+import { PlayerPanel } from "./components/PlayerPanel.tsx";
 import { Players } from "./components/Players.tsx";
 import { Standings } from "./components/Standings.tsx";
 import { StatsNotice } from "./components/StatsNotice.tsx";
@@ -25,6 +27,7 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<View>("Standings");
   const [selectedRosterId, setSelectedRosterId] = useState<number | null>(null);
+  const [openPlayer, setOpenPlayer] = useState<PlayerRef | null>(null);
   const { theme, toggleTheme } = useTheme();
 
   useEffect(() => {
@@ -96,6 +99,7 @@ export function App() {
     setView("Teams");
   }
 
+
   if (!config) {
     return <main className="page">{error ? <p className="notice notice-error">{error}</p> : <p className="quiet">Loading…</p>}</main>;
   }
@@ -164,7 +168,7 @@ export function App() {
       )}
 
       {snapshot && (
-        <>
+        <OpenPlayerContext.Provider value={setOpenPlayer}>
           <nav className="tabs" aria-label="League views">
             {VIEWS.map((name) => (
               <button
@@ -193,9 +197,19 @@ export function App() {
             />
           )}
           {view === "Players" && <Players snapshot={snapshot} stats={stats} />}
-          {view === "Matchups" && <Matchups snapshot={snapshot} onOpenTeam={openTeam} />}
+          {view === "Matchups" && <Matchups snapshot={snapshot} stats={stats} onOpenTeam={openTeam} />}
           {view === "Activity" && <Activity snapshot={snapshot} />}
-        </>
+
+          {openPlayer && (
+            <PlayerPanel
+              key={openPlayer.id}
+              snapshot={snapshot}
+              stats={stats}
+              player={openPlayer}
+              onClose={() => setOpenPlayer(null)}
+            />
+          )}
+        </OpenPlayerContext.Provider>
       )}
     </main>
   );

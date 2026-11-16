@@ -46,9 +46,19 @@ describe("buildSnapshot (against the mock league)", async () => {
     expect(snapshot.teams.find((team) => team.managerName === "Sam")!.teamName).toBe("Team Sam");
   });
 
-  it("pairs teams into matchups", () => {
+  it("pairs teams into matchups, each side with its lineup", () => {
     expect(snapshot.matchups).toHaveLength(5);
-    for (const matchup of snapshot.matchups) expect(matchup.sides).toHaveLength(2);
+    for (const matchup of snapshot.matchups) {
+      expect(matchup.sides).toHaveLength(2);
+      for (const side of matchup.sides) {
+        expect(side.starters).toHaveLength(9);
+        expect(side.bench).toHaveLength(4);
+      }
+    }
+  });
+
+  it("carries the season start date", () => {
+    expect(snapshot.league.seasonStartDate).toBe("2026-10-20");
   });
 
   it("keeps completed transactions only, newest first", () => {
@@ -100,9 +110,41 @@ describe("tolerance for incomplete Sleeper data", () => {
       { roster_id: 2, matchup_id: 1, points: 20 },
       { roster_id: 3, matchup_id: null, points: 5 },
     ]);
-    expect(matchups).toEqual([
-      { matchupId: 1, sides: [{ rosterId: 1, points: 10 }, { rosterId: 2, points: 20 }] },
+    expect(matchups).toHaveLength(1);
+    expect(matchups[0]!.sides.map((side) => [side.rosterId, side.points])).toEqual([
+      [1, 10],
+      [2, 20],
     ]);
+  });
+
+  it("builds each side's lineup with the points Sleeper credited", () => {
+    const players = trimPlayers({
+      a: { full_name: "Ada Stone" },
+      b: { full_name: "Ben Hale" },
+      c: { full_name: "Cy Voss" },
+    });
+    const [matchup] = buildMatchups(
+      [
+        {
+          roster_id: 1,
+          matchup_id: 1,
+          points: 31.5,
+          starters: ["a", "0", "b"],
+          players: ["a", "b", "c"],
+          starters_points: [31.5, 0, 0],
+          players_points: { a: 31.5, c: 12 },
+        },
+      ],
+      { roster_positions: ["PG", "SG", "C", "BN"] },
+      players,
+    );
+    const side = matchup!.sides[0]!;
+    expect(side.starters.map((s) => [s.slot, s.player?.name ?? null, s.points])).toEqual([
+      ["PG", "Ada Stone", 31.5],
+      ["SG", null, null], // empty slot
+      ["C", "Ben Hale", 0], // falls back to starters_points
+    ]);
+    expect(side.bench.map((s) => [s.slot, s.player?.name, s.points])).toEqual([["BN", "Cy Voss", 12]]);
   });
 
   it("never reports a week below 1", () => {

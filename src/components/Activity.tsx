@@ -1,5 +1,7 @@
+import { Fragment, type ReactNode } from "react";
 import type { LeagueSnapshot, PlayerRef, Transaction, TransactionSide } from "../../shared/types.ts";
 import { formatDate } from "../format.ts";
+import { PlayerName } from "./PlayerName.tsx";
 
 const TYPE_NAMES: Record<Transaction["type"], string> = {
   trade: "Trade",
@@ -8,17 +10,33 @@ const TYPE_NAMES: Record<Transaction["type"], string> = {
   other: "Roster move",
 };
 
-function names(players: PlayerRef[], picks: string[] = []): string {
-  return [...players.map((player) => player.name), ...picks].join(", ");
+/** "A, B, 2027 2nd-round pick", with each player's name opening their details. */
+function list(players: PlayerRef[], picks: string[] = []): ReactNode {
+  const items: ReactNode[] = [
+    ...players.map((player) => <PlayerName key={player.id} player={player} />),
+    ...picks,
+  ];
+  return items.map((item, index) => (
+    <Fragment key={index}>
+      {index > 0 && ", "}
+      {item}
+    </Fragment>
+  ));
 }
 
-function describe(side: TransactionSide, isTrade: boolean): string {
-  const gained = names(side.adds, side.picks);
-  const lost = names(side.drops);
-  if (isTrade) return gained ? `receives ${gained}` : "receives nothing";
-  if (gained && lost) return `added ${gained} and dropped ${lost}`;
-  if (gained) return `added ${gained}`;
-  if (lost) return `dropped ${lost}`;
+function describe(side: TransactionSide, isTrade: boolean): ReactNode {
+  const gained = side.adds.length + side.picks.length > 0;
+  const lost = side.drops.length > 0;
+  if (isTrade) return gained ? <>receives {list(side.adds, side.picks)}</> : "receives nothing";
+  if (gained && lost) {
+    return (
+      <>
+        added {list(side.adds, side.picks)} and dropped {list(side.drops)}
+      </>
+    );
+  }
+  if (gained) return <>added {list(side.adds, side.picks)}</>;
+  if (lost) return <>dropped {list(side.drops)}</>;
   return "made a roster move";
 }
 

@@ -69,6 +69,8 @@ export interface RawState {
   season?: string;
   league_season?: string;
   season_type?: string;
+  /** First day of the regular season, YYYY-MM-DD. */
+  season_start_date?: string;
 }
 
 export interface RawUser {
@@ -111,6 +113,12 @@ export interface RawMatchup {
   matchup_id?: number | null;
   points?: number | null;
   custom_points?: number | null;
+  starters?: string[] | null;
+  players?: string[] | null;
+  /** Same order as `starters`. */
+  starters_points?: number[] | null;
+  /** Player ID -> points credited for the week. */
+  players_points?: Record<string, number> | null;
 }
 
 export interface RawDraftPick {

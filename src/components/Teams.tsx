@@ -1,6 +1,7 @@
 import type { LeagueSnapshot, PlayerRef, PlayerStats, StatsReport } from "../../shared/types.ts";
 import { formatAverage, formatPoints, formatRecord } from "../format.ts";
 import { Avatar } from "./Avatar.tsx";
+import { PlayerName } from "./PlayerName.tsx";
 import { PositionChip } from "./PositionChip.tsx";
 
 interface Props {
@@ -26,7 +27,9 @@ function PlayerLine({ slot, player, stats, showStats }: LineProps) {
       <th scope="row">
         {player ? (
           <>
-            <span className="player-name">{player.name}</span>
+            <span className="player-name">
+              <PlayerName player={player} />
+            </span>
             {player.injuryStatus && <span className="injury">{player.injuryStatus}</span>}
             <span className="quiet player-meta">
               {[player.positions.join("/"), player.team ?? "Free agent"].filter(Boolean).join(", ")}

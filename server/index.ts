@@ -50,9 +50,13 @@ function getPlayers() {
   return cache.get("players-nba", playersTtl, () => loadPlayers(fetchJson));
 }
 
+// Bump the version when the snapshot shape changes, so that snapshots saved
+// by an older version of the app are rebuilt instead of reused.
+const leagueKey = (leagueId: string) => `league-v2-${leagueId}`;
+
 function getSnapshot(leagueId: string, force: boolean) {
   return cache.get(
-    `league-${leagueId}`,
+    leagueKey(leagueId),
     leagueTtl,
     async () => buildSnapshot(leagueId, fetchJson, (await getPlayers()).value),
     { force },
@@ -89,7 +93,7 @@ app.get("/api/user/:username/leagues", async (req, res) => {
 app.get("/api/league/:leagueId", async (req, res) => {
   try {
     const leagueId = req.params.leagueId.trim();
-    const key = `league-${leagueId}`;
+    const key = leagueKey(leagueId);
 
     // "Refresh" bypasses the cache, but not more often than the minimum
     // gap, so repeated clicks cannot hammer Sleeper.
@@ -112,6 +116,23 @@ app.get("/api/league/:leagueId/stats", async (req, res) => {
     ]);
     if (req.query.retry === "1") stats.retry(snapshot.value.league.season);
     res.json(await stats.report(snapshot.value, players.value));
+  } catch (error) {
+    sendError(res, error);
+  }
+});
+
+app.get("/api/league/:leagueId/players/:playerId", async (req, res) => {
+  try {
+    const [snapshot, players] = await Promise.all([
+      getSnapshot(req.params.leagueId.trim(), false),
+      getPlayers(),
+    ]);
+    const detail = await stats.playerDetail(snapshot.value, players.value, req.params.playerId);
+    if (!detail) {
+      res.status(404).json({ error: "Sleeper has no player with that ID." });
+      return;
+    }
+    res.json(detail);
   } catch (error) {
     sendError(res, error);
   }

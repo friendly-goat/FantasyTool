@@ -28,8 +28,22 @@ interface RawRow {
   dreb?: number | null;
   pf?: number | null;
   player?: { id?: number; first_name?: string; last_name?: string } | null;
-  team?: { abbreviation?: string } | null;
-  game?: { id?: number; date?: string; status?: string } | null;
+  team?: RawTeam | null;
+  game?: {
+    id?: number;
+    date?: string;
+    status?: string;
+    // The teams arrive either as IDs or as nested objects, depending on the endpoint.
+    home_team_id?: number;
+    visitor_team_id?: number;
+    home_team?: RawTeam | null;
+    visitor_team?: RawTeam | null;
+  } | null;
+}
+
+interface RawTeam {
+  id?: number;
+  abbreviation?: string;
 }
 
 interface RawPage {
@@ -53,11 +67,24 @@ export function toGameLine(row: RawRow): GameLine | null {
   const date = row.game?.date?.slice(0, 10);
   if (playerId == null || gameId == null || !date) return null;
   const status = row.game?.status;
+
+  // Work out the opponent from whichever side of the game is not the player's team.
+  const teamId = row.team?.id;
+  const homeId = row.game?.home_team?.id ?? row.game?.home_team_id;
+  const visitorId = row.game?.visitor_team?.id ?? row.game?.visitor_team_id;
+  const home = teamId != null && homeId != null && visitorId != null ? teamId === homeId : null;
+  const opponentId = home === null ? null : home ? visitorId : homeId;
+  const opponentTeam = home === null ? null : home ? row.game?.visitor_team : row.game?.home_team;
+
   return {
     key: `${gameId}:${playerId}`,
     playerId: String(playerId),
     playerName: [row.player?.first_name, row.player?.last_name].filter(Boolean).join(" "),
     team: row.team?.abbreviation ?? null,
+    teamId: teamId != null ? String(teamId) : null,
+    opponentId: opponentId != null ? String(opponentId) : null,
+    opponent: opponentTeam?.abbreviation ?? null,
+    home,
     date,
     final: status ? /^final/i.test(status) : true,
     minutes: parseMinutes(row.min),

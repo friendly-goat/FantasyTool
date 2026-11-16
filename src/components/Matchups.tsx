@@ -1,17 +1,34 @@
-import type { LeagueSnapshot } from "../../shared/types.ts";
+import { useState } from "react";
+import type { LeagueSnapshot, StatsReport } from "../../shared/types.ts";
 import { formatPoints, formatRecord } from "../format.ts";
 import { Avatar } from "./Avatar.tsx";
+import { MatchupDetail } from "./MatchupDetail.tsx";
 
 interface Props {
   snapshot: LeagueSnapshot;
+  stats: StatsReport | null;
   onOpenTeam: (rosterId: number) => void;
 }
 
-export function Matchups({ snapshot, onOpenTeam }: Props) {
+export function Matchups({ snapshot, stats, onOpenTeam }: Props) {
+  const [openMatchupId, setOpenMatchupId] = useState<number | null>(null);
   const teams = new Map(snapshot.teams.map((team) => [team.rosterId, team]));
 
   if (snapshot.matchups.length === 0) {
     return <p className="quiet">No matchups are scheduled for week {snapshot.week}.</p>;
+  }
+
+  const open = snapshot.matchups.find((matchup) => matchup.matchupId === openMatchupId);
+  if (open) {
+    return (
+      <MatchupDetail
+        snapshot={snapshot}
+        stats={stats}
+        matchup={open}
+        onBack={() => setOpenMatchupId(null)}
+        onOpenTeam={onOpenTeam}
+      />
+    );
   }
 
   return (
@@ -45,6 +62,9 @@ export function Matchups({ snapshot, onOpenTeam }: Props) {
                   </div>
                 );
               })}
+              <button type="button" className="matchup-open" onClick={() => setOpenMatchupId(matchup.matchupId)}>
+                View matchup
+              </button>
             </li>
           );
         })}

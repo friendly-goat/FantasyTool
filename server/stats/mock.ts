@@ -12,8 +12,11 @@ function seeded(seed: number): () => number {
 }
 
 const GAMES_PER_PLAYER = 12;
+/** Low-minute games dated before the season, to exercise the preseason filter. */
+const PRESEASON_GAMES = 2;
 /** Mock players whose index divides by this have no games, to show the "no stats" case. */
 const NO_GAMES_EVERY = 29;
+const TEAMS = ["ATL", "BOS", "CHI", "DAL", "DEN", "GSW", "LAL", "MIA", "MIL", "NYK", "OKC", "PHX"];
 
 export function createMockStats(players: Record<string, unknown>): StatsProvider {
   return {
@@ -25,10 +28,15 @@ export function createMockStats(players: Record<string, unknown>): StatsProvider
         (player, index) => {
           if (index % NO_GAMES_EVERY === NO_GAMES_EVERY - 1) return;
           const talent = 0.35 + random() * 0.9; // Scales every stat for this player.
-          for (let game = 0; game < GAMES_PER_PLAYER; game++) {
-            const date = new Date(Date.UTC(2026, 9, 21 + game * 2)).toISOString().slice(0, 10);
+          for (let game = -PRESEASON_GAMES; game < GAMES_PER_PLAYER; game++) {
+            const preseason = game < 0;
+            const date = new Date(Date.UTC(2026, 9, preseason ? 14 + game * 2 : 21 + game * 2))
+              .toISOString()
+              .slice(0, 10);
             const sat = random() < 0.08; // Occasional game missed.
-            const roll = () => 0.6 + random() * 0.8;
+            const effort = preseason ? 0.5 : 1;
+            const roll = () => (0.6 + random() * 0.8) * effort;
+            const opponent = TEAMS[(index + game + PRESEASON_GAMES + 1) % TEAMS.length]!;
             const fga = Math.round(14 * talent * roll());
             const fgm = Math.round(fga * (0.38 + random() * 0.2));
             const tpa = Math.round(fga * 0.35);
@@ -38,10 +46,14 @@ export function createMockStats(players: Record<string, unknown>): StatsProvider
             const oreb = Math.round(1.5 * talent * roll());
             const dreb = Math.round(5 * talent * roll());
             const line: GameLine = {
-              key: `g${game}:p${player.player_id}`,
+              key: `g${game + PRESEASON_GAMES}:p${player.player_id}`,
               playerId: `p${player.player_id}`,
               playerName: player.full_name,
               team: player.team,
+              teamId: player.team,
+              opponentId: opponent,
+              opponent,
+              home: (index + game) % 2 === 0,
               date,
               final: true,
               minutes: sat ? 0 : Math.round(20 + 14 * Math.min(1, talent) * roll()),

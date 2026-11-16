@@ -1,11 +1,11 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { LeagueSnapshot, PlayerRef, StatsReport } from "../../shared/types.ts";
+import type { LeagueSnapshot, PlayerDetail, PlayerRef, StatsReport } from "../../shared/types.ts";
 import { ignoredSettings } from "../scoring.ts";
 import { matchPlayers } from "./match.ts";
 import { PLAYER_ID_OVERRIDES } from "./overrides.ts";
 import type { GameLine, StatsProvider } from "./provider.ts";
-import { RECENT_WINDOW, summarize } from "./summary.ts";
+import { counts, playerLog, RECENT_WINDOW, summarize } from "./summary.ts";
 
 // Keeps a season of game lines on disk and brings it up to date in the
 // background. The first sync downloads the whole season so far; later
@@ -98,7 +98,44 @@ export class StatsService {
       syncedAt: data.syncedAt ? new Date(data.syncedAt).toISOString() : null,
       pagesFetched: data.pagesFetched,
       unmatchedRostered: lines.length > 0 ? rostered.filter((player) => !matches.has(player.id)) : [],
-      players: summarize(lines, matches, sleeperPlayers, scoring),
+      players: summarize(lines, matches, sleeperPlayers, scoring, snapshot.league.seasonStartDate),
+    };
+  }
+
+  /** One player's season numbers and game log, from the data already downloaded. */
+  async playerDetail(
+    snapshot: LeagueSnapshot,
+    sleeperPlayers: Record<string, PlayerRef>,
+    playerId: string,
+  ): Promise<PlayerDetail | null> {
+    const player = sleeperPlayers[playerId];
+    if (!player) return null;
+    if (!this.provider) return { player, stats: null, games: [] };
+
+    const lines = [...(await this.load(snapshot.league.season)).lines.values()];
+    const matches = matchPlayers(sleeperPlayers, lines, PLAYER_ID_OVERRIDES);
+    return {
+      player,
+      ...playerLog(
+        player,
+        matches.get(playerId),
+        lines,
+        snapshot.league.scoringSettings,
+        snapshot.league.seasonStartDate,
+      ),
+    };
+  }
+
+  /** What is stored for a season, for the check script. */
+  async overview(season: string, seasonStart: string | null) {
+    const lines = [...(await this.load(season)).lines.values()];
+    const dates = lines.map((line) => line.date).sort();
+    return {
+      lines: lines.length,
+      firstDate: dates[0] ?? null,
+      lastDate: dates[dates.length - 1] ?? null,
+      beforeSeasonStart: seasonStart ? lines.filter((line) => line.date < seasonStart).length : 0,
+      counted: lines.filter((line) => counts(line, seasonStart)).length,
     };
   }
 
@@ -152,7 +189,8 @@ export class StatsService {
 
   private file(season: string): string | null {
     if (!this.dir || !this.provider) return null;
-    return path.join(this.dir, `stats-${this.provider.name}-${season.replace(/\W/g, "_")}.json`);
+    // "v2": lines now carry opponent details, so older files are not reused.
+    return path.join(this.dir, `stats-v2-${this.provider.name}-${season.replace(/\W/g, "_")}.json`);
   }
 
   private async load(season: string): Promise<SeasonData> {

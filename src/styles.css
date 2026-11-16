@@ -698,6 +698,213 @@ th[aria-sort] .sort-button {
   color: var(--win);
 }
 
+.matchup-open {
+  display: block;
+  width: 100%;
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--line);
+  padding: 0.55rem 1rem;
+  color: var(--accent);
+  font-weight: 700;
+  text-align: center;
+  cursor: pointer;
+}
+
+.matchup-open:hover {
+  background: var(--accent-soft);
+}
+
+/* ---- Matchup detail ---- */
+
+.back-button {
+  margin-bottom: 1rem;
+}
+
+.duel {
+  padding: 1.25rem 1.5rem 1.5rem;
+}
+
+.duel-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 1rem;
+}
+
+.duel-team {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.duel-head .duel-team:last-child {
+  flex-direction: row-reverse;
+  text-align: right;
+}
+
+.duel-head .duel-team:last-child .team-link {
+  text-align: right;
+  margin-left: auto;
+}
+
+.duel-score {
+  display: flex;
+  align-items: baseline;
+  gap: 0.9rem;
+  white-space: nowrap;
+}
+
+.duel-score .num {
+  font-size: 1.75rem;
+  font-weight: 800;
+}
+
+.duel-note {
+  text-align: center;
+  margin-top: 0.75rem;
+}
+
+.panel-heading {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--muted);
+  margin: 1.5rem 0 0.25rem;
+}
+
+.duel-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.duel-rows .duel-row:last-child {
+  border-bottom: 0;
+}
+
+.duel-cell {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.duel-right {
+  flex-direction: row-reverse;
+  text-align: right;
+}
+
+.duel-player {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.duel-name {
+  font-weight: 600;
+}
+
+.duel-right .injury {
+  margin-right: 0;
+  margin-left: 0.5rem;
+}
+
+.duel-points {
+  font-size: 1.0625rem;
+  font-weight: 700;
+}
+
+/* ---- Player details panel ---- */
+
+.player-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-weight: inherit;
+  text-align: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 0.2em;
+}
+
+.player-link:hover {
+  color: var(--accent);
+  text-decoration-color: currentColor;
+}
+
+.player-panel {
+  width: min(52rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.player-panel::backdrop {
+  background: rgba(8, 12, 22, 0.6);
+}
+
+.panel-body {
+  padding: 1.25rem 1.5rem 1.5rem;
+}
+
+.panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.panel-head .player-tags {
+  margin: 0.35rem 0;
+}
+
+.figures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.figures div {
+  background: var(--surface-raised);
+  border-radius: var(--radius-small);
+  padding: 0.6rem 0.8rem;
+}
+
+.figures dt {
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.figures dd {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.log-table {
+  min-width: 38rem;
+}
+
+.log-table tfoot th,
+.log-table tfoot td {
+  border-top: 1px solid var(--line);
+  border-bottom: 0;
+  color: var(--muted);
+  font-weight: 600;
+}
+
 /* ---- Activity ---- */
 
 .activity {
@@ -827,5 +1034,41 @@ th[aria-sort] .sort-button {
 
   .rail-name {
     overflow: visible;
+  }
+
+  .duel,
+  .panel-body {
+    padding: 1rem;
+  }
+
+  .duel-head {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .duel-head .duel-team:last-child {
+    flex-direction: row;
+    text-align: left;
+  }
+
+  .duel-head .duel-team:last-child .team-link {
+    text-align: left;
+    margin-left: 0;
+  }
+
+  .duel-score {
+    justify-content: center;
+  }
+
+  .duel-cell,
+  .duel-right {
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+    gap: 0.1rem;
+  }
+
+  .duel-right {
+    align-items: flex-end;
+    text-align: right;
   }
 }
