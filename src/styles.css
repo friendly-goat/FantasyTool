@@ -1,0 +1,598 @@
+/* Visual language: a coach's whiteboard. Cool white surface, navy ink,
+   one blue marker for anything interactive, green and red only for
+   results. Team names are set in condensed heavy type, like jersey
+   lettering; everything else stays quiet. */
+
+:root {
+  --board: #f1f4f7;
+  --surface: #ffffff;
+  --ink: #16233b;
+  --muted: #5a6880;
+  --line: #d6dde6;
+  --marker: #2459c9;
+  --marker-soft: #e3ebfa;
+  --win: #1b7a55;
+  --loss: #bf3a30;
+  --warn: #7d560c;
+  --warn-soft: #fbf1da;
+  --loss-soft: #fbe9e7;
+
+  --font: "Archivo Variable", "Helvetica Neue", Arial, sans-serif;
+  --radius: 6px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--board);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+h1,
+h2,
+h3,
+p,
+ul {
+  margin: 0;
+}
+
+ul {
+  padding: 0;
+  list-style: none;
+}
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--marker);
+  outline-offset: 2px;
+}
+
+code {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.875em;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0 0.3em;
+}
+
+.page {
+  max-width: 68rem;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 4rem;
+}
+
+.quiet {
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* ---- Header ---- */
+
+.league-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.league-name {
+  font-size: 2.125rem;
+  font-weight: 800;
+  font-stretch: 68%;
+  line-height: 1.1;
+  letter-spacing: 0.005em;
+}
+
+.league-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.button {
+  border: 1px solid var(--marker);
+  background: var(--marker);
+  color: #fff;
+  font-weight: 600;
+  padding: 0.4rem 0.9rem;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.button:hover {
+  background: #1c48a6;
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.button-plain {
+  background: transparent;
+  color: var(--marker);
+  border-color: var(--line);
+}
+
+.button-plain:hover {
+  background: var(--marker-soft);
+}
+
+/* ---- Notices ---- */
+
+.notice {
+  background: var(--marker-soft);
+  border-left: 4px solid var(--marker);
+  padding: 0.6rem 0.9rem;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  margin-bottom: 1rem;
+  max-width: 46rem;
+}
+
+.notice-warn {
+  background: var(--warn-soft);
+  border-left-color: var(--warn);
+}
+
+.notice-error {
+  background: var(--loss-soft);
+  border-left-color: var(--loss);
+}
+
+/* ---- Tabs ---- */
+
+.tabs {
+  display: flex;
+  gap: 1.5rem;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 1.5rem;
+  overflow-x: auto;
+}
+
+.tab {
+  background: none;
+  border: 0;
+  border-bottom: 4px solid transparent;
+  border-radius: 2px 2px 0 0;
+  padding: 0.5rem 0;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: var(--ink);
+}
+
+.tab[aria-current="page"] {
+  color: var(--ink);
+  border-bottom-color: var(--marker);
+}
+
+/* ---- Standings ---- */
+
+.table-scroll {
+  overflow-x: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.standings {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 44rem;
+}
+
+.standings th,
+.standings td {
+  padding: 0.7rem 1rem;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+
+.standings tbody tr:last-child th,
+.standings tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.standings thead th {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.standings thead th.num {
+  text-align: right;
+}
+
+.standings tbody th {
+  text-align: left;
+  font-weight: inherit;
+}
+
+.rank {
+  width: 3.5rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.team-link {
+  display: block;
+  background: none;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  font-size: 1.3125rem;
+  font-weight: 750;
+  font-stretch: 68%;
+  line-height: 1.15;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+}
+
+.team-link:hover {
+  color: var(--marker);
+}
+
+.manager {
+  display: block;
+}
+
+.record {
+  font-weight: 700;
+  font-size: 1.0625rem;
+  white-space: nowrap;
+}
+
+.scored {
+  display: grid;
+  grid-template-columns: 4.5rem minmax(6rem, 1fr);
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.scored-value {
+  font-weight: 600;
+}
+
+.bar {
+  position: relative;
+  display: block;
+  height: 0.25rem;
+  background: var(--line);
+  border-radius: 999px;
+}
+
+.bar-mark {
+  position: absolute;
+  top: -0.375rem;
+  width: 2px;
+  height: 1rem;
+  margin-left: -1px;
+  background: var(--muted);
+}
+
+.bar-dot {
+  position: absolute;
+  top: 50%;
+  width: 0.875rem;
+  height: 0.875rem;
+  margin: -0.4375rem 0 0 -0.4375rem;
+  background: var(--marker);
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+}
+
+.up {
+  color: var(--win);
+  font-weight: 600;
+}
+
+.down {
+  color: var(--loss);
+  font-weight: 600;
+}
+
+.legend {
+  margin-top: 0.75rem;
+  max-width: 46rem;
+}
+
+/* ---- Teams ---- */
+
+.teams {
+  display: grid;
+  grid-template-columns: 16rem minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.rail-item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  width: 100%;
+  background: none;
+  border: 0;
+  border-left: 4px solid transparent;
+  padding: 0.45rem 0.75rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rail-item:hover {
+  background: var(--marker-soft);
+}
+
+.rail-item[aria-current="true"] {
+  border-left-color: var(--marker);
+  background: var(--surface);
+  font-weight: 700;
+}
+
+.rail-rank {
+  color: var(--muted);
+  min-width: 1.25rem;
+  font-weight: 400;
+}
+
+.roster {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1.25rem 1.5rem 1.5rem;
+}
+
+.team-title {
+  font-size: 1.75rem;
+  font-weight: 800;
+  font-stretch: 68%;
+  line-height: 1.15;
+}
+
+.roster h3 {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  margin: 1.5rem 0 0.25rem;
+}
+
+.player {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.6rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.players .player:last-child {
+  border-bottom: 0;
+}
+
+.slot {
+  width: 2.75rem;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.player-name {
+  font-weight: 600;
+}
+
+.player-meta {
+  margin-left: auto;
+}
+
+.injury {
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0 0.4rem;
+  border-radius: 4px;
+}
+
+/* ---- Matchups ---- */
+
+.section-title {
+  font-size: 1.0625rem;
+  font-weight: 700;
+  margin-bottom: 0.75rem;
+}
+
+.matchups {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+  gap: 1rem;
+}
+
+.matchup {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.matchup-side {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.7rem 1rem;
+  border-left: 4px solid transparent;
+}
+
+.matchup-side + .matchup-side {
+  border-top: 1px solid var(--line);
+}
+
+.matchup-side.leading {
+  border-left-color: var(--win);
+}
+
+.matchup-points {
+  font-size: 1.3125rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.matchup-side.leading .matchup-points {
+  font-weight: 750;
+  color: var(--ink);
+}
+
+/* ---- Activity ---- */
+
+.activity {
+  max-width: 46rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.activity-item {
+  padding: 0.85rem 1rem;
+  border-left: 4px solid var(--line);
+}
+
+.activity-item + .activity-item {
+  border-top: 1px solid var(--line);
+}
+
+.activity-item.type-trade {
+  border-left-color: var(--marker);
+}
+
+.activity-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.2rem;
+}
+
+.activity-type {
+  font-weight: 700;
+}
+
+/* ---- League picker ---- */
+
+.picker {
+  max-width: 30rem;
+  margin: 3rem auto 0;
+}
+
+.picker-form {
+  margin-top: 1.75rem;
+}
+
+.picker-form label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.3rem;
+}
+
+.field-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.field-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid #8793a6;
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.hint {
+  margin-top: 0.35rem;
+}
+
+.picker .notice {
+  margin: 1rem 0 0;
+}
+
+.league-list {
+  margin-top: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.league-list li + li {
+  border-top: 1px solid var(--line);
+}
+
+.league-option {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  width: 100%;
+  background: none;
+  border: 0;
+  padding: 0.7rem 1rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.league-option:hover {
+  background: var(--marker-soft);
+}
+
+.league-option-name {
+  font-weight: 700;
+}
+
+/* ---- Small screens ---- */
+
+@media (max-width: 720px) {
+  .league-name {
+    font-size: 1.75rem;
+  }
+
+  .teams {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .team-rail {
+    display: flex;
+    gap: 0.25rem;
+    overflow-x: auto;
+    padding-bottom: 0.25rem;
+  }
+
+  .rail-item {
+    white-space: nowrap;
+    border-left: 0;
+    border-bottom: 4px solid transparent;
+  }
+
+  .rail-item[aria-current="true"] {
+    border-bottom-color: var(--marker);
+  }
+}
