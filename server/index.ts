@@ -6,6 +6,10 @@ import { Cache } from "./cache.ts";
 import { fetchFromMock, MOCK_LEAGUE_ID } from "./mock.ts";
 import { fetchFromSleeper, SleeperError } from "./sleeper.ts";
 import { buildSnapshot, loadPlayers, loadUserLeagues } from "./snapshot.ts";
+import { createBalldontlie } from "./stats/balldontlie.ts";
+import { createMockStats } from "./stats/mock.ts";
+import type { StatsProvider } from "./stats/provider.ts";
+import { StatsService } from "./stats/service.ts";
 
 // Local backend. It is the only part of the app that talks to Sleeper:
 // the React app calls /api/* here, and this process decides whether to
@@ -25,9 +29,35 @@ const minRefreshGap = (Number(process.env.MIN_REFRESH_SECONDS) || 60) * 1000;
 // Sleeper asks that the full player list be fetched at most once a day.
 const playersTtl = 24 * 60 * MINUTE;
 
+const statsTtl = (Number(process.env.STATS_CACHE_HOURS) || 6) * 60 * MINUTE;
+
 const fetchJson = mock ? fetchFromMock : fetchFromSleeper;
 const cache = new Cache({ dir: mock ? null : ".cache" });
+
+// Player stats come from balldontlie when a key is set. Without one the
+// rest of the app still works; stats are simply not shown.
+const statsKey = process.env.BALLDONTLIE_API_KEY?.trim();
+const statsProvider: StatsProvider | null = mock
+  ? createMockStats((await fetchFromMock("/players/nba")) as Record<string, unknown>)
+  : statsKey
+    ? createBalldontlie(statsKey)
+    : null;
+const stats = new StatsService(statsProvider, { dir: mock ? null : ".cache", staleMs: statsTtl });
+
 const app = express();
+
+function getPlayers() {
+  return cache.get("players-nba", playersTtl, () => loadPlayers(fetchJson));
+}
+
+function getSnapshot(leagueId: string, force: boolean) {
+  return cache.get(
+    `league-${leagueId}`,
+    leagueTtl,
+    async () => buildSnapshot(leagueId, fetchJson, (await getPlayers()).value),
+    { force },
+  );
+}
 
 function sendError(res: express.Response, error: unknown): void {
   const status = error instanceof SleeperError && error.status === 429 ? 429 : 502;
@@ -66,17 +96,22 @@ app.get("/api/league/:leagueId", async (req, res) => {
     const age = await cache.age(key);
     const force = req.query.refresh === "1" && (age === null || age >= minRefreshGap);
 
-    const result = await cache.get(
-      key,
-      leagueTtl,
-      async () => {
-        const players = await cache.get("players-nba", playersTtl, () => loadPlayers(fetchJson));
-        return buildSnapshot(leagueId, fetchJson, players.value);
-      },
-      { force },
-    );
+    const result = await getSnapshot(leagueId, force);
     const snapshot: LeagueSnapshot = { ...result.value, stale: result.stale };
     res.json(snapshot);
+  } catch (error) {
+    sendError(res, error);
+  }
+});
+
+app.get("/api/league/:leagueId/stats", async (req, res) => {
+  try {
+    const [snapshot, players] = await Promise.all([
+      getSnapshot(req.params.leagueId.trim(), false),
+      getPlayers(),
+    ]);
+    if (req.query.retry === "1") stats.retry(snapshot.value.league.season);
+    res.json(await stats.report(snapshot.value, players.value));
   } catch (error) {
     sendError(res, error);
   }
@@ -91,6 +126,7 @@ if (existsSync(dist)) {
 
 app.listen(port, () => {
   console.log(
-    `[server] http://localhost:${port} (${mock ? "mock data" : "live Sleeper data"})`,
+    `[server] http://localhost:${port} (${mock ? "mock data" : "live Sleeper data"}, ` +
+      `player stats: ${statsProvider ? statsProvider.name : "off, no BALLDONTLIE_API_KEY"})`,
   );
 });

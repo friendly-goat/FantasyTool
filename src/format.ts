@@ -40,3 +40,10 @@ export function formatAgo(iso: string, now: number = Date.now()): string {
 export function formatRecord(wins: number, losses: number, ties: number): string {
   return ties > 0 ? `${wins}-${losses}-${ties}` : `${wins}-${losses}`;
 }
+
+const oneDecimal = new Intl.NumberFormat("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+/** Per-game averages: one decimal place. */
+export function formatAverage(value: number): string {
+  return oneDecimal.format(value);
+}

@@ -101,3 +101,60 @@ export interface AppConfig {
   defaultLeagueId: string | null;
   mock: boolean;
 }
+
+// ---- Player stats -------------------------------------------------------
+
+/** One player's box-score numbers for a game, or per-game averages. */
+export interface StatLine {
+  pts: number;
+  reb: number;
+  ast: number;
+  stl: number;
+  blk: number;
+  tov: number;
+  /** Three-pointers made and attempted. */
+  tpm: number;
+  tpa: number;
+  fgm: number;
+  fga: number;
+  ftm: number;
+  fta: number;
+  oreb: number;
+  dreb: number;
+  pf: number;
+}
+
+export interface PlayerStats extends PlayerRef {
+  games: number;
+  /** Average minutes per game played. */
+  minutes: number;
+  /** Fantasy points per game this season, under this league's scoring. */
+  fantasyAvg: number;
+  /** Fantasy points per game over the most recent games, or null if none. */
+  recentAvg: number | null;
+  recentGames: number;
+  averages: StatLine;
+}
+
+export interface StatsReport {
+  /**
+   * unconfigured: no stats API key is set.
+   * syncing: game data is being downloaded; `players` may be partial or empty.
+   * ready: `players` is complete as of `syncedAt`.
+   * error: the last download failed; `players` holds any older data.
+   */
+  status: "unconfigured" | "syncing" | "ready" | "error";
+  message: string | null;
+  source: string | null;
+  syncedAt: string | null;
+  /** Pages downloaded so far in the current sync. */
+  pagesFetched: number;
+  /** How many games the "recent" average covers. */
+  recentWindow: number;
+  /** League scoring settings the stats source has no data for. */
+  ignoredScoring: string[];
+  /** Rostered players that could not be matched to the stats source. */
+  unmatchedRostered: PlayerRef[];
+  /** Keyed by Sleeper player ID. Only players with at least one game. */
+  players: Record<string, PlayerStats>;
+}

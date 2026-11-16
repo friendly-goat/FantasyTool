@@ -1,41 +1,69 @@
-import type { LeagueSnapshot, PlayerRef } from "../../shared/types.ts";
-import { formatPoints, formatRecord } from "../format.ts";
+import type { LeagueSnapshot, PlayerRef, PlayerStats, StatsReport } from "../../shared/types.ts";
+import { formatAverage, formatPoints, formatRecord } from "../format.ts";
 import { Avatar } from "./Avatar.tsx";
 import { PositionChip } from "./PositionChip.tsx";
 
 interface Props {
   snapshot: LeagueSnapshot;
+  stats: StatsReport | null;
   selectedRosterId: number | null;
   onSelect: (rosterId: number) => void;
 }
 
-function PlayerLine({ slot, player }: { slot?: string; player: PlayerRef | null }) {
+interface LineProps {
+  slot: string;
+  player: PlayerRef | null;
+  stats: PlayerStats | undefined;
+  showStats: boolean;
+}
+
+function PlayerLine({ slot, player, stats, showStats }: LineProps) {
   return (
-    <li className="player">
-      {slot && (
-        <span className="slot">
-          <PositionChip label={slot} />
-        </span>
-      )}
-      {player ? (
+    <tr>
+      <td className="slot">
+        <PositionChip label={slot} />
+      </td>
+      <th scope="row">
+        {player ? (
+          <>
+            <span className="player-name">{player.name}</span>
+            {player.injuryStatus && <span className="injury">{player.injuryStatus}</span>}
+            <span className="quiet player-meta">
+              {[player.positions.join("/"), player.team ?? "Free agent"].filter(Boolean).join(", ")}
+            </span>
+          </>
+        ) : (
+          <span className="quiet">Empty slot</span>
+        )}
+      </th>
+      {showStats && (
         <>
-          <span className="player-name">{player.name}</span>
-          {player.injuryStatus && <span className="injury">{player.injuryStatus}</span>}
-          <span className="quiet player-meta">
-            {[player.positions.join("/"), player.team ?? "Free agent"].filter(Boolean).join(", ")}
-          </span>
+          <td className="num strong">{stats ? formatAverage(stats.fantasyAvg) : "–"}</td>
+          <td className="num">{stats?.recentAvg != null ? formatAverage(stats.recentAvg) : "–"}</td>
+          <td className="num quiet-cell">{stats ? stats.games : "–"}</td>
         </>
-      ) : (
-        <span className="quiet">Empty slot</span>
       )}
-    </li>
+    </tr>
   );
 }
 
-export function Teams({ snapshot, selectedRosterId, onSelect }: Props) {
+export function Teams({ snapshot, stats, selectedRosterId, onSelect }: Props) {
   const team =
     snapshot.teams.find((candidate) => candidate.rosterId === selectedRosterId) ?? snapshot.teams[0];
   if (!team) return <p className="quiet">This league has no teams yet.</p>;
+
+  const players = stats?.players ?? {};
+  const showStats = Object.keys(players).length > 0;
+  const groups: { title: string; lines: { slot: string; player: PlayerRef | null }[] }[] = [
+    { title: "Starters", lines: team.starters },
+    { title: "Bench", lines: team.bench.map((player) => ({ slot: "BN", player })) },
+    { title: "Injured reserve", lines: team.reserve.map((player) => ({ slot: "IR", player })) },
+  ].filter((group) => group.lines.length > 0);
+
+  const starterTotal = team.starters.reduce(
+    (sum, starter) => sum + (starter.player ? (players[starter.player.id]?.fantasyAvg ?? 0) : 0),
+    0,
+  );
 
   return (
     <section className="teams" aria-label="Teams">
@@ -68,34 +96,47 @@ export function Teams({ snapshot, selectedRosterId, onSelect }: Props) {
           </div>
         </div>
 
-        <h3>Starters</h3>
-        <ul className="players">
-          {team.starters.map((starter, index) => (
-            <PlayerLine key={index} slot={starter.slot} player={starter.player} />
-          ))}
-        </ul>
+        {showStats && (
+          <p className="roster-summary">
+            Starters average <strong>{formatAverage(starterTotal)}</strong> fantasy points per game combined.
+          </p>
+        )}
 
-        <h3>Bench</h3>
-        {team.bench.length > 0 ? (
-          <ul className="players">
-            {team.bench.map((player) => (
-              <PlayerLine key={player.id} slot="BN" player={player} />
+        <div className="roster-scroll">
+          <table className="roster-table">
+            {groups.map((group, groupIndex) => (
+              <tbody key={group.title}>
+                <tr className="group-row">
+                  <th scope="col" colSpan={2}>
+                    {group.title}
+                  </th>
+                  {showStats && (
+                    <>
+                      <th scope="col" className="num">
+                        {groupIndex === 0 ? "Fantasy avg" : ""}
+                      </th>
+                      <th scope="col" className="num">
+                        {groupIndex === 0 ? `Last ${stats?.recentWindow ?? 5}` : ""}
+                      </th>
+                      <th scope="col" className="num">
+                        {groupIndex === 0 ? "Games" : ""}
+                      </th>
+                    </>
+                  )}
+                </tr>
+                {group.lines.map((line, index) => (
+                  <PlayerLine
+                    key={line.player?.id ?? `empty-${index}`}
+                    slot={line.slot}
+                    player={line.player}
+                    stats={line.player ? players[line.player.id] : undefined}
+                    showStats={showStats}
+                  />
+                ))}
+              </tbody>
             ))}
-          </ul>
-        ) : (
-          <p className="quiet">No bench players.</p>
-        )}
-
-        {team.reserve.length > 0 && (
-          <>
-            <h3>Injured reserve</h3>
-            <ul className="players">
-              {team.reserve.map((player) => (
-                <PlayerLine key={player.id} slot="IR" player={player} />
-              ))}
-            </ul>
-          </>
-        )}
+          </table>
+        </div>
       </div>
     </section>
   );

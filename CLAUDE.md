@@ -14,9 +14,14 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   `shared/types.ts` inside `server/snapshot.ts`.
 - Fantasy numbers (values, projections, trade impact) are computed in code with
   tests. An LLM may explain or propose, never do the arithmetic.
-- Sandboxed sessions usually cannot reach api.sleeper.app. Develop and test
+- Player stats come through the `StatsProvider` interface
+  (`server/stats/provider.ts`). Nothing outside `server/stats/` may know
+  which vendor is in use. API keys live in `.env` only, never in the repo.
+- Scoring rules live in `server/scoring.ts` only.
+- Sandboxed sessions usually cannot reach api.sleeper.app or api.balldontlie.io. Develop and test
   against `server/mock.ts` (`npm run dev:mock`), and ask the owner to run
-  `npm run check:sleeper` when live behavior needs confirming.
+  `npm run check:sleeper` or `npm run check:stats` when live behavior needs
+  confirming.
 - UI copy: sentence case, plain language. Visual tokens live at the top of
   `src/styles.css`.
 

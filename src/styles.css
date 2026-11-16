@@ -487,36 +487,70 @@ code {
   line-height: 1.2;
 }
 
-.roster h3 {
-  font-size: 0.8125rem;
-  font-weight: 700;
-  color: var(--muted);
-  margin: 1.5rem 0 0.25rem;
+.roster-summary {
+  margin-top: 1rem;
 }
 
-.player {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.25rem 0.6rem;
-  padding: 0.5rem 0;
+.roster-scroll {
+  overflow-x: auto;
+}
+
+.roster-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.roster-table th,
+.roster-table td {
+  padding: 0.5rem 0.5rem;
   border-bottom: 1px solid var(--line);
+  text-align: left;
+  font-weight: inherit;
 }
 
-.players .player:last-child {
+.roster-table th:first-child,
+.roster-table td:first-child {
+  padding-left: 0;
+}
+
+.roster-table td.num,
+.roster-table th.num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.roster-table tbody tr:last-child th,
+.roster-table tbody tr:last-child td {
   border-bottom: 0;
 }
 
+.roster-table .group-row th {
+  padding-top: 1.5rem;
+  border-bottom: 0;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
 .slot {
-  width: 3rem;
+  width: 3.25rem;
 }
 
 .player-name {
   font-weight: 600;
+  margin-right: 0.5rem;
 }
 
 .player-meta {
-  margin-left: auto;
+  white-space: nowrap;
+}
+
+.strong {
+  font-weight: 700;
+}
+
+.quiet-cell {
+  color: var(--muted);
 }
 
 .injury {
@@ -526,6 +560,98 @@ code {
   font-weight: 700;
   padding: 0 0.4rem;
   border-radius: 6px;
+  margin-right: 0.5rem;
+}
+
+/* ---- Players ---- */
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.filters label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+}
+
+.filters select {
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--field-line);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+  font-weight: 400;
+}
+
+.players-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 56rem;
+}
+
+.players-table th,
+.players-table td {
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  font-weight: inherit;
+  white-space: nowrap;
+}
+
+.players-table td.num,
+.players-table th.num {
+  text-align: right;
+}
+
+.players-table thead th {
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+
+.players-table tbody tr:last-child th,
+.players-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.player-tags {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.2rem;
+}
+
+.sort-button {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.sort-button:hover,
+th[aria-sort] .sort-button {
+  color: var(--text);
+}
+
+.link-button {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--accent);
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.stats-footnote {
+  max-width: 52rem;
+  margin: -0.5rem 0 1rem;
 }
 
 /* ---- Matchups ---- */
