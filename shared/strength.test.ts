@@ -20,13 +20,16 @@ import { POSITIONS, positionProfile, teamSituations } from "./insight.ts";
 import { availabilityOutlook, projectPlayer } from "./projection.ts";
 import {
   acceptanceChance,
-  balance,
   chanceFrom,
   evaluateTrade,
   findTrades,
+  evenOnValue,
   gradeWord,
   letterGrade,
   likelihood,
+  playerValue,
+  tradeKind,
+  tradeStory,
   tradeGrade,
 } from "./trade.ts";
 
@@ -300,7 +303,49 @@ describe("team strength and trades (against the mock league)", async () => {
     // An even trade: helps neither, looks fair, average pressure.
     expect(chanceFrom(0, 30, 30, 0.3)).toBeCloseTo(0.55 * 0.5 + 0.3 + 0.045);
     const even = evaluateTrade(model, snapshot, { teamA: strengths[0]!.rosterId, teamB: strengths[1]!.rosterId, aGives: [], bGives: [] });
-    expect(balance(even)).toBe(50);
+    expect(even.valueBalance).toBe(50);
+  });
+
+  it("measures player value apart from team effect, and the gap between them as fit", () => {
+    const [a, b] = [strengths[2]!.rosterId, strengths[6]!.rosterId];
+    const sorted = (rosterId: number) =>
+      ids(rosterId).map((id) => model.players.get(id)!).filter((p) => p.games > 0).sort((x, y) => y.expected - x.expected);
+    const star = sorted(a)[0]!;
+    const role = sorted(b)[8]!;
+    const result = evaluateTrade(model, snapshot, { teamA: a, teamB: b, aGives: [star.id], bGives: [role.id] });
+
+    expect(result.a.valueSent).toBeCloseTo(playerValue(model, star));
+    expect(result.a.valueReceived).toBeCloseTo(playerValue(model, role));
+    expect(result.a.valueChange).toBeCloseTo(-result.b.valueChange);
+    for (const side of [result.a, result.b]) {
+      expect(side.teamChange).toBeCloseTo(side.projectedAfter - side.projectedBefore);
+      expect(side.fit).toBeCloseTo(side.teamChange - side.valueChange);
+    }
+    // Team B receives the star, so the player-value slider leans toward B.
+    expect(result.valueBalance).toBeGreaterThan(60);
+    expect(evenOnValue(result)).toBe(false);
+    expect(tradeKind(result)).toBe("costs-you");
+
+    const story = tradeStory(model, snapshot, result);
+    expect(story.points[0]).toMatch(/^You give up/);
+    expect(story.headline).toBe("Costs your team strength");
+  });
+
+  it("never counts a player below free-agent level as negative value", () => {
+    const worst = [...model.players.values()].filter((p) => p.games > 0).sort((x, y) => x.expected - y.expected)[0]!;
+    expect(playerValue(model, worst)).toBe(0);
+    expect(model.replacementWeekly).toBeGreaterThan(0);
+  });
+
+  it("explains every suggested trade from the user's side", () => {
+    const { ideas } = findTrades(model, snapshot, strengths[4]!.rosterId, situations);
+    for (const idea of ideas) {
+      expect(idea.story.kind).toBe(tradeKind(idea.result));
+      expect(idea.story.points.length).toBeGreaterThan(0);
+      expect(idea.story.points.length).toBeLessThanOrEqual(7);
+      // Every suggestion helps the user, so none is called a loss.
+      expect(idea.story.kind).not.toBe("costs-you");
+    }
   });
 
   it("rates acceptance higher when the trade helps them more", () => {
@@ -409,6 +454,7 @@ describe("a lock-in week, on made-up players", () => {
     freeAgentIds: [],
     replacementProjection: 0,
     idealProjection: 0,
+    replacementWeekly: 0,
   };
   const player = (id: string, games: [number, number][]) => {
     const made = steadyPlayer(model, id, ["SF"], 30);

@@ -91,6 +91,8 @@ export interface StrengthModel {
   /** Projected weekly score of the two reference rosters. */
   replacementProjection: number;
   idealProjection: number;
+  /** Weekly value of a typical pickup: the middle one of the best free agents, one per team. */
+  replacementWeekly: number;
 }
 
 function hash(text: string): number {
@@ -306,7 +308,10 @@ export function buildModel(
 
   const model: StrengthModel = {
     slots, slotOrder, weeks, players, freeAgentIds, replacementProjection: 0, idealProjection: 0,
+    replacementWeekly: 0,
   };
+  const pickups = freeAgentIds.slice(0, Math.max(1, snapshot.teams.length));
+  model.replacementWeekly = players.get(pickups[Math.floor(pickups.length / 2)] ?? "")?.expected ?? 0;
   const rosterSize = Math.max(slots.length, Math.round(rosterRefs.length / Math.max(1, snapshot.teams.length)));
   model.replacementProjection = projectedWeekly(model, freeAgentIds.slice(0, rosterSize));
   const best = [...players.values()].sort((a, b) => b.expected - a.expected).slice(0, rosterSize);

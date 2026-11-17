@@ -203,13 +203,34 @@ drops its least valuable player. Each manager gets:
   real change and +4 points a week is about 73);
 - the change in team strength.
 
-### Grades and the balance slider
+### Grades
 
 Each manager gets a letter for how good the trade is for their own team: A a
 big win, B a win, C about even, D a loss, F a big loss. Both teams can get an
 A. The 1 to 100 number behind the letter is not shown, because a 52 reads like
-a failing mark when it means "about even". A slider shows which team gains
-more.
+a failing mark when it means "about even".
+
+### Player value, team effect and fit
+
+Every trade is shown three ways:
+
+- **Player value** (the slider at the top): each player's own weekly value
+  above a typical free agent, added up per side, with no team context. Value
+  above a free agent, rather than raw value, keeps two-for-ones honest: two
+  bench players do not add up to one star, since a roster spot can always be
+  filled from waivers.
+- **Team effect** (the bar on each team's card): the change in that team's
+  strength, the trade in context.
+- **Fit**: team effect minus player-value change. Positive fit means the trade
+  is worth more to that team than its players' value says, usually because it
+  fills a thin position, adds depth, or covers for an injury.
+
+From these, each trade gets a plain label from the user's side: you get more
+player value because your side is worth more to them; win-win; even on paper
+but better for your roster; ahead on player value; worth more to your roster
+than on paper; costs you; or about even. The label and the points under it
+are an explanation only. Grades, chances and the ranking of ideas do not use
+them.
 
 ### Finding trades
 
