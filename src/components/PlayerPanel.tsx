@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import type { LeagueSnapshot, PlayerDetail, PlayerRef, StatsReport } from "../../shared/types.ts";
 import { getPlayerDetail } from "../api.ts";
-import { formatAverage, formatGameDate, formatPoints } from "../format.ts";
+import { formatAverage, formatGameDate, formatPoints, formatSigned } from "../format.ts";
+
+const percent = new Intl.NumberFormat("en-US", { style: "percent", maximumFractionDigits: 0 });
 import { PositionChip } from "./PositionChip.tsx";
+import { ProjectionChart } from "./ProjectionChart.tsx";
 
 interface Props {
   snapshot: LeagueSnapshot;
@@ -110,6 +113,10 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
                 <dd>{season.recentAvg != null ? formatPoints(season.recentAvg) : "–"}</dd>
               </div>
               <div>
+                <dt>Projected</dt>
+                <dd>{formatPoints(season.projection.perGame)}</dd>
+              </div>
+              <div>
                 <dt>Games</dt>
                 <dd>{season.games}</dd>
               </div>
@@ -126,6 +133,31 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
                 games below.
               </p>
             )}
+
+            <h3 className="panel-heading">Rest of season</h3>
+            <ProjectionChart stats={season} games={detail.games} />
+            <p className="quiet panel-note">
+              {season.projection.factors.length > 0 ? (
+                <>
+                  Starts from his average of {formatPoints(season.fantasyAvg)}.{" "}
+                  {season.projection.factors.map((factor) => (
+                    <span key={factor.label}>
+                      {factor.label}: {formatSigned(factor.effect)}.{" "}
+                    </span>
+                  ))}
+                </>
+              ) : (
+                <>Projected to keep his average. </>
+              )}
+              {season.projection.lastSeason
+                ? `Last season he averaged ${formatPoints(season.projection.lastSeason.average)} over ${season.projection.lastSeason.games} games. `
+                : stats?.lastSeason === "loading"
+                  ? "Last season's stats are still downloading and are not in this projection yet. "
+                  : "No last season on record for him. "}
+              {season.longTermOut
+                ? `He has missed his team's last ${season.missedStreak} games, so he is expected to play only ${percent.format(season.availability)} of the rest.`
+                : `Expected to play ${percent.format(season.availability)} of his team's remaining games.`}
+            </p>
 
             <h3 className="panel-heading">Game log</h3>
             <div className="table-scroll">

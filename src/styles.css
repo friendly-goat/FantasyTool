@@ -980,6 +980,438 @@ th[aria-sort] .sort-button {
   margin-top: 0.9rem;
 }
 
+/* ---- Strength and trades ---- */
+
+.strength-table {
+  min-width: 58rem;
+}
+
+.strength-table th,
+.strength-table td {
+  padding-left: 0.6rem;
+  padding-right: 0.6rem;
+}
+
+.strength-cell {
+  display: grid;
+  grid-template-columns: 3rem minmax(5rem, 1fr);
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.strength-score {
+  font-size: 1.25rem;
+  font-weight: 800;
+}
+
+.meter {
+  display: block;
+  height: 0.4rem;
+  background: var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.meter-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+.explain {
+  max-width: 52rem;
+}
+
+.explain p + p {
+  margin-top: 0.5rem;
+}
+
+.trade-rosters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.trade-roster {
+  padding: 1rem 1.25rem;
+}
+
+.trade-roster .group-row th {
+  padding-top: 0.5rem;
+}
+
+.pick {
+  display: inline-flex;
+  vertical-align: middle;
+  margin-right: 0.5rem;
+}
+
+.pick input {
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--accent);
+}
+
+.roster-table tr.picked th,
+.roster-table tr.picked td {
+  background: var(--accent-soft);
+}
+
+.trade-hint {
+  margin: 0.25rem 0;
+}
+
+.verdict {
+  font-size: 1.0625rem;
+  font-weight: 700;
+  margin-bottom: 0.75rem;
+}
+
+.grade-card {
+  padding: 1.1rem 1.25rem 1.25rem;
+}
+
+.grade-card .league-option-name {
+  display: block;
+}
+
+.grade {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin: 0.75rem 0 0.5rem;
+  font-weight: 400;
+}
+
+.grade-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.5rem 1rem;
+  margin: 0 0 0.75rem;
+}
+
+.grade-facts dt {
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.grade-facts dd {
+  margin: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.ideas-title {
+  margin-top: 2rem;
+}
+
+.ideas-title + .explain {
+  margin-bottom: 0.75rem;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---- Trade finder ---- */
+
+.shape {
+  max-width: 44rem;
+  margin-bottom: 1rem;
+}
+
+.shape .players-table {
+  min-width: 0;
+}
+
+.shape caption {
+  caption-side: bottom;
+  text-align: left;
+  padding: 0.6rem 0.75rem;
+  border-top: 1px solid var(--line);
+}
+
+.finder {
+  align-items: flex-end;
+}
+
+.finder label {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+}
+
+.finder select {
+  max-width: 100%;
+}
+
+.ideas {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.idea {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 1rem 1.5rem;
+  padding: 1rem 1.25rem;
+}
+
+.idea-deal {
+  font-weight: 700;
+}
+
+.idea-reasons {
+  margin-top: 0.35rem;
+  padding-left: 1.1rem;
+  list-style: disc;
+}
+
+.idea-facts {
+  display: grid;
+  grid-template-columns: repeat(4, auto);
+  gap: 0.25rem 1.25rem;
+  margin: 0;
+}
+
+.idea-facts dt {
+  color: var(--muted);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.idea-facts dd {
+  margin: 0;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Trade balance and grades ---- */
+
+.balance-card {
+  padding: 1rem 1.25rem 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.balance-names {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-weight: 700;
+  margin-bottom: 0.6rem;
+}
+
+.balance-track {
+  position: relative;
+  height: 0.6rem;
+  border-radius: 999px;
+  background: var(--surface-raised);
+}
+
+.balance-center {
+  position: absolute;
+  left: 50%;
+  top: -0.35rem;
+  width: 2px;
+  height: 1.3rem;
+  margin-left: -1px;
+  background: var(--muted);
+}
+
+.balance-dot {
+  position: absolute;
+  top: 50%;
+  width: 1.4rem;
+  height: 1.4rem;
+  margin: -0.7rem 0 0 -0.7rem;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 3px solid var(--surface);
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+.balance-words {
+  text-align: center;
+  margin-top: 0.5rem;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.balance-compact {
+  margin-top: 0.6rem;
+}
+
+.balance-compact .balance-track {
+  height: 0.35rem;
+}
+
+.balance-compact .balance-center {
+  top: -0.25rem;
+  height: 0.85rem;
+}
+
+.balance-compact .balance-dot {
+  width: 0.9rem;
+  height: 0.9rem;
+  margin: -0.45rem 0 0 -0.45rem;
+  border-width: 2px;
+}
+
+.balance-compact .balance-words {
+  margin-top: 0.3rem;
+  font-size: 0.75rem;
+}
+
+.grade-letter {
+  font-size: 2.5rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.grade-word {
+  font-size: 1.0625rem;
+  font-weight: 700;
+}
+
+.idea-side {
+  min-width: 17rem;
+}
+
+.likelihood {
+  display: inline-block;
+  margin-left: 0.25rem;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  vertical-align: 0.1em;
+  background: var(--surface-raised);
+  color: var(--muted);
+}
+
+.likelihood-likely {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.likelihood-long-shot {
+  background: var(--loss-soft);
+  color: var(--loss);
+}
+
+.finder-outlook {
+  margin-bottom: 0.75rem;
+  max-width: 52rem;
+}
+
+/* ---- Projection chart ---- */
+
+.chart {
+  margin: 0.25rem 0 0;
+}
+
+.chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.chart-grid {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.chart-label {
+  fill: var(--muted);
+  font-size: 11px;
+}
+
+.chart-value {
+  fill: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.chart-line {
+  fill: none;
+  stroke: var(--guard);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.chart-dot {
+  fill: var(--guard);
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
+.chart-bridge {
+  stroke: var(--muted);
+  stroke-width: 2;
+  stroke-dasharray: 2 5;
+  stroke-linecap: round;
+}
+
+.chart-projection {
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke: var(--muted);
+}
+
+.chart-projection.up {
+  stroke: var(--win);
+}
+
+.chart-projection.down {
+  stroke: var(--loss);
+}
+
+.key {
+  display: inline-block;
+  width: 1.1rem;
+  height: 3px;
+  margin: 0 0.35rem 0 0;
+  vertical-align: middle;
+  border-radius: 2px;
+  background: var(--muted);
+}
+
+.key-line {
+  background: var(--guard);
+}
+
+.key-projection {
+  margin-left: 0.9rem;
+}
+
+.key-projection.up {
+  background: var(--win);
+}
+
+.key-projection.down {
+  background: var(--loss);
+}
+
+@media (max-width: 720px) {
+  .idea {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .idea-facts {
+    grid-template-columns: repeat(2, auto);
+    justify-content: start;
+  }
+}
+
 /* ---- Activity ---- */
 
 .activity {

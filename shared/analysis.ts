@@ -39,41 +39,85 @@ export interface Lineup {
 }
 
 /**
- * The assignment of players to slots with the highest total value.
- * Exact, not greedy: it tries every way of filling the slots, remembering
- * results for each set of players already used.
+ * Fills lineup slots for the highest total value. Exact (the Hungarian
+ * method), and fast enough to run many thousands of times.
+ *
+ * `eligible[player][slot]` says who may play where. Returns the total and,
+ * for each slot, the index of the chosen player or -1 for an empty slot.
  */
-export function bestLineup(slots: string[], candidates: Candidate[]): Lineup {
-  // More than ~20 candidates is never needed: only the best few per slot matter.
-  const pool = [...candidates].sort((a, b) => b.value - a.value).slice(0, 20);
-  const memo = new Map<number, { total: number; pick: number }>();
+export function assignSlots(
+  eligible: boolean[][],
+  values: ArrayLike<number>,
+  slotCount: number,
+): { total: number; picks: number[] } {
+  const players = eligible.length;
+  const rows = slotCount;
+  const cols = Math.max(players, rows); // padded so every slot can stay empty
+  // Cost of putting column j in row i. An ineligible or padded column costs
+  // nothing, which is the same as leaving the slot empty.
+  const cost = (i: number, j: number) => (j < players && eligible[j]![i] ? -values[j]! : 0);
 
-  const solve = (slotIndex: number, used: number): number => {
-    if (slotIndex === slots.length) return 0;
-    const key = slotIndex * (1 << 20) + used;
-    const known = memo.get(key);
-    if (known) return known.total;
-
-    let best = { total: solve(slotIndex + 1, used), pick: -1 }; // leave the slot empty
-    for (let index = 0; index < pool.length; index++) {
-      const player = pool[index]!;
-      if (used & (1 << index) || !slotAccepts(slots[slotIndex]!, player.positions)) continue;
-      const total = player.value + solve(slotIndex + 1, used | (1 << index));
-      if (total > best.total) best = { total, pick: index };
-    }
-    memo.set(key, best);
-    return best.total;
-  };
-
-  const total = solve(0, 0);
-  const playerIds: (string | null)[] = [];
-  let used = 0;
-  for (let slotIndex = 0; slotIndex < slots.length; slotIndex++) {
-    const pick = memo.get(slotIndex * (1 << 20) + used)?.pick ?? -1;
-    playerIds.push(pick >= 0 ? pool[pick]!.id : null);
-    if (pick >= 0) used |= 1 << pick;
+  const u = new Float64Array(rows + 1);
+  const v = new Float64Array(cols + 1);
+  const match = new Int32Array(cols + 1); // row matched to each column, 1-based
+  const way = new Int32Array(cols + 1);
+  const minv = new Float64Array(cols + 1);
+  const used = new Uint8Array(cols + 1);
+  for (let i = 1; i <= rows; i++) {
+    match[0] = i;
+    let j0 = 0;
+    minv.fill(Infinity);
+    used.fill(0);
+    do {
+      used[j0] = 1;
+      const i0 = match[j0]!;
+      let delta = Infinity;
+      let j1 = 0;
+      for (let j = 1; j <= cols; j++) {
+        if (used[j]) continue;
+        const current = cost(i0 - 1, j - 1) - u[i0]! - v[j]!;
+        if (current < minv[j]!) {
+          minv[j] = current;
+          way[j] = j0;
+        }
+        if (minv[j]! < delta) {
+          delta = minv[j]!;
+          j1 = j;
+        }
+      }
+      for (let j = 0; j <= cols; j++) {
+        if (used[j]) {
+          u[match[j]!]! += delta;
+          v[j]! -= delta;
+        } else {
+          minv[j]! -= delta;
+        }
+      }
+      j0 = j1;
+    } while (match[j0] !== 0);
+    do {
+      const j1 = way[j0]!;
+      match[j0] = match[j1]!;
+      j0 = j1;
+    } while (j0 !== 0);
   }
-  return { total, playerIds };
+
+  const picks = new Array<number>(rows).fill(-1);
+  let total = 0;
+  for (let j = 1; j <= cols; j++) {
+    const row = match[j]! - 1;
+    if (row < 0 || j - 1 >= players || !eligible[j - 1]![row]) continue;
+    picks[row] = j - 1;
+    total += values[j - 1]!;
+  }
+  return { total, picks };
+}
+
+/** The assignment of players to slots with the highest total value. */
+export function bestLineup(slots: string[], candidates: Candidate[]): Lineup {
+  const eligible = candidates.map((player) => slots.map((slot) => slotAccepts(slot, player.positions)));
+  const { total, picks } = assignSlots(eligible, candidates.map((player) => player.value), slots.length);
+  return { total, playerIds: picks.map((index) => (index >= 0 ? candidates[index]!.id : null)) };
 }
 
 /** Everyone on a team: starters, bench and injured reserve. */

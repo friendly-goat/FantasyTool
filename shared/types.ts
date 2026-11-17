@@ -1,3 +1,5 @@
+import type { Projection } from "./projection.ts";
+
 // Types shared by the backend (server/) and the React app (src/).
 // The backend turns raw Sleeper responses into these shapes so the UI
 // never has to know how Sleeper structures its data.
@@ -152,6 +154,18 @@ export interface PlayerStats extends PlayerRef {
    * (see shared/lockin.ts). The value used for lineup and trade analysis.
    */
   lockInValue: number;
+  /** Lock-in value for weeks of 1, 2, 3 and 4 games, in that order. */
+  lockInByGames: number[];
+  /** Games his NBA team has played this season. */
+  teamGames: number;
+  /** Share of his team's remaining games he is expected to play (shared/projection.ts). */
+  availability: number;
+  /** Team games he has missed in a row up to now. */
+  missedStreak: number;
+  /** True when that run is long enough to be an injury absence, not rest. */
+  longTermOut: boolean;
+  /** Rest-of-season projection with the adjustments behind it. */
+  projection: Projection;
   /** Highest single-game fantasy score this season. */
   bestGame: number;
   /** Fantasy points per game over the most recent games, or null if none. */
@@ -175,6 +189,13 @@ export interface StatsReport {
   pagesFetched: number;
   /** How many games the "recent" average covers. */
   recentWindow: number;
+  /**
+   * Last season's stats feed the projections. They download once, in the
+   * background, after this season's: "loading" until then, "off" without a
+   * stats source.
+   */
+  lastSeason: "off" | "loading" | "ready";
+  lastSeasonPages: number;
   /** League scoring settings the stats source has no data for. */
   ignoredScoring: string[];
   /** Rostered players that could not be matched to the stats source. */

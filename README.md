@@ -4,10 +4,11 @@ An analysis tool for a Sleeper NBA fantasy league. It reads your league
 from Sleeper's public read-only API, shows it in a dashboard, and will grow
 into a trade idea and analysis tool.
 
-**Status:** milestone 3 of 5 under way. Working: the league dashboard, player
-stats scored with your league's settings, player details, matchup lineups, and
-a **My team** tab with a lineup check and free agents worth adding, valued for
-lock-in scoring. Next: the trade analyzer. See [Roadmap](#roadmap).
+**Status:** milestone 4 of 5 under way. Working: the league dashboard, player
+stats scored with your league's settings, rest-of-season projections with a
+chart, a My team tab, a Strength tab (1 to 1000), and a Trades tab that grades
+any trade for both managers and finds trades for your team with reasons.
+See [Roadmap](#roadmap).
 
 ## Run it
 
@@ -129,6 +130,91 @@ A team's strength is the combined lock-in value of its best legal lineup,
 found by trying every way to fill the slots. The trade analyzer will compare
 that number before and after a trade, for both teams.
 
+### How the analysis is kept in balance
+
+Every signal is a separate step with a fixed limit on how far it can move a
+number, and each reports its size, so none can take over and every result
+can be explained. Nothing is a rule about a particular player or position:
+needs, depth and pressure are measured by changing a roster and seeing what
+happens to its projected weekly score.
+
+| Signal | Where | Limit |
+|---|---|---|
+| Recent games count more | projection | a game 15 games ago counts half |
+| Last season's level | projection | counts like 10 extra games, fading as this season grows |
+| Minutes rising or falling | projection | at most 8% either way |
+| Scattered missed games | availability | a rate, blended with a typical 90% early on |
+| Long absence (4+ games in a row) | availability | a current one is expected to last as long again; finished ones are not held against him |
+| How the trade helps the other team | chance they accept | 55% of the estimate |
+| Whether it looks fair on visible averages (players they would drop subtracted) | chance they accept | 30% |
+| Pressure on the other team (absences, record, this week's matchup) | chance they accept | 15% |
+
+### Projections
+
+`shared/projection.ts`. A player's rest-of-season level starts from this
+season's average and applies the three projection steps above. The player
+panel charts his games, then the projected level over the games he is
+expected to play, and lists what each step added or removed. A player whose
+projection sits well below his average is a sell-high candidate; well above, a
+buy-low one.
+
+Last season's stats download once, in the background, after this season's
+(several minutes). Until they arrive, projections work without them.
+
+### Team strength (1 to 1000)
+
+`shared/strength.ts`. The number behind it is a team's projected weekly score:
+the points its best lineup is expected to lock in an average week for the rest
+of the season. The app plays out 200 imaginary weeks. In each one:
+
+1. every player's NBA team has 2, 3 or 4 games;
+2. he plays each game as often as he is expected to for the rest of the season
+   (see the availability rows above);
+3. he is worth his lock-in value at his projected level for the games he
+   plays, or nothing;
+4. the team fields its best legal lineup from whoever is available.
+
+The average is the projected weekly score. It is put on a 1 to 1000 scale
+between two reference teams from the same league: a team built from the best
+free agents (1) and the nine best players never missing a game (1000).
+Players with few games are pulled toward a typical free agent. Each player
+sees the same imaginary weeks on any roster, so before-and-after comparisons
+are not blurred by luck, and results are identical on every run.
+
+### Trade grades
+
+`shared/trade.ts`. A trade is judged by the change in each team's projected
+weekly score. Rosters keep their size: a team that receives fewer players
+picks up the free agent who helps it most, and a team that receives more
+drops its least valuable player. Each manager gets:
+
+- a grade from 1 to 100 with a letter, where 50 means no real change and
+  +4 points a week is about 73;
+- the change in team strength.
+
+### Grades and the balance slider
+
+Each manager gets a letter for how good the trade is for their own team: A a
+big win, B a win, C about even, D a loss, F a big loss. Both teams can get an
+A. The 1 to 100 number behind the letter is not shown, because a 52 reads like
+a failing mark when it means "about even". A slider shows which team gains
+more.
+
+### Finding trades
+
+`findTrades` in `shared/trade.ts`, with `shared/insight.ts`. Trades are ranked
+by the weekly points they add for you multiplied by the estimated chance they
+are accepted, in three bands: likely (50% or more), possible (40 to 50%) and
+long shots. Likely ideas come first; possible ones fill out a short list or
+are shown when nothing is likely; long shots appear only when there is
+nothing better, at most three, with a plain note saying so. Naming a player
+allows offers that cost you up to a point a week. You can search for the best trades overall, a player at a
+position, offers for one of your players, or offers for a named player on
+another team (two-for-one packages are tried for a named target). Each idea
+lists why it came up: a thin position it fills, depth it draws on, a sell-high
+or buy-low gap, and the other team's situation. The chance of acceptance is a
+reasoned estimate, not a measured probability.
+
 ### Lock-in scoring
 
 This is a lock-in league: each starter counts one game per week. After a
@@ -163,13 +249,15 @@ scripts/  One-off tools
 1. **League dashboard.** Done.
 2. **Player stats.** Done. A stats source behind a `StatsProvider` interface,
    matched to Sleeper's player IDs, scored with the league's settings.
-3. **Team analysis.** In progress. Done: lock-in value per player
-   (`shared/lockin.ts`), exact best-lineup search and free-agent upgrades
-   (`shared/analysis.ts`), shown on the My team tab. To do: each player's
-   games in the coming week, so value reflects the real schedule.
-4. **Trade analyzer.** Build a trade, see the impact on both teams.
-5. **AI suggestions.** An LLM proposes and explains moves using the numbers
-   from the valuation engine.
+3. **Team analysis.** Done: lock-in value, best-lineup search, free-agent
+   upgrades, team strength.
+4. **Trade analyzer.** In progress. Done: grades and strength change for any
+   two-team trade; a trade finder with reasons; projections using last
+   season. To do: each player's real schedule (also for the matchup view),
+   playoff weeks, two-for-two ideas.
+5. **Deeper analysis.** Past seasons as a guide to who is likely to rise or
+   fade, and other ways to surface moves that are easy to miss. No chatbot:
+   everything is computed from data.
 
 ## Notes on Sleeper's API
 

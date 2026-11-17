@@ -57,6 +57,8 @@ export function StatsNotice({ stats, onRetry }: { stats: StatsReport; onRetry: (
       . Averages are the mean of a player's game scores, so they can read lower than the Sleeper app,
       which adds each scoring bonus once to season totals. Game stats from {stats.source}
       {stats.syncedAt ? `, updated ${formatAgo(stats.syncedAt)}` : ""}.
+      {stats.lastSeason === "loading" &&
+        ` Last season's stats are downloading in the background${stats.lastSeasonPages > 0 ? ` (${stats.lastSeasonPages} pages so far)` : ""}; projections will use them when they arrive, in a few minutes.`}
       {stats.unmatchedRostered.length > 0 &&
         ` No stats found for: ${stats.unmatchedRostered.map((player) => player.name).join(", ")}.`}
     </p>

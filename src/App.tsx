@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { teamSituations } from "../shared/insight.ts";
+import { buildModel, leagueStrength } from "../shared/strength.ts";
 import type { AppConfig, LeagueSnapshot, PlayerRef, StatsReport } from "../shared/types.ts";
 import {
   getConfig,
@@ -18,14 +20,17 @@ import { PlayerPanel } from "./components/PlayerPanel.tsx";
 import { Players } from "./components/Players.tsx";
 import { Standings } from "./components/Standings.tsx";
 import { StatsNotice } from "./components/StatsNotice.tsx";
+import { Strength } from "./components/Strength.tsx";
 import { TeamChooser } from "./components/TeamChooser.tsx";
 import { Teams } from "./components/Teams.tsx";
+import { Trades } from "./components/Trades.tsx";
 import { formatAgo, formatDate } from "./format.ts";
 import { useTheme } from "./theme.ts";
 
-const VIEWS = ["My team", "Standings", "Teams", "Players", "Matchups", "Activity"] as const;
+const VIEWS = ["My team", "Standings", "Strength", "Teams", "Players", "Matchups", "Trades", "Activity"] as const;
 /** How often to ask the server for progress while stats are downloading. */
 const STATS_POLL_MS = 2500;
+const LAST_SEASON_POLL_MS = 20000;
 type View = (typeof VIEWS)[number];
 
 export function App() {
@@ -78,7 +83,18 @@ export function App() {
   const loadedLeagueId = snapshot?.league.id ?? null;
   const loadStats = useCallback(async (id: string, retry = false) => {
     try {
-      setStats(await getStats(id, retry));
+      const next = await getStats(id, retry);
+      // While a download runs, the server is asked for progress every few
+      // seconds. Keep the same player data when nothing but progress changed,
+      // so the model and anything built on it (like a trade search) stay put.
+      setStats((previous) =>
+        previous &&
+        previous.status === next.status &&
+        previous.syncedAt === next.syncedAt &&
+        previous.lastSeason === next.lastSeason
+          ? { ...next, players: previous.players, unmatchedRostered: previous.unmatchedRostered }
+          : next,
+      );
     } catch {
       // The league views still work without stats; the next poll or refresh tries again.
     }
@@ -89,8 +105,12 @@ export function App() {
   }, [loadedLeagueId, loadStats]);
 
   useEffect(() => {
-    if (!loadedLeagueId || stats?.status !== "syncing") return;
-    const timer = setTimeout(() => void loadStats(loadedLeagueId), STATS_POLL_MS);
+    if (!loadedLeagueId || !stats) return;
+    // Last season downloads after this one; check on it less often.
+    const wait =
+      stats.status === "syncing" ? STATS_POLL_MS : stats.status === "ready" && stats.lastSeason === "loading" ? LAST_SEASON_POLL_MS : 0;
+    if (!wait) return;
+    const timer = setTimeout(() => void loadStats(loadedLeagueId), wait);
     return () => clearTimeout(timer);
   }, [loadedLeagueId, stats, loadStats]);
 
@@ -109,6 +129,24 @@ export function App() {
     if (owned) saveMyRosterId(snapshot.league.id, owned.rosterId);
     setMyRosterId(owned?.rosterId ?? null);
   }, [snapshot, pickedUserId]);
+
+  // The strength model behind the Strength and Trades tabs. Rebuilt only
+  // when the league or the stats change.
+  const statsPlayers = stats?.players;
+  const model = useMemo(
+    () => (snapshot && stats && statsPlayers && Object.keys(statsPlayers).length > 0 ? buildModel(snapshot, stats) : null),
+    // Rebuilt only when the league or the player data change, not on progress updates.
+    [snapshot, statsPlayers],
+  );
+  const strengths = useMemo(
+    () => (snapshot && model ? leagueStrength(snapshot, model) : null),
+    [snapshot, model],
+  );
+
+  const situations = useMemo(
+    () => (snapshot && model && strengths ? teamSituations(snapshot, model, strengths) : null),
+    [snapshot, model, strengths],
+  );
 
   function chooseTeam(rosterId: number) {
     if (snapshot) saveMyRosterId(snapshot.league.id, rosterId);
@@ -237,7 +275,9 @@ export function App() {
             ))}
           </nav>
 
-          {(view === "My team" || view === "Teams" || view === "Players") && stats && (
+          {(view === "My team" || view === "Teams" || view === "Players" || view === "Strength" || view === "Trades") &&
+            stats &&
+            (stats.status !== "ready" || view === "My team" || view === "Teams" || view === "Players") && (
             <StatsNotice stats={stats} onRetry={() => void loadStats(snapshot.league.id, true)} />
           )}
 
@@ -253,6 +293,19 @@ export function App() {
           {view === "Standings" && (
             <Standings snapshot={snapshot} myRosterId={myRosterId} onOpenTeam={openTeam} />
           )}
+          {view === "Strength" && (
+            <Strength snapshot={snapshot} strengths={strengths} myRosterId={myRosterId} onOpenTeam={openTeam} />
+          )}
+          {/* Kept mounted while hidden, so a trade in progress survives switching tabs. */}
+          <div hidden={view !== "Trades"}>
+            <Trades
+              key={myTeam.rosterId}
+              snapshot={snapshot}
+              model={model}
+              situations={situations}
+              myRosterId={myTeam.rosterId}
+            />
+          </div>
           {view === "Teams" && (
             <Teams
               snapshot={snapshot}

@@ -27,3 +27,8 @@ export function lockInValue(scores: number[], games: number = TYPICAL_GAMES_PER_
   }
   return value;
 }
+
+/** Lock-in value for weeks of 1, 2, ... `maxGames` games, in that order. */
+export function lockInValues(scores: number[], maxGames = 4): number[] {
+  return Array.from({ length: maxGames }, (_, index) => lockInValue(scores, index + 1));
+}

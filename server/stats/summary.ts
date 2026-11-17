@@ -1,5 +1,6 @@
 import type { PlayerGame, PlayerRef, PlayerStats, StatLine } from "../../shared/types.ts";
-import { lockInValue } from "../../shared/lockin.ts";
+import { lockInValue, lockInValues } from "../../shared/lockin.ts";
+import { availabilityOutlook, projectPlayer } from "../../shared/projection.ts";
 import { fantasyPoints, sleeperDisplayedAverage } from "../scoring.ts";
 import type { GameLine } from "./provider.ts";
 
@@ -37,16 +38,66 @@ export function countedGames(lines: GameLine[], seasonStart: string | null): Map
   return bySource;
 }
 
+const REGULAR_SEASON_GAMES = 82;
+
+/** The dates each NBA team has played on, oldest first: team abbreviation -> dates. */
+export function teamGameDates(lines: GameLine[], seasonStart: string | null): Map<string, string[]> {
+  const dates = new Map<string, Set<string>>();
+  for (const line of lines) {
+    if (!line.team || !line.final || (seasonStart !== null && line.date < seasonStart)) continue;
+    const seen = dates.get(line.team);
+    if (seen) seen.add(line.date);
+    else dates.set(line.team, new Set([line.date]));
+  }
+  return new Map([...dates].map(([team, seen]) => [team, [...seen].sort()]));
+}
+
+/** What a player did last season: stats-source player ID -> games and fantasy average. */
+export type LastSeason = Map<string, { games: number; average: number }>;
+
+export function lastSeasonLevels(lines: GameLine[], scoring: Record<string, number>): LastSeason {
+  const totals = new Map<string, { games: number; points: number }>();
+  for (const line of lines) {
+    if (!line.final || line.minutes <= 0) continue;
+    const total = totals.get(line.playerId) ?? { games: 0, points: 0 };
+    total.games++;
+    total.points += fantasyPoints(line.stats, scoring);
+    totals.set(line.playerId, total);
+  }
+  return new Map([...totals].map(([id, total]) => [id, { games: total.games, average: total.points / total.games }]));
+}
+
+interface Context {
+  teamDates: Map<string, string[]>;
+  lastSeason?: { games: number; average: number } | null;
+}
+
 function summarizePlayer(
   player: PlayerRef,
   games: GameLine[],
   scoring: Record<string, number>,
+  context: Context,
 ): PlayerStats {
   const fantasy = games.map((game) => fantasyPoints(game.stats, scoring));
   const recent = fantasy.slice(-RECENT_WINDOW);
   const averages = Object.fromEntries(
     STAT_KEYS.map((key) => [key, mean(games.map((game) => game.stats[key]))]),
   ) as unknown as StatLine;
+
+  // Which of his current team's games he played. If he changed teams, only
+  // the games since he joined count, so the move does not look like an absence.
+  const team = games[games.length - 1]?.team ?? null;
+  const allDates = (team && context.teamDates.get(team)) || [];
+  const changedTeams = games.some((game) => game.team !== team);
+  const joined = games.find((game) => game.team === team)?.date ?? "";
+  const dates = changedTeams ? allDates.filter((date) => date >= joined) : allDates;
+  const playedOn = new Set(games.map((game) => game.date));
+  const teamGames = Math.max(games.length, allDates.length);
+  const outlook = availabilityOutlook(
+    dates.map((date) => playedOn.has(date)),
+    REGULAR_SEASON_GAMES - teamGames,
+  );
+
   return {
     ...player,
     games: games.length,
@@ -54,6 +105,12 @@ function summarizePlayer(
     fantasyAvg: mean(fantasy),
     sleeperAvg: sleeperDisplayedAverage(games.map((game) => game.stats), scoring),
     lockInValue: lockInValue(fantasy),
+    lockInByGames: lockInValues(fantasy),
+    teamGames,
+    availability: outlook.rate,
+    missedStreak: outlook.missedStreak,
+    longTermOut: outlook.longTermOut,
+    projection: projectPlayer(fantasy, games.map((game) => game.minutes), context.lastSeason ?? null),
     bestGame: Math.max(...fantasy),
     recentAvg: recent.length > 0 ? mean(recent) : null,
     recentGames: recent.length,
@@ -68,14 +125,19 @@ export function summarize(
   sleeperPlayers: Record<string, PlayerRef>,
   scoring: Record<string, number>,
   seasonStart: string | null = null,
+  lastSeason: LastSeason = new Map(),
 ): Record<string, PlayerStats> {
   const bySource = countedGames(lines, seasonStart);
+  const teamDates = teamGameDates(lines, seasonStart);
   const result: Record<string, PlayerStats> = {};
   for (const [sleeperId, sourceId] of matches) {
     const player = sleeperPlayers[sleeperId];
     const games = bySource.get(sourceId);
     if (!player || !games || games.length === 0) continue;
-    result[sleeperId] = summarizePlayer(player, games, scoring);
+    result[sleeperId] = summarizePlayer(player, games, scoring, {
+      teamDates,
+      lastSeason: lastSeason.get(sourceId),
+    });
   }
   return result;
 }
@@ -87,6 +149,7 @@ export function playerLog(
   lines: GameLine[],
   scoring: Record<string, number>,
   seasonStart: string | null = null,
+  lastSeason: LastSeason = new Map(),
 ): { stats: PlayerStats | null; games: PlayerGame[] } {
   const games = sourceId ? (countedGames(lines, seasonStart).get(sourceId) ?? []) : [];
   if (games.length === 0) return { stats: null, games: [] };
@@ -99,7 +162,10 @@ export function playerLog(
   }
 
   return {
-    stats: summarizePlayer(player, games, scoring),
+    stats: summarizePlayer(player, games, scoring, {
+      teamDates: teamGameDates(lines, seasonStart),
+      lastSeason: sourceId ? lastSeason.get(sourceId) : null,
+    }),
     games: games
       .map((game) => ({
         date: game.date,
