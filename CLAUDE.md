@@ -78,7 +78,8 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   confirming.
 - Wherever the UI names a player, render it with `PlayerName`
   (`src/components/PlayerName.tsx`) so the name opens the player's details.
-  In a list, use `PlayerCell` (name, injury tag, position chips, team).
+  In a list, use `PlayerCell` (name, injury tag, position chips, team). When a
+  whole card should open the player (draft board), use `PlayerButton` instead.
 - The Draft tab's rising and falling marks (`shared/draft.ts`) are a display
   label only: rank by weekly value now against pick order, one round either
   way. Never feed them into strength, grades or trade ideas.

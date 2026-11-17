@@ -2114,7 +2114,7 @@ th[aria-sort] .sort-button {
   }
 
   .draft-card-body {
-    padding: 0.35rem 0.4rem 0.25rem;
+    padding: 0.4rem 0.4rem 0.55rem;
   }
 }
 
@@ -2149,21 +2149,34 @@ th[aria-sort] .sort-button {
   margin: 0;
 }
 
-/* Neutral card; position colors fill only the bottom third, split evenly
-   between a player's positions. */
+/* Neutral card; position colors fill only the bottom band, split evenly
+   between a player's positions. The whole card is one button. */
 .draft-card {
   display: flex;
   flex-direction: column;
-  height: 7rem;
+  width: 100%;
+  height: 7.75rem;
   min-width: 0;
+  padding: 0;
   overflow: hidden;
+  border: 0;
   border-radius: var(--radius-small);
   background: var(--surface-raised);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.draft-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .draft-card-empty {
   border: 1px dashed var(--line);
   background: transparent;
+  cursor: default;
 }
 
 .draft-card-body {
@@ -2172,7 +2185,18 @@ th[aria-sort] .sort-button {
   flex-direction: column;
   gap: 0.15rem;
   min-height: 0;
-  padding: 0.4rem 0.5rem 0.3rem;
+  padding: 0.45rem 0.5rem 0.6rem;
+  transition: background-color 120ms ease;
+}
+
+.draft-card:hover .draft-card-body {
+  background: var(--accent-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .draft-card-body {
+    transition: none;
+  }
 }
 
 .draft-card-top {
@@ -2194,17 +2218,11 @@ th[aria-sort] .sort-button {
   display: inline-flex;
 }
 
-.draft-card .player-link-stacked {
-  width: 100%;
-}
-
-.player-link-stacked {
-  display: inline-flex;
+.draft-name {
+  display: flex;
   flex-direction: column;
-  align-items: flex-start;
   min-width: 0;
   line-height: 1.15;
-  text-align: left;
 }
 
 .name-first {
@@ -2239,7 +2257,7 @@ th[aria-sort] .sort-button {
 
 .draft-bands {
   display: flex;
-  flex: 0 0 33%;
+  flex: 0 0 2.4rem;
   background: var(--line);
 }
 

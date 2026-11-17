@@ -4,7 +4,7 @@ import type { StrengthModel } from "../../shared/strength.ts";
 import type { DraftBoard, DraftSelection, LeagueSnapshot } from "../../shared/types.ts";
 import { getDraft } from "../api.ts";
 import { Avatar } from "./Avatar.tsx";
-import { PlayerName } from "./PlayerName.tsx";
+import { PlayerButton } from "./PlayerName.tsx";
 import { TeamTag } from "./TeamTag.tsx";
 
 interface Props {
@@ -39,6 +39,12 @@ function trendLabel(pick: DraftSelection, trend: DraftTrend): string {
   return `${where}.`;
 }
 
+function splitName(name: string): [string, string] {
+  const space = name.indexOf(" ");
+  return space > 0 ? [name.slice(0, space), name.slice(space + 1)] : ["", name];
+}
+
+/** One pick. The whole card opens the player's details. */
 function DraftCard({
   pick,
   trend,
@@ -49,35 +55,40 @@ function DraftCard({
   pickedBy: string | null;
 }) {
   const positions = pick.player.positions.length > 0 ? pick.player.positions : ["?"];
-  const label = trend ? trendLabel(pick, trend) : undefined;
+  const label = trend?.trend ? trendLabel(pick, trend) : undefined;
+  const [first, last] = splitName(pick.player.name);
   return (
-    <div className="draft-card">
-      <div className="draft-card-body">
-        <div className="draft-card-top">
+    <PlayerButton player={pick.player} className="draft-card">
+      <span className="draft-card-body">
+        <span className="draft-card-top">
           <span className="draft-pick">
             {pick.round}.{pick.pickInRound}
           </span>
           {trend?.trend && (
-            <span className="draft-trend" title={label} role="img" aria-label={label}>
+            <span className="draft-trend" title={label}>
               <TrendIcon trend={trend.trend} />
             </span>
           )}
-        </div>
-        <PlayerName player={pick.player} stacked />
+        </span>
+        <span className="draft-name">
+          {first && <span className="name-first">{first}</span>}
+          <span className="name-last">{last}</span>
+        </span>
         <span className="draft-card-meta">
           <TeamTag team={pick.player.team} empty="No team" />
           {pick.keeper && <span className="draft-note">Keeper</span>}
         </span>
         {pickedBy && <span className="draft-note">Picked by {pickedBy}</span>}
-      </div>
-      <div className="draft-bands">
+        {label && <span className="visually-hidden">{label}</span>}
+      </span>
+      <span className="draft-bands">
         {positions.map((position) => (
           <span key={position} className={`draft-band chip-${position.toLowerCase()}`}>
             {position}
           </span>
         ))}
-      </div>
-    </div>
+      </span>
+    </PlayerButton>
   );
 }
 
@@ -162,7 +173,7 @@ export function Draft({ leagueId, snapshot, model, myRosterId }: Props) {
       </p>
       <p className="quiet legend">
         {model
-          ? "Marks compare where each player was picked with where his weekly value now (what he locks in an average week at his projected level, allowing for missed games) ranks among everyone drafted. Within a round either way shows no mark. Hover over a mark for the numbers."
+          ? "Marks compare where each player was picked with where his weekly value now (what he locks in an average week at his projected level, allowing for missed games) ranks among everyone drafted. Within a round either way shows no mark. Hover over a mark for the numbers, or select a card for the player's details."
           : "Marks for players beating or missing their draft spot appear once player stats have loaded."}
       </p>
     </section>
