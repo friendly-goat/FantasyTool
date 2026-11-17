@@ -1,4 +1,11 @@
 import { rosterPlayers } from "./analysis.ts";
+import {
+  MARKET_GAP_NOTE,
+  marketGap,
+  positionProfile,
+  type PositionNote,
+  type TeamSituation,
+} from "./insight.ts";
 import { projectedWeekly, strengthScore, type ModelPlayer, type StrengthModel } from "./strength.ts";
 import type { LeagueSnapshot } from "./types.ts";
 
@@ -138,56 +145,195 @@ export function evaluateTrade(model: StrengthModel, snapshot: LeagueSnapshot, of
 export interface TradeIdea {
   offer: TradeOffer;
   result: TradeResult;
+  /** 0 to 1: a rough estimate of how likely the other manager is to accept. */
+  chance: number;
+  /** Short explanations of why this trade came up. */
+  reasons: string[];
+}
+
+export interface FinderOptions {
+  /** Only trades that bring back a player at this position. */
+  getPosition?: string;
+  /** Only trades that send away a player at this position. */
+  givePosition?: string;
+  /** Only trades that send away this player (one of the user's). */
+  givePlayerId?: string;
+  /** Only trades that bring back this player (on another team). */
+  getPlayerId?: string;
 }
 
 /** Weeks used for the first pass over every possible swap. */
 const SCREEN_WEEKS = 40;
-/** A manager is unlikely to accept a player who looks clearly worse on average. */
-const LOOKS_FAIR = 0.9;
 
 /**
- * One-for-one trades that make `rosterId` stronger without making the other
- * team weaker, and where the player offered does not look clearly worse than
- * the player asked for. Best for `rosterId` first.
+ * A rough estimate of whether the other manager says yes. Three parts with
+ * fixed shares, so none can dominate:
+ *   55%  how much the trade helps their team, by this app's projection
+ *   30%  whether it looks fair on the averages they can see
+ *   15%  how much pressure their team is under
+ * It is a reasoned guess, not a measured probability.
  */
-export function suggestTrades(
+export function acceptanceChance(theirs: TradeSide, urgency: number): number {
+  const helps = 1 / (1 + Math.exp(-(theirs.projectedAfter - theirs.projectedBefore) / GRADE_STEP));
+  const sum = (list: ModelPlayer[]) => list.reduce((total, player) => total + player.average, 0);
+  const sent = sum(theirs.gives);
+  // 20% less on average looks bad, 20% more looks great.
+  const looksFair = sent > 0 ? Math.min(1, Math.max(0, (sum(theirs.gets) / sent - 0.8) / 0.4)) : 1;
+  return 0.55 * helps + 0.3 * looksFair + 0.15 * Math.min(1, Math.max(0, urgency));
+}
+
+const points = (value: number) => value.toFixed(2);
+
+function reasonsFor(
+  model: StrengthModel,
+  snapshot: LeagueSnapshot,
+  result: TradeResult,
+  mine: PositionNote[],
+  theirs: PositionNote[],
+  situation: TeamSituation | undefined,
+): string[] {
+  const reasons: string[] = [];
+  const team = snapshot.teams.find((candidate) => candidate.rosterId === result.b.rosterId);
+  const topNeed = (profile: PositionNote[]) => [...profile].sort((a, b) => b.need - a.need)[0];
+  const topCover = (profile: PositionNote[]) => [...profile].sort((a, b) => b.cover - a.cover)[0];
+
+  const myNeed = topNeed(mine);
+  if (myNeed && myNeed.need > 0.5 && result.a.gets.some((player) => player.positions.includes(myNeed.position))) {
+    reasons.push(`Fills your thinnest spot, ${myNeed.position}.`);
+  }
+  const myDepth = topCover(mine);
+  if (myDepth && myDepth.cover > 1 && result.a.gives.some((player) => player.positions.includes(myDepth.position))) {
+    reasons.push(`You have ${myDepth.position} to spare: your roster makes up ${points(myDepth.cover)} a week if your best one leaves.`);
+  }
+  for (const player of result.a.gives) {
+    if (marketGap(player) <= -MARKET_GAP_NOTE) {
+      reasons.push(`Sell high: ${player.name} averages ${points(player.average)} but projects to ${points(player.projected)}.`);
+    }
+  }
+  for (const player of result.a.gets) {
+    if (marketGap(player) >= MARKET_GAP_NOTE) {
+      reasons.push(`Buy low: ${player.name} averages ${points(player.average)} but projects to ${points(player.projected)}.`);
+    }
+  }
+  const theirNeed = topNeed(theirs);
+  if (theirNeed && theirNeed.need > 0.5 && result.b.gets.some((player) => player.positions.includes(theirNeed.position))) {
+    reasons.push(`${team?.teamName ?? "They"} are thin at ${theirNeed.position}, which this fills.`);
+  }
+  if (situation && team) {
+    const out = situation.longTermOut[0];
+    if (out) reasons.push(`${team.teamName} have ${out.name} out for a stretch, so they may want help now.`);
+    else if (situation.winShare < 0.4) reasons.push(`${team.teamName} are ${team.wins}-${team.losses} and may want a change.`);
+  }
+  return reasons.slice(0, 4);
+}
+
+/**
+ * Trades for `rosterId`, best first. "Best" is the weekly points the trade
+ * adds for the user multiplied by the chance it is accepted, so a big win
+ * nobody would agree to ranks below a smaller one that is realistic.
+ *
+ * With no options it looks at every one-for-one swap in the league. Naming
+ * a player to send or to get narrows the search, and when a target player
+ * is named, two-for-one offers for him are tried as well.
+ */
+export function findTrades(
   model: StrengthModel,
   snapshot: LeagueSnapshot,
   rosterId: number,
+  situations: Map<number, TeamSituation>,
+  options: FinderOptions = {},
   limit = 8,
 ): TradeIdea[] {
+  const targeted = Boolean(options.givePlayerId || options.getPlayerId);
   const mine = rosterIds(snapshot, rosterId);
+  const at = (position: string | undefined) => (player: ModelPlayer) =>
+    !position || player.positions.includes(position);
+  const givers = players(model, mine).filter(
+    (player) => player.games > 0 && at(options.givePosition)(player) && (!options.givePlayerId || player.id === options.givePlayerId),
+  );
   const mineBefore = projectedWeekly(model, mine, SCREEN_WEEKS);
-  const screened: { offer: TradeOffer; gain: number }[] = [];
+  const screened: { offer: TradeOffer; quick: number }[] = [];
 
   for (const team of snapshot.teams) {
     if (team.rosterId === rosterId) continue;
     const theirs = rosterPlayers(team).map((player) => player.id);
+    const targets = players(model, theirs).filter(
+      (player) => player.games > 0 && at(options.getPosition)(player) && (!options.getPlayerId || player.id === options.getPlayerId),
+    );
+    if (targets.length === 0) continue;
     const theirsBefore = projectedWeekly(model, theirs, SCREEN_WEEKS);
-    for (const give of players(model, mine)) {
-      if (give.games === 0) continue;
-      for (const get of players(model, theirs)) {
-        if (get.games === 0 || give.average < get.average * LOOKS_FAIR) continue;
-        // A swap of two players worlds apart cannot help both teams.
-        if (Math.abs(give.expected - get.expected) > 0.4 * Math.max(give.expected, get.expected)) continue;
-        const mineAfter = projectedWeekly(model, [...mine.filter((id) => id !== give.id), get.id], SCREEN_WEEKS);
-        if (mineAfter - mineBefore < 0.5) continue;
-        const theirsAfter = projectedWeekly(model, [...theirs.filter((id) => id !== get.id), give.id], SCREEN_WEEKS);
-        if (theirsAfter - theirsBefore < 0) continue;
+
+    for (const get of targets) {
+      for (const give of givers) {
+        // Without a named player, skip swaps of players worlds apart: they cannot suit both teams.
+        if (!targeted && Math.abs(give.expected - get.expected) > 0.4 * Math.max(give.expected, get.expected)) continue;
+        const gain = projectedWeekly(model, [...mine.filter((id) => id !== give.id), get.id], SCREEN_WEEKS) - mineBefore;
+        if (!targeted && gain < 0.3) continue;
+        const theirGain = projectedWeekly(model, [...theirs.filter((id) => id !== get.id), give.id], SCREEN_WEEKS) - theirsBefore;
+        if (!targeted && theirGain < -1) continue;
         screened.push({
           offer: { teamA: rosterId, teamB: team.rosterId, aGives: [give.id], bGives: [get.id] },
-          gain: mineAfter - mineBefore,
+          quick: gain + Math.min(0, theirGain),
         });
+      }
+      // Two of the user's players for a named target.
+      if (options.getPlayerId) {
+        const pool = players(model, mine).filter((player) => player.games > 0 && player.expected < get.expected);
+        for (let i = 0; i < pool.length; i++) {
+          for (let j = i + 1; j < pool.length; j++) {
+            const pair = [pool[i]!, pool[j]!];
+            if (options.givePlayerId && !pair.some((player) => player.id === options.givePlayerId)) continue;
+            const combined = pair[0]!.expected + pair[1]!.expected;
+            if (combined < 0.9 * get.expected || combined > 1.7 * get.expected) continue;
+            screened.push({
+              offer: { teamA: rosterId, teamB: team.rosterId, aGives: pair.map((player) => player.id), bGives: [get.id] },
+              quick: get.expected - Math.max(pair[0]!.expected, pair[1]!.expected),
+            });
+          }
+        }
       }
     }
   }
 
-  // Re-check the most promising swaps over all the weeks.
-  return screened
-    .sort((a, b) => b.gain - a.gain)
-    .slice(0, limit * 3)
-    .map(({ offer }) => ({ offer, result: evaluateTrade(model, snapshot, offer) }))
-    .filter(({ result }) => result.a.grade > 50 && result.b.grade >= 50)
-    .sort((a, b) => b.result.a.projectedAfter - b.result.a.projectedBefore - (a.result.a.projectedAfter - a.result.a.projectedBefore))
+  const myProfile = positionProfile(model, snapshot, mine);
+  const theirProfiles = new Map<number, PositionNote[]>();
+  const profileOf = (id: number) => {
+    if (!theirProfiles.has(id)) theirProfiles.set(id, positionProfile(model, snapshot, rosterIds(snapshot, id)));
+    return theirProfiles.get(id)!;
+  };
+
+  const gain = (side: TradeSide) => side.projectedAfter - side.projectedBefore;
+  const evaluated = screened
+    .sort((a, b) => b.quick - a.quick)
+    .slice(0, limit * 6)
+    .map(({ offer }) => {
+      const result = evaluateTrade(model, snapshot, offer);
+      return { offer, result, chance: acceptanceChance(result.b, situations.get(offer.teamB)?.urgency ?? 0) };
+    })
+    // Without a named player, show only trades that help the user and stand a chance.
+    .filter(({ result, chance }) => targeted || (result.a.grade > 50 && chance >= 0.3))
+    .sort((a, b) => {
+      const score = (idea: typeof a) => (gain(idea.result.a) > 0 ? gain(idea.result.a) * idea.chance : gain(idea.result.a));
+      return score(b) - score(a);
+    })
+    // Variety: without a named player, no single player may appear in more than two ideas.
+    .filter(
+      (() => {
+        const seen = new Map<string, number>();
+        return ({ offer }: { offer: TradeOffer }) => {
+          const ids = [...offer.aGives, ...offer.bGives].filter(
+            (id) => id !== options.givePlayerId && id !== options.getPlayerId,
+          );
+          if (ids.some((id) => (seen.get(id) ?? 0) >= 2)) return false;
+          for (const id of ids) seen.set(id, (seen.get(id) ?? 0) + 1);
+          return true;
+        };
+      })(),
+    )
     .slice(0, limit);
+
+  return evaluated.map((idea) => ({
+    ...idea,
+    reasons: reasonsFor(model, snapshot, idea.result, myProfile, profileOf(idea.offer.teamB), situations.get(idea.offer.teamB)),
+  }));
 }

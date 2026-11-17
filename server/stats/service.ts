@@ -5,7 +5,7 @@ import { ignoredSettings } from "../scoring.ts";
 import { matchPlayers, sameLastName } from "./match.ts";
 import { PLAYER_ID_OVERRIDES } from "./overrides.ts";
 import type { GameLine, StatsProvider } from "./provider.ts";
-import { counts, playerLog, RECENT_WINDOW, summarize } from "./summary.ts";
+import { counts, lastSeasonLevels, playerLog, RECENT_WINDOW, summarize, type LastSeason } from "./summary.ts";
 
 // Keeps a season of game lines on disk and brings it up to date in the
 // background. The first sync downloads the whole season so far; later
@@ -30,6 +30,10 @@ export interface StatsServiceOptions {
   dir?: string | null;
   staleMs?: number;
   now?: () => number;
+}
+
+function previousSeason(season: string): string {
+  return String(Number(season) - 1);
 }
 
 function daysBefore(date: string, days: number): string {
@@ -66,6 +70,8 @@ export class StatsService {
     if (!this.provider) {
       return {
         ...base,
+        lastSeason: "off",
+        lastSeasonPages: 0,
         status: "unconfigured",
         message: null,
         source: null,
@@ -82,8 +88,16 @@ export class StatsService {
     const coolingOff = data.error !== null && this.now() - data.failedAt < RETRY_AFTER_MS;
     if (isStale && !data.syncing && !coolingOff) void this.start(season, data);
 
+    // Last season is fetched once this season's stats are in. It never changes,
+    // so it is never fetched again.
+    const prior = await this.load(previousSeason(season));
+    const priorCoolingOff = prior.error !== null && this.now() - prior.failedAt < RETRY_AFTER_MS;
+    if (data.syncedAt !== null && !data.syncing && prior.syncedAt === null && !prior.syncing && !priorCoolingOff) {
+      void this.start(previousSeason(season), prior);
+    }
+
     const lines = [...data.lines.values()];
-    const matches = matchPlayers(sleeperPlayers, lines, PLAYER_ID_OVERRIDES);
+    const { matches, lastSeason } = this.context(sleeperPlayers, lines, prior, scoring);
     const rostered = snapshot.teams.flatMap((team) => [
       ...team.starters.flatMap((starter) => (starter.player ? [starter.player] : [])),
       ...team.bench,
@@ -98,7 +112,25 @@ export class StatsService {
       syncedAt: data.syncedAt ? new Date(data.syncedAt).toISOString() : null,
       pagesFetched: data.pagesFetched,
       unmatchedRostered: lines.length > 0 ? rostered.filter((player) => !matches.has(player.id)) : [],
-      players: summarize(lines, matches, sleeperPlayers, scoring, snapshot.league.seasonStartDate),
+      lastSeason: prior.syncedAt !== null ? "ready" : "loading",
+      lastSeasonPages: prior.pagesFetched,
+      players: summarize(lines, matches, sleeperPlayers, scoring, snapshot.league.seasonStartDate, lastSeason),
+    };
+  }
+
+  /** Player matching and last season's levels, shared by the report and the player details. */
+  private context(
+    sleeperPlayers: Record<string, PlayerRef>,
+    lines: GameLine[],
+    prior: SeasonData,
+    scoring: Record<string, number>,
+  ): { matches: Map<string, string>; lastSeason: LastSeason } {
+    const ready = prior.syncedAt !== null;
+    const priorLines = ready ? [...prior.lines.values()] : [];
+    return {
+      // Matching looks at both seasons, so a player with few games this year is still found.
+      matches: matchPlayers(sleeperPlayers, [...priorLines, ...lines], PLAYER_ID_OVERRIDES),
+      lastSeason: ready ? lastSeasonLevels(priorLines, scoring) : new Map(),
     };
   }
 
@@ -112,17 +144,14 @@ export class StatsService {
     if (!player) return null;
     if (!this.provider) return { player, stats: null, games: [] };
 
-    const lines = [...(await this.load(snapshot.league.season)).lines.values()];
-    const matches = matchPlayers(sleeperPlayers, lines, PLAYER_ID_OVERRIDES);
+    const season = snapshot.league.season;
+    const lines = [...(await this.load(season)).lines.values()];
+    const scoring = snapshot.league.scoringSettings;
+    const prior = await this.load(previousSeason(season));
+    const { matches, lastSeason } = this.context(sleeperPlayers, lines, prior, scoring);
     return {
       player,
-      ...playerLog(
-        player,
-        matches.get(playerId),
-        lines,
-        snapshot.league.scoringSettings,
-        snapshot.league.seasonStartDate,
-      ),
+      ...playerLog(player, matches.get(playerId), lines, scoring, snapshot.league.seasonStartDate, lastSeason),
     };
   }
 

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { teamSituations } from "../shared/insight.ts";
 import { buildModel, leagueStrength } from "../shared/strength.ts";
 import type { AppConfig, LeagueSnapshot, PlayerRef, StatsReport } from "../shared/types.ts";
 import {
@@ -29,6 +30,7 @@ import { useTheme } from "./theme.ts";
 const VIEWS = ["My team", "Standings", "Strength", "Teams", "Players", "Matchups", "Trades", "Activity"] as const;
 /** How often to ask the server for progress while stats are downloading. */
 const STATS_POLL_MS = 2500;
+const LAST_SEASON_POLL_MS = 20000;
 type View = (typeof VIEWS)[number];
 
 export function App() {
@@ -92,8 +94,12 @@ export function App() {
   }, [loadedLeagueId, loadStats]);
 
   useEffect(() => {
-    if (!loadedLeagueId || stats?.status !== "syncing") return;
-    const timer = setTimeout(() => void loadStats(loadedLeagueId), STATS_POLL_MS);
+    if (!loadedLeagueId || !stats) return;
+    // Last season downloads after this one; check on it less often.
+    const wait =
+      stats.status === "syncing" ? STATS_POLL_MS : stats.status === "ready" && stats.lastSeason === "loading" ? LAST_SEASON_POLL_MS : 0;
+    if (!wait) return;
+    const timer = setTimeout(() => void loadStats(loadedLeagueId), wait);
     return () => clearTimeout(timer);
   }, [loadedLeagueId, stats, loadStats]);
 
@@ -122,6 +128,11 @@ export function App() {
   const strengths = useMemo(
     () => (snapshot && model ? leagueStrength(snapshot, model) : null),
     [snapshot, model],
+  );
+
+  const situations = useMemo(
+    () => (snapshot && model && strengths ? teamSituations(snapshot, model, strengths) : null),
+    [snapshot, model, strengths],
   );
 
   function chooseTeam(rosterId: number) {
@@ -272,7 +283,9 @@ export function App() {
           {view === "Strength" && (
             <Strength snapshot={snapshot} strengths={strengths} myRosterId={myRosterId} onOpenTeam={openTeam} />
           )}
-          {view === "Trades" && <Trades snapshot={snapshot} model={model} myRosterId={myTeam.rosterId} />}
+          {view === "Trades" && (
+            <Trades snapshot={snapshot} model={model} situations={situations} myRosterId={myTeam.rosterId} />
+          )}
           {view === "Teams" && (
             <Teams
               snapshot={snapshot}

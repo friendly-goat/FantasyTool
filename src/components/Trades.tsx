@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { rosterPlayers } from "../../shared/analysis.ts";
+import { POSITIONS, positionProfile, type TeamSituation } from "../../shared/insight.ts";
 import type { ModelPlayer, StrengthModel } from "../../shared/strength.ts";
-import { evaluateTrade, suggestTrades, type TradeIdea, type TradeSide } from "../../shared/trade.ts";
+import { evaluateTrade, findTrades, type FinderOptions, type TradeIdea, type TradeSide } from "../../shared/trade.ts";
 import type { LeagueSnapshot, Team } from "../../shared/types.ts";
 import { formatPoints, formatSigned } from "../format.ts";
 import { Avatar } from "./Avatar.tsx";
@@ -10,8 +11,11 @@ import { PlayerName } from "./PlayerName.tsx";
 interface Props {
   snapshot: LeagueSnapshot;
   model: StrengthModel | null;
+  situations: Map<number, TeamSituation> | null;
   myRosterId: number;
 }
+
+type Goal = "best" | "position" | "send" | "get";
 
 const percent = new Intl.NumberFormat("en-US", { style: "percent", maximumFractionDigits: 0 });
 const whole = (value: number) => (value > 0 ? `+${value}` : value < 0 ? `−${Math.abs(value)}` : "0");
@@ -136,7 +140,7 @@ function verdict(a: TradeSide, b: TradeSide, nameA: string, nameB: string): stri
 }
 
 /** Build a trade between two teams and see a grade and strength change for each. */
-export function Trades({ snapshot, model, myRosterId }: Props) {
+export function Trades({ snapshot, model, situations, myRosterId }: Props) {
   const others = snapshot.teams.filter((team) => team.rosterId !== myRosterId);
   const [teamA, setTeamA] = useState(myRosterId);
   const [teamB, setTeamB] = useState(others[0]?.rosterId ?? myRosterId);
@@ -144,6 +148,10 @@ export function Trades({ snapshot, model, myRosterId }: Props) {
   const [bGives, setBGives] = useState<Set<string>>(new Set());
   const [ideas, setIdeas] = useState<TradeIdea[] | null>(null);
   const [searching, setSearching] = useState(false);
+  const [goal, setGoal] = useState<Goal>("best");
+  const [position, setPosition] = useState("SF");
+  const [sendId, setSendId] = useState("");
+  const [getId, setGetId] = useState("");
 
   // Ideas are for the user's team as the rosters stand; a refresh clears them.
   useEffect(() => setIdeas(null), [model, myRosterId]);
@@ -154,7 +162,22 @@ export function Trades({ snapshot, model, myRosterId }: Props) {
     return evaluateTrade(model, snapshot, { teamA, teamB, aGives: [...aGives], bGives: [...bGives] });
   }, [model, snapshot, teamA, teamB, aGives, bGives]);
 
-  if (!model) return <p className="quiet">The trade analyzer opens once player stats have loaded.</p>;
+  const myTeam = snapshot.teams.find((candidate) => candidate.rosterId === myRosterId);
+  const profile = useMemo(
+    () => (model && myTeam ? positionProfile(model, snapshot, rosterPlayers(myTeam).map((player) => player.id)) : []),
+    [model, snapshot, myTeam],
+  );
+
+  if (!model || !situations || !myTeam) {
+    return <p className="quiet">The trade analyzer opens once player stats have loaded.</p>;
+  }
+
+  const withGames = (candidate: Team) =>
+    rosterPlayers(candidate)
+      .flatMap((player) => model.players.get(player.id) ?? [])
+      .filter((player) => player.games > 0)
+      .sort((x, y) => y.expected - x.expected);
+  const ready = goal === "best" || goal === "position" || (goal === "send" && sendId) || (goal === "get" && getId);
 
   const toggle = (set: Set<string>, update: (next: Set<string>) => void) => (id: string) => {
     const next = new Set(set);
@@ -176,8 +199,10 @@ export function Trades({ snapshot, model, myRosterId }: Props) {
   function findIdeas() {
     setSearching(true);
     // Let the "Searching" label paint before the search starts.
+    const options: FinderOptions =
+      goal === "position" ? { getPosition: position } : goal === "send" ? { givePlayerId: sendId } : goal === "get" ? { getPlayerId: getId } : {};
     setTimeout(() => {
-      setIdeas(suggestTrades(model!, snapshot, myRosterId));
+      setIdeas(findTrades(model!, snapshot, myRosterId, situations!, options));
       setSearching(false);
     }, 30);
   }
@@ -251,56 +276,142 @@ export function Trades({ snapshot, model, myRosterId }: Props) {
         )
       )}
 
-      <h2 className="section-title ideas-title">Trade ideas for your team</h2>
-      <p className="quiet explain">
-        One-for-one swaps that make your team stronger without making the other team weaker, where your player
-        does not look clearly worse on average than the one you ask for.
-      </p>
-      {ideas === null ? (
-        <button type="button" className="button" disabled={searching} onClick={findIdeas}>
-          {searching ? "Searching…" : "Find trade ideas"}
-        </button>
-      ) : ideas.length === 0 ? (
-        <p className="quiet">No one-for-one swap helps you without hurting the other team right now.</p>
-      ) : (
-        <div className="table-scroll">
-          <table className="players-table">
-            <thead>
-              <tr>
-                <th scope="col">You send</th>
-                <th scope="col">You receive</th>
-                <th scope="col">From</th>
-                <th scope="col" className="num">Your grade</th>
-                <th scope="col" className="num">Your strength</th>
-                <th scope="col" className="num">Their grade</th>
-                <th scope="col" className="num">Their strength</th>
-                <th scope="col"><span className="visually-hidden">Open</span></th>
+      <h2 className="section-title ideas-title">Find a trade</h2>
+      <div className="table-scroll shape">
+        <table className="players-table">
+          <caption className="quiet">
+            Your roster by position. Need is the weekly points a typical starter would add in the slots reserved for that position. Cover is how
+            much of your best player's value the rest of your roster would make up if he left.
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Position</th>
+              <th scope="col">Your best</th>
+              <th scope="col" className="num">Need</th>
+              <th scope="col" className="num">Cover</th>
+            </tr>
+          </thead>
+          <tbody>
+            {profile.map((note) => (
+              <tr key={note.position}>
+                <th scope="row">{note.position}</th>
+                <td>{note.best ? <PlayerName player={note.best} /> : "Nobody"}</td>
+                <td className="num">{formatPoints(note.need)}</td>
+                <td className="num">{formatPoints(note.cover)}</td>
               </tr>
-            </thead>
-            <tbody>
-              {ideas.map((idea) => (
-                <tr key={`${idea.offer.aGives[0]}-${idea.offer.bGives[0]}`}>
-                  <th scope="row">{names(idea.result.a.gives)}</th>
-                  <td>{names(idea.result.a.gets)}</td>
-                  <td>{team(idea.offer.teamB)?.teamName}</td>
-                  <td className={`num strong ${tone(idea.result.a.grade)}`}>
-                    {idea.result.a.grade} {idea.result.a.letter}
-                  </td>
-                  <td className="num">{whole(idea.result.a.strengthChange)}</td>
-                  <td className={`num ${tone(idea.result.b.grade)}`}>
-                    {idea.result.b.grade} {idea.result.b.letter}
-                  </td>
-                  <td className="num">{whole(idea.result.b.strengthChange)}</td>
-                  <td>
-                    <button type="button" className="link-button" onClick={() => load(idea)}>
-                      Open in builder
-                    </button>
-                  </td>
-                </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="filters finder">
+        <label>
+          I want to
+          <select
+            value={goal}
+            onChange={(event) => {
+              setGoal(event.target.value as Goal);
+              setIdeas(null);
+            }}
+          >
+            <option value="best">see the best trades for my team</option>
+            <option value="position">get a player at a position</option>
+            <option value="send">trade away one of my players</option>
+            <option value="get">get a specific player</option>
+          </select>
+        </label>
+        {goal === "position" && (
+          <label>
+            Position
+            <select value={position} onChange={(event) => { setPosition(event.target.value); setIdeas(null); }}>
+              {POSITIONS.map((name) => (
+                <option key={name} value={name}>{name}</option>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </select>
+          </label>
+        )}
+        {goal === "send" && (
+          <label>
+            Player
+            <select value={sendId} onChange={(event) => { setSendId(event.target.value); setIdeas(null); }}>
+              <option value="">Choose one of your players</option>
+              {withGames(myTeam).map((player) => (
+                <option key={player.id} value={player.id}>{player.name} ({player.positions.join("/")})</option>
+              ))}
+            </select>
+          </label>
+        )}
+        {goal === "get" && (
+          <label>
+            Player
+            <select value={getId} onChange={(event) => { setGetId(event.target.value); setIdeas(null); }}>
+              <option value="">Choose a player on another team</option>
+              {others.map((other) => (
+                <optgroup key={other.rosterId} label={other.teamName}>
+                  {withGames(other).map((player) => (
+                    <option key={player.id} value={player.id}>{player.name} ({player.positions.join("/")})</option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </label>
+        )}
+        <button type="button" className="button" disabled={searching || !ready} onClick={findIdeas}>
+          {searching ? "Searching…" : "Find trades"}
+        </button>
+      </div>
+
+      {ideas !== null && ideas.length === 0 && (
+        <p className="quiet">
+          {goal === "best" || goal === "position"
+            ? "No swap helps you while standing a fair chance of being accepted right now."
+            : "No offer could be built around that player."}
+        </p>
+      )}
+      {ideas !== null && ideas.length > 0 && (
+        <ul className="ideas">
+          {ideas.map((idea) => (
+            <li key={`${idea.offer.aGives.join("+")}-${idea.offer.bGives.join("+")}`} className="card idea">
+              <div className="idea-main">
+                <p className="idea-deal">
+                  Send {names(idea.result.a.gives)} to {team(idea.offer.teamB)?.teamName} for {names(idea.result.a.gets)}
+                </p>
+                {idea.reasons.length > 0 && (
+                  <ul className="idea-reasons quiet">
+                    {idea.reasons.map((reason) => (
+                      <li key={reason}>{reason}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <dl className="idea-facts">
+                <div>
+                  <dt>Your grade</dt>
+                  <dd className={tone(idea.result.a.grade)}>
+                    {idea.result.a.grade} {idea.result.a.letter}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Your strength</dt>
+                  <dd>{whole(idea.result.a.strengthChange)}</dd>
+                </div>
+                <div>
+                  <dt>Their grade</dt>
+                  <dd className={tone(idea.result.b.grade)}>
+                    {idea.result.b.grade} {idea.result.b.letter}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Chance they accept</dt>
+                  <dd>{percent.format(idea.chance)}</dd>
+                </div>
+              </dl>
+              <button type="button" className="button button-plain" onClick={() => load(idea)}>
+                Open in builder
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
 
       <div className="quiet legend explain">
@@ -308,6 +419,12 @@ export function Trades({ snapshot, model, myRosterId }: Props) {
           The grade says how good the trade is for that manager: 50 means no real change, and each 4 points a
           week gained or lost moves it roughly from 50 to 73 or 27. It is based on the change in projected weekly
           score for the rest of the season, the same number behind team strength.
+        </p>
+        <p>
+          Trades are ranked by the weekly points they add for you multiplied by the chance they are accepted.
+          That chance is an estimate, not a measurement: mostly how much the trade helps the other team, partly
+          whether it looks fair on the averages they can see, and a little on how much pressure their team is
+          under (long absences, a losing record, a tough matchup this week).
         </p>
         <p>
           Weekly value is what a player is expected to lock in an average week, allowing for games he misses.

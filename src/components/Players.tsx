@@ -16,6 +16,7 @@ interface Column {
 
 const COLUMNS: Column[] = [
   { key: "avg", label: "Fantasy avg", title: "Fantasy points per game this season", value: (p) => p.fantasyAvg },
+  { key: "projected", label: "Projected", title: "Projected fantasy points per game for the rest of the season", value: (p) => p.projection.perGame },
   { key: "recent", label: "Last 5", title: "Fantasy points per game over the most recent games", value: (p) => p.recentAvg ?? 0 },
   { key: "games", label: "Games", title: "Games played", value: (p) => p.games },
   { key: "min", label: "Min", title: "Minutes per game", value: (p) => p.minutes },
@@ -175,7 +176,7 @@ export function Players({ snapshot, stats }: { snapshot: LeagueSnapshot; stats: 
                         ? player.games
                         : column.key === "recent" && player.recentAvg == null
                           ? "–"
-                          : column.key === "avg" || column.key === "recent"
+                          : column.key === "avg" || column.key === "recent" || column.key === "projected"
                             ? formatPoints(column.value(player))
                             : formatAverage(column.value(player))}
                     </td>

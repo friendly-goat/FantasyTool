@@ -6,7 +6,9 @@ import { StatsService } from "../server/stats/service.ts";
 import { assignSlots, rosterPlayers } from "./analysis.ts";
 import { lockInValues } from "./lockin.ts";
 import { buildModel, leagueStrength, projectedWeekly, rosterStrength, strengthScore } from "./strength.ts";
-import { evaluateTrade, letterGrade, suggestTrades, tradeGrade } from "./trade.ts";
+import { POSITIONS, positionProfile, teamSituations } from "./insight.ts";
+import { availabilityOutlook, projectPlayer } from "./projection.ts";
+import { acceptanceChance, evaluateTrade, findTrades, letterGrade, tradeGrade } from "./trade.ts";
 
 describe("assignSlots", () => {
   // Reference answer: try every way of filling the slots.
@@ -159,18 +161,165 @@ describe("team strength and trades (against the mock league)", async () => {
     expect(model.freeAgentIds).toContain(result.a.adds[0]!.id);
   });
 
-  it("suggests only swaps that help the asking team and do not hurt the other", () => {
+  const situations = teamSituations(snapshot, model, strengths);
+
+  it("finds trades that help the asking team and stand a chance, with reasons", () => {
     const mine = strengths[4]!.rosterId;
     const started = Date.now();
-    const ideas = suggestTrades(model, snapshot, mine);
+    const ideas = findTrades(model, snapshot, mine, situations);
     expect(Date.now() - started).toBeLessThan(5000);
     expect(ideas.length).toBeLessThanOrEqual(8);
-    for (const { offer, result } of ideas) {
+    const appearances = new Map<string, number>();
+    for (const { offer } of ideas) {
+      for (const id of [...offer.aGives, ...offer.bGives]) appearances.set(id, (appearances.get(id) ?? 0) + 1);
+    }
+    expect(Math.max(0, ...appearances.values())).toBeLessThanOrEqual(2); // variety
+    for (const { offer, result, chance } of ideas) {
       expect(offer.teamA).toBe(mine);
       expect(result.a.grade).toBeGreaterThan(50);
-      expect(result.b.grade).toBeGreaterThanOrEqual(50);
+      expect(chance).toBeGreaterThanOrEqual(0.3);
+      expect(chance).toBeLessThanOrEqual(1);
       expect(ids(mine)).toContain(offer.aGives[0]);
       expect(ids(offer.teamB)).toContain(offer.bGives[0]);
     }
+  });
+
+  it("narrows the search to a position, a player to send, or a player to get", () => {
+    const mine = strengths[4]!.rosterId;
+    for (const idea of findTrades(model, snapshot, mine, situations, { getPosition: "C" })) {
+      expect(idea.result.a.gets.some((player) => player.positions.includes("C"))).toBe(true);
+    }
+    const send = ids(mine).map((id) => model.players.get(id)!).filter((p) => p.games > 0)[0]!;
+    const sending = findTrades(model, snapshot, mine, situations, { givePlayerId: send.id });
+    expect(sending.length).toBeGreaterThan(0);
+    for (const idea of sending) expect(idea.offer.aGives).toContain(send.id);
+
+    const other = strengths[0]!.rosterId === mine ? strengths[1]!.rosterId : strengths[0]!.rosterId;
+    const target = ids(other).map((id) => model.players.get(id)!).sort((a, b) => b.expected - a.expected)[0]!;
+    const getting = findTrades(model, snapshot, mine, situations, { getPlayerId: target.id });
+    expect(getting.length).toBeGreaterThan(0);
+    for (const idea of getting) {
+      expect(idea.offer.bGives).toEqual([target.id]);
+      expect(idea.offer.teamB).toBe(other);
+    }
+    // A star is worth more than any one of these players, so two-for-one offers appear.
+    expect(getting.some((idea) => idea.offer.aGives.length === 2)).toBe(true);
+  });
+
+  it("measures need and cover at every position", () => {
+    const profile = positionProfile(model, snapshot, ids(strengths[4]!.rosterId));
+    expect(profile.map((note) => note.position)).toEqual(POSITIONS);
+    for (const note of profile) {
+      expect(note.need).toBeGreaterThanOrEqual(-1e-9); // an extra player never hurts
+      expect(note.cover).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("keeps urgency between 0 and 1 and notices long absences", () => {
+    const all = [...situations.values()];
+    expect(all).toHaveLength(10);
+    for (const situation of all) {
+      expect(situation.urgency).toBeGreaterThanOrEqual(0);
+      expect(situation.urgency).toBeLessThanOrEqual(1);
+    }
+    expect(all.some((situation) => situation.longTermOut.length > 0)).toBe(true);
+    const out = Object.values(report.players).filter((player) => player.longTermOut);
+    expect(out.length).toBeGreaterThan(0);
+    for (const player of out) expect(player.missedStreak).toBeGreaterThanOrEqual(4);
+  });
+
+  it("rates acceptance higher when the trade helps them more", () => {
+    const [a, b] = [strengths[2]!.rosterId, strengths[3]!.rosterId];
+    const sorted = (rosterId: number) =>
+      ids(rosterId).map((id) => model.players.get(id)!).filter((p) => p.games > 0).sort((x, y) => y.expected - x.expected);
+    const generous = evaluateTrade(model, snapshot, { teamA: a, teamB: b, aGives: [sorted(a)[0]!.id], bGives: [sorted(b).at(-1)!.id] });
+    const stingy = evaluateTrade(model, snapshot, { teamA: a, teamB: b, aGives: [sorted(a).at(-1)!.id], bGives: [sorted(b)[0]!.id] });
+    expect(acceptanceChance(generous.b, 0)).toBeGreaterThan(acceptanceChance(stingy.b, 0));
+    expect(acceptanceChance(stingy.b, 1) - acceptanceChance(stingy.b, 0)).toBeCloseTo(0.15);
+  });
+
+  it("uses last season once it has loaded", async () => {
+    expect(report.lastSeason).toBe("loading"); // the first report starts the download
+    await service.sync("2025");
+    const later = await service.report(snapshot, players);
+    expect(later.lastSeason).toBe("ready");
+    const withHistory = Object.values(later.players).filter((player) => player.projection.lastSeason);
+    expect(withHistory.length).toBeGreaterThan(100);
+    expect(withHistory.some((p) => p.projection.factors.some((f) => f.label === "Last season's level"))).toBe(true);
+    expect(Object.values(later.players).some((player) => !player.projection.lastSeason)).toBe(true); // rookies
+  });
+});
+
+describe("projectPlayer", () => {
+  const flat = (value: number, games: number) => Array.from({ length: games }, () => value);
+
+  it("projects a steady player at his average", () => {
+    const projection = projectPlayer(flat(30, 12), flat(32, 12));
+    expect(projection.perGame).toBeCloseTo(30);
+    expect(projection.trend).toBe("steady");
+    expect(projection.factors).toEqual([]);
+  });
+
+  it("leans toward recent games, but not all the way", () => {
+    const scores = [...flat(20, 10), ...flat(40, 5)]; // average 26.67, last five 40
+    const projection = projectPlayer(scores, flat(30, 15));
+    expect(projection.perGame).toBeGreaterThan(26.67);
+    expect(projection.perGame).toBeLessThan(30);
+    expect(projection.factors.map((factor) => factor.label)).toEqual(["Recent games count more"]);
+  });
+
+  it("pulls a hot start toward last season, less as games pile up", () => {
+    const last = { games: 70, average: 30 };
+    const early = projectPlayer(flat(40, 5), flat(30, 5), last); // (5*40 + 10*30) / 15
+    const late = projectPlayer(flat(40, 40), flat(30, 40), last); // (40*40 + 10*30) / 50
+    expect(early.perGame).toBeCloseTo(33.33, 1);
+    expect(late.perGame).toBeCloseTo(38);
+    expect(early.trend).toBe("fading");
+    expect(early.factors[0]).toMatchObject({ label: "Last season's level" });
+  });
+
+  it("ignores a last season of only a few games", () => {
+    expect(projectPlayer(flat(40, 5), flat(30, 5), { games: 6, average: 10 }).perGame).toBeCloseTo(40);
+  });
+
+  it("moves at most 8% for a change in minutes", () => {
+    const up = projectPlayer(flat(30, 10), [...flat(20, 5), ...flat(40, 5)]);
+    expect(up.perGame).toBeCloseTo(30 * 1.08);
+    expect(up.factors[0]!.label).toBe("Minutes rising");
+    const small = projectPlayer(flat(30, 10), [...flat(30, 5), ...flat(32, 5)]); // +3.2% minutes -> +1.6%
+    expect(small.perGame).toBeCloseTo(30 * (1 + (32 / 31 - 1) * 0.5));
+  });
+
+  it("has nothing to say without games", () => {
+    expect(projectPlayer([], []).perGame).toBe(0);
+  });
+});
+
+describe("availabilityOutlook", () => {
+  const P = true;
+  const M = false;
+
+  it("treats scattered missed games as a rate", () => {
+    const outlook = availabilityOutlook([P, P, M, P, P, P, M, P, P, P], 70);
+    expect(outlook).toMatchObject({ missedStreak: 0, longTermOut: false });
+    expect(outlook.rate).toBeCloseTo((8 + 4.5) / 15);
+  });
+
+  it("does not call one rest day an injury", () => {
+    const outlook = availabilityOutlook([P, P, P, P, P, P, P, P, P, M], 70);
+    expect(outlook).toMatchObject({ missedStreak: 1, longTermOut: false });
+    expect(outlook.rate).toBeGreaterThan(0.85);
+  });
+
+  it("does not hold a finished long absence against him", () => {
+    const outlook = availabilityOutlook([P, P, M, M, M, M, M, M, P, P, P, P], 70);
+    expect(outlook.longTermOut).toBe(false);
+    expect(outlook.rate).toBeCloseTo((6 + 4.5) / 11); // the six-game absence is left out
+  });
+
+  it("expects a current long absence to last about as long again", () => {
+    const outlook = availabilityOutlook([P, P, P, P, M, M, M, M, M, M, M, M, M, M], 68);
+    expect(outlook).toMatchObject({ missedStreak: 10, longTermOut: true });
+    expect(outlook.rate).toBeCloseTo(((4 + 4.5) / 9) * (1 - 10 / 68));
   });
 });

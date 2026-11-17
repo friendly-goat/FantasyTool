@@ -32,15 +32,16 @@ const WEEK_SHAPES = [
   { games: 3, share: 0.55 },
   { games: 4, share: 0.35 },
 ];
-/** Early in a season "played 3 of 3" proves little: blend in a typical rate. */
-const AVAILABILITY_PRIOR = { rate: 0.85, games: 5 };
 /** Players with few games are pulled toward a replacement-level player. */
 const RELIABILITY_GAMES = 3;
 
 export interface ModelPlayer extends PlayerRef {
   games: number;
-  /** Fantasy points per game, for display. */
+  /** Fantasy points per game so far, which is what other managers see. */
   average: number;
+  /** Projected fantasy points per game for the rest of the season. */
+  projected: number;
+  longTermOut: boolean;
   /** Share of his team's games he is expected to play. */
   availability: number;
   /** Expected weekly value if he never missed a game. */
@@ -90,20 +91,23 @@ function modelPlayer(
   const eligible = slots.map((slot) => slotAccepts(slot, ref.positions));
   const draws = new Float64Array(weeks);
   if (!stats || stats.games === 0) {
-    return { ...ref, games: 0, average: 0, availability: 0, healthy: 0, expected: 0, eligible, weeks: draws };
+    return {
+      ...ref, games: 0, average: 0, projected: 0, longTermOut: false,
+      availability: 0, healthy: 0, expected: 0, eligible, weeks: draws,
+    };
   }
 
-  // Pull thin samples toward a replacement-level player.
-  const trust = stats.games / (stats.games + RELIABILITY_GAMES);
+  // Value him at his projected level, keeping the shape of his game scores.
+  // A player with few games and no last season to lean on is pulled toward a
+  // replacement-level player instead.
   const typical = stats.lockInByGames[2] ?? stats.lockInValue;
-  const scale = typical > 0 ? trust + ((1 - trust) * replacementValue) / typical : 1;
+  let scale = stats.fantasyAvg > 0 ? stats.projection.perGame / stats.fantasyAvg : 1;
+  if (!stats.projection.lastSeason && typical > 0) {
+    const trust = stats.games / (stats.games + RELIABILITY_GAMES);
+    scale = trust * scale + ((1 - trust) * replacementValue) / typical;
+  }
   const byGames = stats.lockInByGames.map((value) => value * scale);
-
-  const availability = Math.min(
-    1,
-    (stats.games + AVAILABILITY_PRIOR.rate * AVAILABILITY_PRIOR.games) /
-      (Math.max(stats.teamGames, stats.games) + AVAILABILITY_PRIOR.games),
-  );
+  const availability = stats.availability;
 
   const seed = hash(ref.id);
   let sum = 0;
@@ -133,6 +137,8 @@ function modelPlayer(
     ...ref,
     games: stats.games,
     average: stats.fantasyAvg,
+    projected: stats.projection.perGame,
+    longTermOut: stats.longTermOut,
     availability,
     healthy,
     expected: weeks > 0 ? sum / weeks : 0,
@@ -185,7 +191,11 @@ export function buildModel(
 
 /** Average best-lineup score over the imaginary weeks (or the first `weeks` of them). */
 export function projectedWeekly(model: StrengthModel, playerIds: string[], weeks?: number): number {
-  const roster = playerIds.flatMap((id) => model.players.get(id) ?? []);
+  return projectRoster(model, playerIds.flatMap((id) => model.players.get(id) ?? []), weeks);
+}
+
+/** The same, for a list of players rather than IDs. */
+export function projectRoster(model: StrengthModel, roster: ModelPlayer[], weeks?: number): number {
   const eligible = roster.map((player) => player.eligible);
   const count = Math.min(weeks ?? Infinity, roster[0]?.weeks.length ?? 0);
   if (count === 0) return 0;

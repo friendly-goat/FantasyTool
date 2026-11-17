@@ -19,24 +19,80 @@ const PRESEASON_GAMES = 2;
 const NO_GAMES_EVERY = 29;
 const TEAMS = ["ATL", "BOS", "CHI", "DAL", "DEN", "GSW", "LAL", "MIA", "MIL", "NYK", "OKC", "PHX"];
 
+/** A repeatable number in [0, 1) for a player. */
+function fraction(index: number, salt: number): number {
+  const value = Math.sin(index * 12.9898 + salt * 78.233) * 43758.5453;
+  return value - Math.floor(value);
+}
+
+/**
+ * Scales every stat for a player. The mock league rosters the first 130
+ * players; the rest are free agents and, as in a real league, weaker.
+ */
+function talentOf(index: number): number {
+  return (0.35 + fraction(index, 1) * 0.9) * (index >= ROSTERED_PLAYERS ? 0.6 : 1);
+}
+
+const MOCK_SEASON = "2026";
+const LONG_ABSENCE_EVERY = 17;
+const LAST_SEASON_GAMES = 40;
+/** Mock players whose index divides by this are rookies: no last season. */
+const ROOKIE_EVERY = 7;
+
+/** A simple earlier season: each player near this season's level, some clearly above or below. */
+function lastSeasonLines(players: Record<string, unknown>, year: number): GameLine[] {
+  const random = seeded(23);
+  const lines: GameLine[] = [];
+  Object.values(players as Record<string, { player_id: string; full_name: string; team: string }>).forEach(
+    (player, index) => {
+      // Near this season's level: between 20% below and 25% above.
+      const level = talentOf(index) * (0.8 + fraction(index, 2) * 0.45);
+      if (index % ROOKIE_EVERY === 3) return;
+      for (let game = 0; game < LAST_SEASON_GAMES; game++) {
+        const roll = 0.7 + random() * 0.6;
+        const pts = Math.round(18 * level * roll);
+        lines.push({
+          key: `y${year}g${game}:p${player.player_id}`,
+          playerId: `p${player.player_id}`,
+          playerName: player.full_name,
+          team: player.team,
+          date: new Date(Date.UTC(year, 10, 1 + game * 2)).toISOString().slice(0, 10),
+          final: true,
+          minutes: 30,
+          stats: {
+            pts, reb: Math.round(6.5 * level * roll), ast: Math.round(5 * level * roll),
+            stl: Math.round(1.4 * level), blk: Math.round(0.9 * level), tov: Math.round(2.4 * level), tpm: 1, tpa: 3, fgm: Math.round(pts / 2.4), fga: Math.round(pts / 1.1),
+            ftm: 2, fta: 3, oreb: 1, dreb: Math.round(5 * level * roll), pf: 2,
+          },
+        });
+      }
+    },
+  );
+  return lines;
+}
+
 export function createMockStats(players: Record<string, unknown>): StatsProvider {
   return {
     name: "mock",
-    async fetchGameLines(_season, fromDate, onPage) {
+    async fetchGameLines(season, fromDate, onPage) {
+      if (season !== MOCK_SEASON) {
+        onPage(1);
+        return lastSeasonLines(players, Number(season));
+      }
       const random = seeded(11);
       const lines: GameLine[] = [];
       Object.values(players as Record<string, { player_id: string; full_name: string; team: string }>).forEach(
         (player, index) => {
           if (index % NO_GAMES_EVERY === NO_GAMES_EVERY - 1) return;
-          // Scales every stat for this player. The mock league rosters the first
-          // 130 players; the rest are free agents and, as in a real league, weaker.
-          const talent = (0.35 + random() * 0.9) * (index >= ROSTERED_PLAYERS ? 0.6 : 1);
+          const talent = talentOf(index);
           for (let game = -PRESEASON_GAMES; game < GAMES_PER_PLAYER; game++) {
             const preseason = game < 0;
             const date = new Date(Date.UTC(2026, 9, preseason ? 14 + game * 2 : 21 + game * 2))
               .toISOString()
               .slice(0, 10);
-            const sat = random() < 0.08; // Occasional game missed.
+            // Occasional game missed; a few players are out for the latest five games.
+            const injured = index % LONG_ABSENCE_EVERY === 5 && game >= GAMES_PER_PLAYER - 5;
+            const sat = random() < 0.08 || injured;
             const effort = preseason ? 0.5 : 1;
             const roll = () => (0.6 + random() * 0.8) * effort;
             const opponent = TEAMS[(index + game + PRESEASON_GAMES + 1) % TEAMS.length]!;
