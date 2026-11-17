@@ -48,8 +48,13 @@ export function Matchups({ snapshot, stats, myRosterId, openMatchupId, onOpenMat
                   <div key={side.rosterId} className={`matchup-side${leading ? " leading" : ""}`}>
                     <div className="team-cell">
                       <Avatar url={team?.avatarUrl ?? null} name={team?.teamName ?? "?"} />
-                      <div>
-                        <button type="button" className="team-link" onClick={() => onOpenTeam(side.rosterId)}>
+                      <div className="matchup-team">
+                        <button
+                          type="button"
+                          className="team-link"
+                          title={team?.teamName}
+                          onClick={() => onOpenTeam(side.rosterId)}
+                        >
                           {team?.teamName ?? `Roster ${side.rosterId}`}
                         </button>
                         {team && (

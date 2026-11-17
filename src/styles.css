@@ -763,13 +763,22 @@ th[aria-sort] .sort-button {
   margin-bottom: 0.35rem;
 }
 
-/* Names stay in view while a wide table scrolls sideways. */
+/* Names stay in view while a wide table scrolls sideways. The pinned cell's
+   background stops inside its border, so the row divider stays visible. When
+   the name is the second column (after a slot chip), its header is pinned
+   instead of the first. */
 .table-scroll .players-table tbody th[scope="row"],
-.table-scroll .players-table thead th:first-child {
+.table-scroll .players-table thead th:first-child,
+.table-scroll .players-table:has(tbody tr > td:first-child + th[scope="row"]) thead th:nth-child(2) {
   position: sticky;
   left: 0;
   z-index: 1;
   background: var(--surface);
+  background-clip: padding-box;
+}
+
+.table-scroll .players-table:has(tbody tr > td:first-child + th[scope="row"]) thead th:first-child {
+  position: static;
 }
 
 /* ---- Matchups ---- */
@@ -787,10 +796,25 @@ th[aria-sort] .sort-button {
 }
 
 .matchup {
+  display: flex;
+  flex-direction: column;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   overflow: hidden;
+}
+
+/* Long team names stay on one line (full name on hover), so every card is
+   the same height. */
+.matchup-team {
+  min-width: 0;
+}
+
+.matchup-team .team-link {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .matchup-side {
@@ -819,6 +843,7 @@ th[aria-sort] .sort-button {
 .matchup-open {
   display: block;
   width: 100%;
+  margin-top: auto;
   background: none;
   border: 0;
   border-top: 1px solid var(--line);
@@ -1644,6 +1669,10 @@ th[aria-sort] .sort-button {
 }
 
 @media (max-width: 720px) {
+  .activity-sides-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .my-shape {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1847,6 +1876,29 @@ th[aria-sort] .sort-button {
 
 .activity-item.type-trade .activity-type {
   color: var(--accent);
+}
+
+.activity-sides {
+  display: grid;
+  gap: 0.75rem 1.5rem;
+  margin-top: 0.5rem;
+}
+
+.activity-sides-split {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.activity-team {
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+.activity .moves {
+  margin-bottom: 0;
+}
+
+.activity .move:last-child {
+  border-bottom: 0;
 }
 
 /* ---- League picker ---- */

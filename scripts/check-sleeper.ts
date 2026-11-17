@@ -3,6 +3,10 @@
 //
 //   npm run check:sleeper                -> checks the NBA endpoints
 //   npm run check:sleeper -- <league_id> -> also loads that league
+//   npm run check:sleeper -- <league_id> --raw-matchup
+//                                        -> also prints one team's raw matchup
+//                                           entry for this week, field by field,
+//                                           to see what Sleeper reports
 //
 // It makes at most a dozen requests.
 
@@ -15,7 +19,9 @@ try {
   // No .env file is fine.
 }
 
-const leagueId = process.argv[2] || process.env.SLEEPER_LEAGUE_ID;
+const args = process.argv.slice(2);
+const rawMatchup = args.includes("--raw-matchup");
+const leagueId = args.find((arg) => !arg.startsWith("--")) || process.env.SLEEPER_LEAGUE_ID;
 
 async function main() {
   const state = (await fetchFromSleeper("/state/nba")) as RawState;
@@ -44,6 +50,14 @@ async function main() {
   );
   console.log(`Matchups this week: ${snapshot.matchups.length}`);
   console.log(`Recent transactions: ${snapshot.transactions.length}`);
+
+  if (rawMatchup) {
+    const entries = (await fetchFromSleeper(`/league/${leagueId}/matchups/${snapshot.week}`)) as Record<string, unknown>[];
+    const fields = new Set(entries.flatMap((entry) => Object.keys(entry ?? {})));
+    console.log(`\nRaw matchup fields Sleeper sent for week ${snapshot.week}:`, [...fields].sort().join(", "));
+    console.log("First team's entry, as Sleeper sent it:");
+    console.dir(entries[0], { depth: null });
+  }
 }
 
 main().catch((error) => {

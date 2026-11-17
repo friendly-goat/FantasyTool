@@ -5,7 +5,6 @@ import type { StrengthModel, TeamStrength } from "../../shared/strength.ts";
 import type { LeagueSnapshot, PlayerRef, StatsReport, Team } from "../../shared/types.ts";
 import { formatPoints, formatRecord, formatSigned } from "../format.ts";
 import { Avatar } from "./Avatar.tsx";
-import { PlayerName } from "./PlayerName.tsx";
 import { PlayerCell } from "./PlayerCell.tsx";
 import { PositionChip } from "./PositionChip.tsx";
 
@@ -190,7 +189,7 @@ export function MyTeam({ snapshot, stats, model, strengths, team, onChangeTeam, 
                         <PlayerCell player={pickup.player} />
                       </th>
                       <td>
-                        <PlayerName player={pickup.drop} />
+                        <PlayerCell player={pickup.drop} />
                       </td>
                       <td className="num">{formatPoints(pickup.player.expected)}</td>
                       <td className="num quiet-cell">{pickup.player.games}</td>

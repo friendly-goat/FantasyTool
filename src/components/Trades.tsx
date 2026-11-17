@@ -23,6 +23,7 @@ import { formatPoints, formatSigned } from "../format.ts";
 import { Avatar } from "./Avatar.tsx";
 import { PlayerName } from "./PlayerName.tsx";
 import { PlayerCell } from "./PlayerCell.tsx";
+import { PlayerMoves } from "./PlayerMoves.tsx";
 import { PositionChip } from "./PositionChip.tsx";
 
 interface Props {
@@ -106,7 +107,7 @@ function RosterPicker({ team, model, chosen, onToggle, label }: {
                         aria-label={`Trade ${player.name}`}
                       />
                     </label>
-                    <PlayerCell player={player} showTeam={false} />
+                    <PlayerCell player={player} />
                   </span>
                 </th>
                 <td className="num strong">{player.games > 0 ? formatPoints(player.expected) : "–"}</td>
@@ -137,29 +138,21 @@ function EffectBar({ change, scale, label }: { change: number; scale: number; la
 
 /** Players who join (green +) and leave (red −) one team in a trade, with each one's player value. */
 function MoveList({ side, model }: { side: TradeSide; model: StrengthModel }) {
-  const moves = [
-    ...side.gets.map((player) => ({ player, joins: true, note: undefined as string | undefined })),
-    ...side.adds.map((player) => ({ player, joins: true, note: "Free agent pickup" })),
-    ...side.gives.map((player) => ({ player, joins: false, note: undefined as string | undefined })),
-    ...side.drops.map((player) => ({ player, joins: false, note: "Dropped to make room" })),
-  ];
-  if (moves.length === 0) return <p className="quiet">No players change hands.</p>;
+  const value = (player: ModelPlayer) => (
+    <>
+      {formatPoints(playerValue(model, player))}
+      <span className="quiet"> value</span>
+    </>
+  );
   return (
-    <ul className="moves">
-      {moves.map(({ player, joins, note }) => (
-        <li key={`${joins ? "in" : "out"}-${player.id}`} className={`move ${joins ? "move-in" : "move-out"}`}>
-          <span className="move-sign" aria-hidden="true">
-            {joins ? "+" : "−"}
-          </span>
-          <span className="visually-hidden">{joins ? "Joins: " : "Leaves: "}</span>
-          <PlayerCell player={player} extra={note} />
-          <span className="move-value">
-            {formatPoints(playerValue(model, player))}
-            <span className="quiet"> value</span>
-          </span>
-        </li>
-      ))}
-    </ul>
+    <PlayerMoves
+      moves={[
+        ...side.gets.map((player) => ({ player, joins: true, value: value(player) })),
+        ...side.adds.map((player) => ({ player, joins: true, note: "Free agent pickup", value: value(player) })),
+        ...side.gives.map((player) => ({ player, joins: false, value: value(player) })),
+        ...side.drops.map((player) => ({ player, joins: false, note: "Dropped to make room", value: value(player) })),
+      ]}
+    />
   );
 }
 

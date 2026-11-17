@@ -1,7 +1,6 @@
-import { Fragment, type ReactNode } from "react";
-import type { LeagueSnapshot, PlayerRef, Transaction, TransactionSide } from "../../shared/types.ts";
+import type { LeagueSnapshot, Transaction, TransactionSide } from "../../shared/types.ts";
 import { formatDate } from "../format.ts";
-import { PlayerName } from "./PlayerName.tsx";
+import { type Move, PlayerMoves } from "./PlayerMoves.tsx";
 
 const TYPE_NAMES: Record<Transaction["type"], string> = {
   trade: "Trade",
@@ -10,34 +9,13 @@ const TYPE_NAMES: Record<Transaction["type"], string> = {
   other: "Roster move",
 };
 
-/** "A, B, 2027 2nd-round pick", with each player's name opening their details. */
-function list(players: PlayerRef[], picks: string[] = []): ReactNode {
-  const items: ReactNode[] = [
-    ...players.map((player) => <PlayerName key={player.id} player={player} />),
-    ...picks,
+/** What one team gained (+) and gave up (−) in a transaction. */
+function moves(side: TransactionSide): Move[] {
+  return [
+    ...side.adds.map((player) => ({ player, joins: true })),
+    ...side.picks.map((pick) => ({ player: pick, joins: true, note: "Draft pick" })),
+    ...side.drops.map((player) => ({ player, joins: false })),
   ];
-  return items.map((item, index) => (
-    <Fragment key={index}>
-      {index > 0 && ", "}
-      {item}
-    </Fragment>
-  ));
-}
-
-function describe(side: TransactionSide, isTrade: boolean): ReactNode {
-  const gained = side.adds.length + side.picks.length > 0;
-  const lost = side.drops.length > 0;
-  if (isTrade) return gained ? <>receives {list(side.adds, side.picks)}</> : "receives nothing";
-  if (gained && lost) {
-    return (
-      <>
-        added {list(side.adds, side.picks)} and dropped {list(side.drops)}
-      </>
-    );
-  }
-  if (gained) return <>added {list(side.adds, side.picks)}</>;
-  if (lost) return <>dropped {list(side.drops)}</>;
-  return "made a roster move";
 }
 
 export function Activity({ snapshot }: { snapshot: LeagueSnapshot }) {
@@ -58,12 +36,14 @@ export function Activity({ snapshot }: { snapshot: LeagueSnapshot }) {
                 {formatDate(transaction.createdAt)}
               </time>
             </div>
-            {transaction.sides.map((side) => (
-              <p key={side.rosterId} className="activity-line">
-                <strong>{teams.get(side.rosterId) ?? `Roster ${side.rosterId}`}</strong>{" "}
-                {describe(side, transaction.type === "trade")}
-              </p>
-            ))}
+            <div className={transaction.sides.length > 1 ? "activity-sides activity-sides-split" : "activity-sides"}>
+              {transaction.sides.map((side) => (
+                <div key={side.rosterId} className="activity-side">
+                  <strong className="activity-team">{teams.get(side.rosterId) ?? `Roster ${side.rosterId}`}</strong>
+                  <PlayerMoves moves={moves(side)} empty="No players changed hands." />
+                </div>
+              ))}
+            </div>
           </li>
         ))}
       </ul>

@@ -272,6 +272,7 @@ run Monday to Sunday (`server/weeks.ts`).
 | `npm run typecheck` | TypeScript check for the whole repo |
 | `npm run check:sleeper` | Confirms Sleeper answers for NBA from your machine |
 | `npm run check:stats` | Confirms the stats key works and shows player matching |
+| `npm run check:sleeper -- <league_id> --raw-matchup` | Also prints one team's raw matchup entry, to see every field Sleeper sends |
 | `npm run check:logos` | Downloads every team logo and writes a preview page |
 | `npm start` | Builds the React app and serves everything from :8787 |
 
