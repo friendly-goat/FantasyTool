@@ -8,5 +8,7 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: { "/api": "http://localhost:8787" },
+    // The backend writes downloaded data here; it is not part of the app.
+    watch: { ignored: ["**/.cache/**"] },
   },
 });

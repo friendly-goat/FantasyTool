@@ -8,7 +8,17 @@ import { lockInValues } from "./lockin.ts";
 import { buildModel, leagueStrength, projectedWeekly, rosterStrength, strengthScore } from "./strength.ts";
 import { POSITIONS, positionProfile, teamSituations } from "./insight.ts";
 import { availabilityOutlook, projectPlayer } from "./projection.ts";
-import { acceptanceChance, evaluateTrade, findTrades, letterGrade, tradeGrade } from "./trade.ts";
+import {
+  acceptanceChance,
+  balance,
+  chanceFrom,
+  evaluateTrade,
+  findTrades,
+  gradeWord,
+  letterGrade,
+  likelihood,
+  tradeGrade,
+} from "./trade.ts";
 
 describe("assignSlots", () => {
   // Reference answer: try every way of filling the slots.
@@ -163,47 +173,68 @@ describe("team strength and trades (against the mock league)", async () => {
 
   const situations = teamSituations(snapshot, model, strengths);
 
-  it("finds trades that help the asking team and stand a chance, with reasons", () => {
+  it("finds trades that help the asking team, most likely to be accepted first", () => {
     const mine = strengths[4]!.rosterId;
     const started = Date.now();
-    const ideas = findTrades(model, snapshot, mine, situations);
+    const { ideas, outlook } = findTrades(model, snapshot, mine, situations);
     expect(Date.now() - started).toBeLessThan(5000);
     expect(ideas.length).toBeLessThanOrEqual(8);
+    expect(outlook).not.toBe("none");
     const appearances = new Map<string, number>();
     for (const { offer } of ideas) {
       for (const id of [...offer.aGives, ...offer.bGives]) appearances.set(id, (appearances.get(id) ?? 0) + 1);
     }
     expect(Math.max(0, ...appearances.values())).toBeLessThanOrEqual(2); // variety
-    for (const { offer, result, chance } of ideas) {
+    const order = ["likely", "possible", "long shot"];
+    ideas.forEach(({ offer, result, chance, likelihood: band }, index) => {
       expect(offer.teamA).toBe(mine);
-      expect(result.a.grade).toBeGreaterThan(50);
-      expect(chance).toBeGreaterThanOrEqual(0.3);
-      expect(chance).toBeLessThanOrEqual(1);
+      expect(result.a.projectedAfter - result.a.projectedBefore).toBeGreaterThanOrEqual(0.3);
+      expect(band).toBe(likelihood(chance));
+      if (index > 0) expect(order.indexOf(ideas[index - 1]!.likelihood)).toBeLessThanOrEqual(order.indexOf(band));
       expect(ids(mine)).toContain(offer.aGives[0]);
       expect(ids(offer.teamB)).toContain(offer.bGives[0]);
+    });
+    // Long shots appear only when nothing better exists, and then at most three.
+    if (ideas.some((idea) => idea.likelihood === "long shot")) {
+      expect(outlook).toBe("long-shot");
+      expect(ideas.length).toBeLessThanOrEqual(3);
     }
   });
 
   it("narrows the search to a position, a player to send, or a player to get", () => {
     const mine = strengths[4]!.rosterId;
-    for (const idea of findTrades(model, snapshot, mine, situations, { getPosition: "C" })) {
+    for (const idea of findTrades(model, snapshot, mine, situations, { getPosition: "C" }).ideas) {
       expect(idea.result.a.gets.some((player) => player.positions.includes("C"))).toBe(true);
     }
     const send = ids(mine).map((id) => model.players.get(id)!).filter((p) => p.games > 0)[0]!;
-    const sending = findTrades(model, snapshot, mine, situations, { givePlayerId: send.id });
+    const sending = findTrades(model, snapshot, mine, situations, { givePlayerId: send.id }).ideas;
     expect(sending.length).toBeGreaterThan(0);
     for (const idea of sending) expect(idea.offer.aGives).toContain(send.id);
 
+    // A mid-level target on another team.
     const other = strengths[0]!.rosterId === mine ? strengths[1]!.rosterId : strengths[0]!.rosterId;
-    const target = ids(other).map((id) => model.players.get(id)!).sort((a, b) => b.expected - a.expected)[0]!;
+    const sorted = ids(other).map((id) => model.players.get(id)!).filter((p) => p.games > 0).sort((a, b) => b.expected - a.expected);
+    const target = sorted[2]!;
     const getting = findTrades(model, snapshot, mine, situations, { getPlayerId: target.id });
-    expect(getting.length).toBeGreaterThan(0);
-    for (const idea of getting) {
+    expect(getting.ideas.length).toBeGreaterThan(0);
+    for (const idea of getting.ideas) {
       expect(idea.offer.bGives).toEqual([target.id]);
       expect(idea.offer.teamB).toBe(other);
+      // You may pay a little for a named player, never more than a point a week.
+      expect(idea.result.a.projectedAfter - idea.result.a.projectedBefore).toBeGreaterThanOrEqual(-1);
     }
-    // A star is worth more than any one of these players, so two-for-one offers appear.
-    expect(getting.some((idea) => idea.offer.aGives.length === 2)).toBe(true);
+  });
+
+  it("says so when only long shots exist, and shows few of them", () => {
+    // The best player in the league is out of reach for the weakest roster.
+    const poorest = strengths[9]!.rosterId;
+    const star = [...model.players.values()]
+      .filter((p) => snapshot.teams.some((t) => t.rosterId !== poorest && ids(t.rosterId).includes(p.id)))
+      .sort((a, b) => b.expected - a.expected)[0]!;
+    const result = findTrades(model, snapshot, poorest, situations, { getPlayerId: star.id });
+    if (result.outlook === "long-shot") expect(result.ideas.length).toBeLessThanOrEqual(3);
+    if (result.outlook === "possible") expect(result.ideas.length).toBeLessThanOrEqual(5);
+    for (const idea of result.ideas) expect(idea.likelihood === "likely").toBe(result.outlook === "likely");
   });
 
   it("measures need and cover at every position", () => {
@@ -226,6 +257,15 @@ describe("team strength and trades (against the mock league)", async () => {
     const out = Object.values(report.players).filter((player) => player.longTermOut);
     expect(out.length).toBeGreaterThan(0);
     for (const player of out) expect(player.missedStreak).toBeGreaterThanOrEqual(4);
+  });
+
+  it("bands chances, words grades, and places the balance between teams", () => {
+    expect([0.62, 0.5, 0.45, 0.4, 0.39].map(likelihood)).toEqual(["likely", "likely", "possible", "possible", "long shot"]);
+    expect([95, 60, 50, 43, 30, 5].map(gradeWord)).toEqual(["Big win", "Win", "About even", "About even", "Loss", "Big loss"]);
+    // An even trade: helps neither, looks fair, average pressure.
+    expect(chanceFrom(0, 30, 30, 0.3)).toBeCloseTo(0.55 * 0.5 + 0.3 + 0.045);
+    const even = evaluateTrade(model, snapshot, { teamA: strengths[0]!.rosterId, teamB: strengths[1]!.rosterId, aGives: [], bGives: [] });
+    expect(balance(even)).toBe(50);
   });
 
   it("rates acceptance higher when the trade helps them more", () => {

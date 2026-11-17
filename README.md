@@ -146,7 +146,7 @@ happens to its projected weekly score.
 | Scattered missed games | availability | a rate, blended with a typical 90% early on |
 | Long absence (4+ games in a row) | availability | a current one is expected to last as long again; finished ones are not held against him |
 | How the trade helps the other team | chance they accept | 55% of the estimate |
-| Whether it looks fair on visible averages | chance they accept | 30% |
+| Whether it looks fair on visible averages (players they would drop subtracted) | chance they accept | 30% |
 | Pressure on the other team (absences, record, this week's matchup) | chance they accept | 15% |
 
 ### Projections
@@ -192,11 +192,23 @@ drops its least valuable player. Each manager gets:
   +4 points a week is about 73;
 - the change in team strength.
 
+### Grades and the balance slider
+
+Each manager gets a letter for how good the trade is for their own team: A a
+big win, B a win, C about even, D a loss, F a big loss. Both teams can get an
+A. The 1 to 100 number behind the letter is not shown, because a 52 reads like
+a failing mark when it means "about even". A slider shows which team gains
+more.
+
 ### Finding trades
 
 `findTrades` in `shared/trade.ts`, with `shared/insight.ts`. Trades are ranked
 by the weekly points they add for you multiplied by the estimated chance they
-are accepted. You can search for the best trades overall, a player at a
+are accepted, in three bands: likely (50% or more), possible (40 to 50%) and
+long shots. Likely ideas come first; possible ones fill out a short list or
+are shown when nothing is likely; long shots appear only when there is
+nothing better, at most three, with a plain note saying so. Naming a player
+allows offers that cost you up to a point a week. You can search for the best trades overall, a player at a
 position, offers for one of your players, or offers for a named player on
 another team (two-for-one packages are tried for a named target). Each idea
 lists why it came up: a thin position it fills, depth it draws on, a sell-high

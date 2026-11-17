@@ -1,8 +1,18 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { rosterPlayers } from "../../shared/analysis.ts";
 import { POSITIONS, positionProfile, type TeamSituation } from "../../shared/insight.ts";
 import type { ModelPlayer, StrengthModel } from "../../shared/strength.ts";
-import { evaluateTrade, findTrades, type FinderOptions, type TradeIdea, type TradeSide } from "../../shared/trade.ts";
+import {
+  balance,
+  evaluateTrade,
+  findTrades,
+  gradeWord,
+  type FinderOptions,
+  type FinderResult,
+  type TradeIdea,
+  type TradeResult,
+  type TradeSide,
+} from "../../shared/trade.ts";
 import type { LeagueSnapshot, Team } from "../../shared/types.ts";
 import { formatPoints, formatSigned } from "../format.ts";
 import { Avatar } from "./Avatar.tsx";
@@ -94,9 +104,8 @@ function SideResult({ side, team }: { side: TradeSide; team: Team | undefined })
         </div>
       </div>
       <p className={`grade ${tone(side.grade)}`}>
-        <span className="grade-number">{side.grade}</span>
         <span className="grade-letter">{side.letter}</span>
-        <span className="quiet">trade grade, out of 100</span>
+        <span className="grade-word">{gradeWord(side.grade)}</span>
       </p>
       <dl className="grade-facts">
         <div>
@@ -125,6 +134,30 @@ function SideResult({ side, team }: { side: TradeSide; team: Team | undefined })
   );
 }
 
+/** Where a trade sits between the two teams: the dot moves toward the team it favors. */
+function Balance({ result, nameA, nameB, compact = false }: { result: TradeResult; nameA: string; nameB: string; compact?: boolean }) {
+  const position = balance(result);
+  const lean = Math.abs(position - 50);
+  const favored = position < 50 ? nameA : nameB;
+  const words =
+    lean < 4 ? "Even trade" : lean < 12 ? `Slightly favors ${favored}` : lean < 25 ? `Favors ${favored}` : `Strongly favors ${favored}`;
+  return (
+    <div className={`balance${compact ? " balance-compact" : ""}`}>
+      {!compact && (
+        <div className="balance-names">
+          <span>{nameA}</span>
+          <span>{nameB}</span>
+        </div>
+      )}
+      <div className="balance-track" role="img" aria-label={words}>
+        <span className="balance-center" />
+        <span className="balance-dot" style={{ left: `${position}%` }} />
+      </div>
+      <p className="balance-words">{words}</p>
+    </div>
+  );
+}
+
 function verdict(a: TradeSide, b: TradeSide, nameA: string, nameB: string): string {
   const good = (side: TradeSide) => side.grade >= 55;
   const bad = (side: TradeSide) => side.grade <= 45;
@@ -146,15 +179,13 @@ export function Trades({ snapshot, model, situations, myRosterId }: Props) {
   const [teamB, setTeamB] = useState(others[0]?.rosterId ?? myRosterId);
   const [aGives, setAGives] = useState<Set<string>>(new Set());
   const [bGives, setBGives] = useState<Set<string>>(new Set());
-  const [ideas, setIdeas] = useState<TradeIdea[] | null>(null);
+  const [found, setFound] = useState<(FinderResult & { model: StrengthModel; target: string | null }) | null>(null);
   const [searching, setSearching] = useState(false);
   const [goal, setGoal] = useState<Goal>("best");
   const [position, setPosition] = useState("SF");
   const [sendId, setSendId] = useState("");
   const [getId, setGetId] = useState("");
 
-  // Ideas are for the user's team as the rosters stand; a refresh clears them.
-  useEffect(() => setIdeas(null), [model, myRosterId]);
 
   const team = (rosterId: number) => snapshot.teams.find((candidate) => candidate.rosterId === rosterId);
   const result = useMemo(() => {
@@ -201,8 +232,10 @@ export function Trades({ snapshot, model, situations, myRosterId }: Props) {
     // Let the "Searching" label paint before the search starts.
     const options: FinderOptions =
       goal === "position" ? { getPosition: position } : goal === "send" ? { givePlayerId: sendId } : goal === "get" ? { getPlayerId: getId } : {};
+    const target =
+      goal === "get" ? (model!.players.get(getId)?.name ?? null) : goal === "send" ? (model!.players.get(sendId)?.name ?? null) : null;
     setTimeout(() => {
-      setIdeas(findTrades(model!, snapshot, myRosterId, situations!, options));
+      setFound({ ...findTrades(model!, snapshot, myRosterId, situations!, options), model: model!, target });
       setSearching(false);
     }, 30);
   }
@@ -259,6 +292,9 @@ export function Trades({ snapshot, model, situations, myRosterId }: Props) {
           <>
             {result ? (
               <div className="trade-result" role="status">
+                <div className="card balance-card">
+                  <Balance result={result} nameA={a.teamName} nameB={b.teamName} />
+                </div>
                 <p className="verdict">{verdict(result.a, result.b, a.teamName, b.teamName)}</p>
                 <div className="my-cards">
                   <SideResult side={result.a} team={a} />
@@ -311,7 +347,7 @@ export function Trades({ snapshot, model, situations, myRosterId }: Props) {
             value={goal}
             onChange={(event) => {
               setGoal(event.target.value as Goal);
-              setIdeas(null);
+              setFound(null);
             }}
           >
             <option value="best">see the best trades for my team</option>
@@ -323,7 +359,7 @@ export function Trades({ snapshot, model, situations, myRosterId }: Props) {
         {goal === "position" && (
           <label>
             Position
-            <select value={position} onChange={(event) => { setPosition(event.target.value); setIdeas(null); }}>
+            <select value={position} onChange={(event) => { setPosition(event.target.value); setFound(null); }}>
               {POSITIONS.map((name) => (
                 <option key={name} value={name}>{name}</option>
               ))}
@@ -333,7 +369,7 @@ export function Trades({ snapshot, model, situations, myRosterId }: Props) {
         {goal === "send" && (
           <label>
             Player
-            <select value={sendId} onChange={(event) => { setSendId(event.target.value); setIdeas(null); }}>
+            <select value={sendId} onChange={(event) => { setSendId(event.target.value); setFound(null); }}>
               <option value="">Choose one of your players</option>
               {withGames(myTeam).map((player) => (
                 <option key={player.id} value={player.id}>{player.name} ({player.positions.join("/")})</option>
@@ -344,7 +380,7 @@ export function Trades({ snapshot, model, situations, myRosterId }: Props) {
         {goal === "get" && (
           <label>
             Player
-            <select value={getId} onChange={(event) => { setGetId(event.target.value); setIdeas(null); }}>
+            <select value={getId} onChange={(event) => { setGetId(event.target.value); setFound(null); }}>
               <option value="">Choose a player on another team</option>
               {others.map((other) => (
                 <optgroup key={other.rosterId} label={other.teamName}>
@@ -361,16 +397,31 @@ export function Trades({ snapshot, model, situations, myRosterId }: Props) {
         </button>
       </div>
 
-      {ideas !== null && ideas.length === 0 && (
-        <p className="quiet">
-          {goal === "best" || goal === "position"
-            ? "No swap helps you while standing a fair chance of being accepted right now."
-            : "No offer could be built around that player."}
+      {found && found.model !== model && (
+        <p className="notice">
+          Projections have been updated since this search (for example, last season's stats arrived). Search
+          again for fresh results.
         </p>
       )}
-      {ideas !== null && ideas.length > 0 && (
+      {found && (
+        <p className={`finder-outlook${found.outlook === "likely" ? "" : " quiet"}`}>
+          {found.outlook === "none" &&
+            (goal === "best" || goal === "position"
+              ? "No trade helps your team right now with a fair chance of being accepted."
+              : `No offer could be built around ${found.target ?? "that player"} without costing you more than a point a week.`)}
+          {found.outlook === "likely" &&
+            (found.ideas.filter((idea) => idea.likelihood === "likely").length < 3
+              ? `Only ${found.ideas.filter((idea) => idea.likelihood === "likely").length === 1 ? "one offer is" : "a few offers are"} likely to be accepted.`
+              : null)}
+          {found.outlook === "possible" &&
+            "None of these is likely to be accepted, but they stand a fair chance. These are the closest."}
+          {found.outlook === "long-shot" &&
+            `There is no realistic offer${found.target ? ` for ${found.target}` : ""} right now. These have the best odds, but all are long shots.`}
+        </p>
+      )}
+      {found && found.ideas.length > 0 && (
         <ul className="ideas">
-          {ideas.map((idea) => (
+          {found.ideas.map((idea) => (
             <li key={`${idea.offer.aGives.join("+")}-${idea.offer.bGives.join("+")}`} className="card idea">
               <div className="idea-main">
                 <p className="idea-deal">
@@ -384,28 +435,29 @@ export function Trades({ snapshot, model, situations, myRosterId }: Props) {
                   </ul>
                 )}
               </div>
-              <dl className="idea-facts">
-                <div>
-                  <dt>Your grade</dt>
-                  <dd className={tone(idea.result.a.grade)}>
-                    {idea.result.a.grade} {idea.result.a.letter}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Your strength</dt>
-                  <dd>{whole(idea.result.a.strengthChange)}</dd>
-                </div>
-                <div>
-                  <dt>Their grade</dt>
-                  <dd className={tone(idea.result.b.grade)}>
-                    {idea.result.b.grade} {idea.result.b.letter}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Chance they accept</dt>
-                  <dd>{percent.format(idea.chance)}</dd>
-                </div>
-              </dl>
+              <div className="idea-side">
+                <dl className="idea-facts">
+                  <div>
+                    <dt>You</dt>
+                    <dd className={tone(idea.result.a.grade)}>{idea.result.a.letter}</dd>
+                  </div>
+                  <div>
+                    <dt>Them</dt>
+                    <dd className={tone(idea.result.b.grade)}>{idea.result.b.letter}</dd>
+                  </div>
+                  <div>
+                    <dt>Your strength</dt>
+                    <dd>{whole(idea.result.a.strengthChange)}</dd>
+                  </div>
+                  <div>
+                    <dt>Chance they accept</dt>
+                    <dd>
+                      {percent.format(idea.chance)} <span className={`likelihood likelihood-${idea.likelihood.replace(" ", "-")}`}>{idea.likelihood}</span>
+                    </dd>
+                  </div>
+                </dl>
+                <Balance result={idea.result} nameA="You" nameB="Them" compact />
+              </div>
               <button type="button" className="button button-plain" onClick={() => load(idea)}>
                 Open in builder
               </button>
@@ -416,12 +468,16 @@ export function Trades({ snapshot, model, situations, myRosterId }: Props) {
 
       <div className="quiet legend explain">
         <p>
-          The grade says how good the trade is for that manager: 50 means no real change, and each 4 points a
-          week gained or lost moves it roughly from 50 to 73 or 27. It is based on the change in projected weekly
-          score for the rest of the season, the same number behind team strength.
+          Each manager's letter says how good the trade is for their own team over the rest of the season: A is a
+          big win, B a win, C about even, D a loss, F a big loss. Both can get an A when a trade suits both teams.
+          The slider shows which team gains more, from the change in projected weekly score, the same number
+          behind team strength.
         </p>
         <p>
-          Trades are ranked by the weekly points they add for you multiplied by the chance they are accepted.
+          Ideas likely to be accepted (50% or better) come first, ranked by the weekly points they add for you
+          multiplied by that chance. Less likely ones are shown only when nothing likely exists, and long shots
+          (under 40%) only when there is nothing better. When you name a player, offers that cost you up to a
+          point a week are allowed, since that is sometimes the price of a move you want.
           That chance is an estimate, not a measurement: mostly how much the trade helps the other team, partly
           whether it looks fair on the averages they can see, and a little on how much pressure their team is
           under (long absences, a losing record, a tough matchup this week).

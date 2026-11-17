@@ -83,7 +83,18 @@ export function App() {
   const loadedLeagueId = snapshot?.league.id ?? null;
   const loadStats = useCallback(async (id: string, retry = false) => {
     try {
-      setStats(await getStats(id, retry));
+      const next = await getStats(id, retry);
+      // While a download runs, the server is asked for progress every few
+      // seconds. Keep the same player data when nothing but progress changed,
+      // so the model and anything built on it (like a trade search) stay put.
+      setStats((previous) =>
+        previous &&
+        previous.status === next.status &&
+        previous.syncedAt === next.syncedAt &&
+        previous.lastSeason === next.lastSeason
+          ? { ...next, players: previous.players, unmatchedRostered: previous.unmatchedRostered }
+          : next,
+      );
     } catch {
       // The league views still work without stats; the next poll or refresh tries again.
     }
@@ -121,9 +132,11 @@ export function App() {
 
   // The strength model behind the Strength and Trades tabs. Rebuilt only
   // when the league or the stats change.
+  const statsPlayers = stats?.players;
   const model = useMemo(
-    () => (snapshot && stats && Object.keys(stats.players).length > 0 ? buildModel(snapshot, stats) : null),
-    [snapshot, stats],
+    () => (snapshot && stats && statsPlayers && Object.keys(statsPlayers).length > 0 ? buildModel(snapshot, stats) : null),
+    // Rebuilt only when the league or the player data change, not on progress updates.
+    [snapshot, statsPlayers],
   );
   const strengths = useMemo(
     () => (snapshot && model ? leagueStrength(snapshot, model) : null),
@@ -283,9 +296,16 @@ export function App() {
           {view === "Strength" && (
             <Strength snapshot={snapshot} strengths={strengths} myRosterId={myRosterId} onOpenTeam={openTeam} />
           )}
-          {view === "Trades" && (
-            <Trades snapshot={snapshot} model={model} situations={situations} myRosterId={myTeam.rosterId} />
-          )}
+          {/* Kept mounted while hidden, so a trade in progress survives switching tabs. */}
+          <div hidden={view !== "Trades"}>
+            <Trades
+              key={myTeam.rosterId}
+              snapshot={snapshot}
+              model={model}
+              situations={situations}
+              myRosterId={myTeam.rosterId}
+            />
+          </div>
           {view === "Teams" && (
             <Teams
               snapshot={snapshot}

@@ -1085,18 +1085,6 @@ th[aria-sort] .sort-button {
   font-weight: 400;
 }
 
-.grade-number {
-  font-size: 2.75rem;
-  font-weight: 800;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
-
-.grade-letter {
-  font-size: 1.5rem;
-  font-weight: 800;
-}
-
 .grade-facts {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
@@ -1204,6 +1192,125 @@ th[aria-sort] .sort-button {
   margin: 0;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
+}
+
+/* ---- Trade balance and grades ---- */
+
+.balance-card {
+  padding: 1rem 1.25rem 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.balance-names {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-weight: 700;
+  margin-bottom: 0.6rem;
+}
+
+.balance-track {
+  position: relative;
+  height: 0.6rem;
+  border-radius: 999px;
+  background: var(--surface-raised);
+}
+
+.balance-center {
+  position: absolute;
+  left: 50%;
+  top: -0.35rem;
+  width: 2px;
+  height: 1.3rem;
+  margin-left: -1px;
+  background: var(--muted);
+}
+
+.balance-dot {
+  position: absolute;
+  top: 50%;
+  width: 1.4rem;
+  height: 1.4rem;
+  margin: -0.7rem 0 0 -0.7rem;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 3px solid var(--surface);
+  box-shadow: 0 0 0 1px var(--line);
+}
+
+.balance-words {
+  text-align: center;
+  margin-top: 0.5rem;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.balance-compact {
+  margin-top: 0.6rem;
+}
+
+.balance-compact .balance-track {
+  height: 0.35rem;
+}
+
+.balance-compact .balance-center {
+  top: -0.25rem;
+  height: 0.85rem;
+}
+
+.balance-compact .balance-dot {
+  width: 0.9rem;
+  height: 0.9rem;
+  margin: -0.45rem 0 0 -0.45rem;
+  border-width: 2px;
+}
+
+.balance-compact .balance-words {
+  margin-top: 0.3rem;
+  font-size: 0.75rem;
+}
+
+.grade-letter {
+  font-size: 2.5rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.grade-word {
+  font-size: 1.0625rem;
+  font-weight: 700;
+}
+
+.idea-side {
+  min-width: 17rem;
+}
+
+.likelihood {
+  display: inline-block;
+  margin-left: 0.25rem;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  vertical-align: 0.1em;
+  background: var(--surface-raised);
+  color: var(--muted);
+}
+
+.likelihood-likely {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.likelihood-long-shot {
+  background: var(--loss-soft);
+  color: var(--loss);
+}
+
+.finder-outlook {
+  margin-bottom: 0.75rem;
+  max-width: 52rem;
 }
 
 /* ---- Projection chart ---- */
