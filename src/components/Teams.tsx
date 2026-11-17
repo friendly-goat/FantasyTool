@@ -7,6 +7,7 @@ import { PositionChip } from "./PositionChip.tsx";
 interface Props {
   snapshot: LeagueSnapshot;
   stats: StatsReport | null;
+  myRosterId: number | null;
   selectedRosterId: number | null;
   onSelect: (rosterId: number) => void;
 }
@@ -50,7 +51,7 @@ function PlayerLine({ slot, player, stats, showStats }: LineProps) {
   );
 }
 
-export function Teams({ snapshot, stats, selectedRosterId, onSelect }: Props) {
+export function Teams({ snapshot, stats, myRosterId, selectedRosterId, onSelect }: Props) {
   const team =
     snapshot.teams.find((candidate) => candidate.rosterId === selectedRosterId) ?? snapshot.teams[0];
   if (!team) return <p className="quiet">This league has no teams yet.</p>;
@@ -80,7 +81,10 @@ export function Teams({ snapshot, stats, selectedRosterId, onSelect }: Props) {
               onClick={() => onSelect(candidate.rosterId)}
             >
               <Avatar url={candidate.avatarUrl} name={candidate.teamName} size="sm" />
-              <span className="rail-name">{candidate.teamName}</span>
+              <span className="rail-name">
+                {candidate.teamName}
+                {candidate.rosterId === myRosterId && <span className="mine">You</span>}
+              </span>
               <span className="num quiet">{formatRecord(candidate.wins, candidate.losses, candidate.ties)}</span>
             </button>
           </li>

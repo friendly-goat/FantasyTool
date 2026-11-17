@@ -4,12 +4,10 @@ An analysis tool for a Sleeper NBA fantasy league. It reads your league
 from Sleeper's public read-only API, shows it in a dashboard, and will grow
 into a trade idea and analysis tool.
 
-**Status:** milestone 2 of 5. The league dashboard works (standings, rosters,
-matchups with side-by-side lineups, recent activity), and player stats are in:
-fantasy points per game under your league's scoring, for rostered players and
-free agents. Click any player's name for their season numbers and game log. Team
-analysis, the trade analyzer and AI suggestions are not built yet. See
-[Roadmap](#roadmap).
+**Status:** milestone 3 of 5 under way. Working: the league dashboard, player
+stats scored with your league's settings, player details, matchup lineups, and
+a **My team** tab with a lineup check and free agents worth adding, valued for
+lock-in scoring. Next: the trade analyzer. See [Roadmap](#roadmap).
 
 ## Run it
 
@@ -119,6 +117,18 @@ worth. The player panel also shows the number Sleeper displays
 (`sleeperDisplayedAverage` in `server/scoring.ts`), so the two can be compared.
 This was worked out from the numbers, not from Sleeper documentation.
 
+### Lock-in value
+
+Players are valued by the score you can expect to lock from them in a week,
+not by their average. With three games in a week you can pass on a poor game
+and wait, so a player whose scores swing is worth more than a steady player
+with the same average. `lockInValue` works this out from the player's own game
+scores this season. It assumes three games in every week for now.
+
+A team's strength is the combined lock-in value of its best legal lineup,
+found by trying every way to fill the slots. The trade analyzer will compare
+that number before and after a trade, for both teams.
+
 ### Lock-in scoring
 
 This is a lock-in league: each starter counts one game per week. After a
@@ -143,7 +153,7 @@ run Monday to Sunday (`server/weeks.ts`).
 ```
 server/   Local backend: Sleeper client, cache, snapshot assembly, mock league
 server/stats/  Stats source (balldontlie), player matching, per-player summaries
-shared/   Types used by both backend and frontend
+shared/   Types, lock-in value and lineup analysis used by backend and frontend
 src/      React app
 scripts/  One-off tools
 ```
@@ -153,9 +163,10 @@ scripts/  One-off tools
 1. **League dashboard.** Done.
 2. **Player stats.** Done. A stats source behind a `StatsProvider` interface,
    matched to Sleeper's player IDs, scored with the league's settings.
-3. **Team analysis.** Team strengths and gaps by position, schedule effects,
-   and a value per player that accounts for games played and trend. Plain
-   code with tests, no AI.
+3. **Team analysis.** In progress. Done: lock-in value per player
+   (`shared/lockin.ts`), exact best-lineup search and free-agent upgrades
+   (`shared/analysis.ts`), shown on the My team tab. To do: each player's
+   games in the coming week, so value reflects the real schedule.
 4. **Trade analyzer.** Build a trade, see the impact on both teams.
 5. **AI suggestions.** An LLM proposes and explains moves using the numbers
    from the valuation engine.

@@ -4,10 +4,11 @@ import { Avatar } from "./Avatar.tsx";
 
 interface Props {
   snapshot: LeagueSnapshot;
+  myRosterId: number | null;
   onOpenTeam: (rosterId: number) => void;
 }
 
-export function Standings({ snapshot, onOpenTeam }: Props) {
+export function Standings({ snapshot, myRosterId, onOpenTeam }: Props) {
   const { teams } = snapshot;
   const scored = teams.map((team) => team.pointsFor);
   const average = scored.reduce((sum, value) => sum + value, 0) / Math.max(1, scored.length);
@@ -46,7 +47,10 @@ export function Standings({ snapshot, onOpenTeam }: Props) {
                         <button type="button" className="team-link" onClick={() => onOpenTeam(team.rosterId)}>
                           {team.teamName}
                         </button>
-                        <span className="quiet manager">{team.managerName}</span>
+                        <span className="quiet manager">
+                          {team.managerName}
+                          {team.rosterId === myRosterId && <span className="mine">Your team</span>}
+                        </span>
                       </div>
                     </div>
                   </th>

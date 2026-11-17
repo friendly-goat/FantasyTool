@@ -1,4 +1,3 @@
-import { useState } from "react";
 import type { LeagueSnapshot, StatsReport } from "../../shared/types.ts";
 import { formatPoints, formatRecord } from "../format.ts";
 import { Avatar } from "./Avatar.tsx";
@@ -7,11 +6,13 @@ import { MatchupDetail } from "./MatchupDetail.tsx";
 interface Props {
   snapshot: LeagueSnapshot;
   stats: StatsReport | null;
+  myRosterId: number | null;
+  openMatchupId: number | null;
+  onOpenMatchup: (matchupId: number | null) => void;
   onOpenTeam: (rosterId: number) => void;
 }
 
-export function Matchups({ snapshot, stats, onOpenTeam }: Props) {
-  const [openMatchupId, setOpenMatchupId] = useState<number | null>(null);
+export function Matchups({ snapshot, stats, myRosterId, openMatchupId, onOpenMatchup, onOpenTeam }: Props) {
   const teams = new Map(snapshot.teams.map((team) => [team.rosterId, team]));
 
   if (snapshot.matchups.length === 0) {
@@ -25,7 +26,7 @@ export function Matchups({ snapshot, stats, onOpenTeam }: Props) {
         snapshot={snapshot}
         stats={stats}
         matchup={open}
-        onBack={() => setOpenMatchupId(null)}
+        onBack={() => onOpenMatchup(null)}
         onOpenTeam={onOpenTeam}
       />
     );
@@ -54,6 +55,7 @@ export function Matchups({ snapshot, stats, onOpenTeam }: Props) {
                         {team && (
                           <span className="quiet manager">
                             {formatRecord(team.wins, team.losses, team.ties)}
+                            {side.rosterId === myRosterId && <span className="mine">Your team</span>}
                           </span>
                         )}
                       </div>
@@ -62,7 +64,7 @@ export function Matchups({ snapshot, stats, onOpenTeam }: Props) {
                   </div>
                 );
               })}
-              <button type="button" className="matchup-open" onClick={() => setOpenMatchupId(matchup.matchupId)}>
+              <button type="button" className="matchup-open" onClick={() => onOpenMatchup(matchup.matchupId)}>
                 View matchup
               </button>
             </li>

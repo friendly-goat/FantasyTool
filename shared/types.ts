@@ -147,6 +147,13 @@ export interface PlayerStats extends PlayerRef {
    * threshold bonus once against season totals. For comparison only.
    */
   sleeperAvg: number;
+  /**
+   * Expected locked score in a typical week of a lock-in league
+   * (see shared/lockin.ts). The value used for lineup and trade analysis.
+   */
+  lockInValue: number;
+  /** Highest single-game fantasy score this season. */
+  bestGame: number;
   /** Fantasy points per game over the most recent games, or null if none. */
   recentAvg: number | null;
   recentGames: number;
