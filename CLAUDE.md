@@ -78,8 +78,13 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
 - UI copy: sentence case, plain language. Visual tokens live at the top of
   `src/styles.css`.
 
-## Before opening a pull request
+## Workflow
+
+The owner works alone and wants changes committed straight to `main`: no
+feature branches, no pull requests. Before every push:
 
 ```bash
 npm run typecheck && npm test && npm run build
 ```
+
+Then push to `main` and tell the owner to run `git pull` to get the change.
