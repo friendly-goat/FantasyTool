@@ -89,6 +89,12 @@ export interface RawLeague {
   total_rosters?: number;
   roster_positions?: string[];
   scoring_settings?: Record<string, number>;
+  settings?: {
+    /** First week of the playoffs. */
+    playoff_week_start?: number;
+    /** How many teams make the playoffs. */
+    playoff_teams?: number;
+  } | null;
 }
 
 export interface RawRoster {

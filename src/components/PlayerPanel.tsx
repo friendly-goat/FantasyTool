@@ -6,6 +6,7 @@ import { formatAverage, formatGameDate, formatPoints, formatSigned } from "../fo
 const percent = new Intl.NumberFormat("en-US", { style: "percent", maximumFractionDigits: 0 });
 import { PositionChip } from "./PositionChip.tsx";
 import { ProjectionChart } from "./ProjectionChart.tsx";
+import { TeamTag } from "./TeamTag.tsx";
 
 interface Props {
   snapshot: LeagueSnapshot;
@@ -74,7 +75,7 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
               {shown.positions.map((name) => (
                 <PositionChip key={name} label={name} />
               ))}
-              <span className="quiet">{shown.team ?? "No NBA team"}</span>
+              <TeamTag team={shown.team} empty="No NBA team" size="md" />
               {shown.injuryStatus && <span className="injury">{shown.injuryStatus}</span>}
             </p>
             <p className="quiet">{fantasyTeam ? `On ${fantasyTeam}` : "Free agent in this league"}</p>

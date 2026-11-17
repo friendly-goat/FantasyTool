@@ -2,10 +2,11 @@ import type { ReactNode } from "react";
 import type { PlayerRef } from "../../shared/types.ts";
 import { PlayerName } from "./PlayerName.tsx";
 import { PositionChips } from "./PositionChip.tsx";
+import { TeamTag } from "./TeamTag.tsx";
 
 /**
  * A player in a list: name and injury tag, then position chips and NBA team
- * underneath. Used everywhere a list names players, so they all read alike.
+ * (logo and abbreviation) underneath. Used everywhere a list names players, so they all read alike.
  */
 export function PlayerCell({
   player,
@@ -24,7 +25,7 @@ export function PlayerCell({
       </span>
       <span className="pcell-meta">
         <PositionChips positions={player.positions} />
-        {showTeam && <span className="quiet">{player.team ?? "Free agent"}</span>}
+        {showTeam && <TeamTag team={player.team} />}
         {extra && <span className="quiet">{extra}</span>}
       </span>
     </span>

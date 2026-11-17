@@ -172,6 +172,7 @@ function build() {
       pts: 1, reb: 1.2, ast: 1.5, stl: 2, blk: 3, to: -1, dd: 3, td: 5,
       bonus_pt_40p: 5, bonus_pt_50p: 10, bonus_reb_20p: 10, bonus_ast_15p: 5,
     },
+    settings: { playoff_week_start: 22, playoff_teams: 6 },
   };
 
   return { players, users, rosters, matchups, transactions, league };

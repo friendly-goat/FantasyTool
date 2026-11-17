@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { fetchFromMock, MOCK_LEAGUE_ID } from "./mock.ts";
 import {
+  playoffSettings,
   buildMatchups,
   buildSnapshot,
   buildTeams,
@@ -158,6 +159,23 @@ describe("tolerance for incomplete Sleeper data", () => {
     expect(players).toEqual({
       a: { id: "a", name: "Ada Stone", team: null, positions: [], injuryStatus: null },
     });
+  });
+});
+
+describe("playoffSettings", () => {
+  it("reads the start week and team count", () => {
+    expect(playoffSettings({ settings: { playoff_week_start: 22, playoff_teams: 6 } })).toEqual({
+      startWeek: 22,
+      teams: 6,
+    });
+  });
+
+  it("returns null when either is missing or nonsense", () => {
+    expect(playoffSettings({})).toBeNull();
+    expect(playoffSettings({ settings: null })).toBeNull();
+    expect(playoffSettings({ settings: { playoff_week_start: 22 } })).toBeNull();
+    expect(playoffSettings({ settings: { playoff_week_start: 0, playoff_teams: 6 } })).toBeNull();
+    expect(playoffSettings({ settings: { playoff_week_start: 22.5, playoff_teams: 6 } })).toBeNull();
   });
 });
 

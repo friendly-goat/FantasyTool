@@ -10,6 +10,10 @@ interface Props {
 
 export function Standings({ snapshot, myRosterId, onOpenTeam }: Props) {
   const { teams } = snapshot;
+  // A dashed line under the last playoff spot, when the league says how many
+  // teams make it and not everyone does.
+  const playoffs = snapshot.league.playoffs;
+  const cut = playoffs && playoffs.teams < teams.length ? playoffs.teams : null;
   const scored = teams.map((team) => team.pointsFor);
   const average = scored.reduce((sum, value) => sum + value, 0) / Math.max(1, scored.length);
 
@@ -35,10 +39,10 @@ export function Standings({ snapshot, myRosterId, onOpenTeam }: Props) {
             </tr>
           </thead>
           <tbody>
-            {teams.map((team) => {
+            {teams.map((team, index) => {
               const difference = team.pointsFor - team.pointsAgainst;
               return (
-                <tr key={team.rosterId}>
+                <tr key={team.rosterId} className={index + 1 === cut ? "playoff-cut" : undefined}>
                   <td className="num rank">{team.rank}</td>
                   <th scope="row">
                     <div className="team-cell">
@@ -75,6 +79,12 @@ export function Standings({ snapshot, myRosterId, onOpenTeam }: Props) {
       <p className="quiet legend">
         Each dot places a team between the league's lowest and highest scorer. The line marks the league
         average, {formatPoints(average)}. Teams are ranked by wins, then points scored.
+        {cut !== null && playoffs && (
+          <>
+            {" "}
+            The top {cut}, above the dashed line, make the playoffs, which start in week {playoffs.startWeek}.
+          </>
+        )}
       </p>
     </section>
   );

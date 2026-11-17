@@ -272,6 +272,7 @@ run Monday to Sunday (`server/weeks.ts`).
 | `npm run typecheck` | TypeScript check for the whole repo |
 | `npm run check:sleeper` | Confirms Sleeper answers for NBA from your machine |
 | `npm run check:stats` | Confirms the stats key works and shows player matching |
+| `npm run check:logos` | Downloads every team logo and writes a preview page |
 | `npm start` | Builds the React app and serves everything from :8787 |
 
 ## Look
@@ -282,6 +283,19 @@ the top of `src/styles.css`. On a phone, secondary table columns are hidden,
 wide tables keep player names in view while they scroll, notes fold away under
 "About these numbers", and the trade rosters start folded so the trade finder
 is close at hand.
+
+Next to each player's NBA team abbreviation is the team's logo. Logos come
+from the NBA's own image server as SVG files, so every team's logo is equally
+sharp and sits in the same square box at the same size. Each team has a version
+drawn for light backgrounds and one for dark backgrounds, and the app shows the
+one that matches the theme. The browser asks the backend
+(`/api/logos/:team/:light|dark`), which downloads each logo once and caches it
+for 30 days; logo files are never stored in the repo. If a logo can't be
+downloaded, the abbreviation shows alone. `npm run check:logos` downloads all
+60 and writes `.cache/logo-preview.html` so you can see them side by side.
+
+Standings draw a dashed line under the last playoff spot, using the playoff
+start week and team count from the league's Sleeper settings.
 
 ## Layout
 

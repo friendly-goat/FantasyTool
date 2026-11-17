@@ -19,11 +19,13 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
 - Sleeper's app shows season averages inflated by scoring season totals
   (`sleeperDisplayedAverage` in `server/scoring.ts`). Analysis always uses the
   true per-game numbers; the Sleeper figure is shown only for comparison.
-
-## Open questions for the owner
-
-- Playoffs: when they start and how many teams make it. The owner asked to be
-  reminded. Raise it before adding playoff weighting or schedule data.
+- Playoffs (owner's settings, Nov 2026): 6 teams, weeks 22 to 24, one week per
+  round (round 1 week 22, round 2 week 23, final week 24), default seeding,
+  toilet-bowl lower bracket. Regular season ends week 21; week 25 is not used
+  for playoffs. Code reads `playoffs` (start week, team count) from the
+  league's Sleeper settings (`playoffSettings` in `server/snapshot.ts`); never
+  hard-code these numbers. Ask the owner before weighting playoff weeks in
+  strength or trade grades.
 
 ## Rules for this repo
 
@@ -77,6 +79,9 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
 - Wherever the UI names a player, render it with `PlayerName`
   (`src/components/PlayerName.tsx`) so the name opens the player's details.
   In a list, use `PlayerCell` (name, injury tag, position chips, team).
+- An NBA team is shown with `TeamTag` (logo and abbreviation). Logos come
+  through `/api/logos/:team/:variant` (`server/logos.ts`, cached); the NBA
+  team table is `shared/nbaTeams.ts`. Never commit logo files to the repo.
 - Positions are always colored chips (`PositionChip`, `PositionChips`), never
   plain text like "PF/C". Colors are the `--pos-*` tokens in `src/styles.css`,
   matching Sleeper's: PG pink, SG orange, SF green, PF blue, C purple.

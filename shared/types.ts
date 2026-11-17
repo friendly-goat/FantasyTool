@@ -91,6 +91,8 @@ export interface LeagueSnapshot {
     totalRosters: number;
     rosterPositions: string[];
     scoringSettings: Record<string, number>;
+    /** Playoff format from the league settings, or null when Sleeper does not say. */
+    playoffs: { startWeek: number; teams: number } | null;
   };
   week: number;
   teams: Team[];

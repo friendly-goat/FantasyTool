@@ -2,7 +2,9 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import express from "express";
 import type { AppConfig, LeagueSnapshot } from "../shared/types.ts";
+import { nbaTeam } from "../shared/nbaTeams.ts";
 import { Cache } from "./cache.ts";
+import { createLogoSource } from "./logos.ts";
 import { fetchFromMock, MOCK_LEAGUE_ID } from "./mock.ts";
 import { fetchFromSleeper, SleeperError } from "./sleeper.ts";
 import { buildSnapshot, loadPlayers, loadUserLeagues } from "./snapshot.ts";
@@ -44,6 +46,10 @@ const statsProvider: StatsProvider | null = mock
     : null;
 const stats = new StatsService(statsProvider, { dir: mock ? null : ".cache", staleMs: statsTtl });
 
+// Team logos are real images even in mock mode, so they always use the
+// disk cache.
+const getLogo = createLogoSource(new Cache());
+
 const app = express();
 
 function getPlayers() {
@@ -52,7 +58,7 @@ function getPlayers() {
 
 // Bump the version when the snapshot shape changes, so that snapshots saved
 // by an older version of the app are rebuilt instead of reused.
-const leagueKey = (leagueId: string) => `league-v2-${leagueId}`;
+const leagueKey = (leagueId: string) => `league-v3-${leagueId}`;
 
 function getSnapshot(leagueId: string, force: boolean) {
   return cache.get(
@@ -136,6 +142,30 @@ app.get("/api/league/:leagueId/players/:playerId", async (req, res) => {
   } catch (error) {
     sendError(res, error);
   }
+});
+
+app.get("/api/logos/:abbr/:variant", async (req, res) => {
+  const team = nbaTeam(req.params.abbr);
+  const variant = req.params.variant === "dark" ? "dark" : req.params.variant === "light" ? "light" : null;
+  if (!team || !variant) {
+    res.status(404).end();
+    return;
+  }
+  const svg = await getLogo(team.nbaId, variant);
+  if (!svg) {
+    // Not cached for long, so the logo shows once it can be downloaded.
+    res.set("Cache-Control", "no-store").status(404).end();
+    return;
+  }
+  res.set({
+    "Content-Type": "image/svg+xml",
+    "Cache-Control": "public, max-age=604800",
+    // The SVG comes from outside, so it may not run scripts or load anything
+    // if someone opens it directly.
+    "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+    "X-Content-Type-Options": "nosniff",
+  });
+  res.send(svg);
 });
 
 // After `npm run build`, this server also serves the compiled React app.

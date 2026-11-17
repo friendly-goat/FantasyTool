@@ -247,6 +247,15 @@ export function buildTransactions(
 }
 
 /** Pulls everything about one league and assembles it for the UI. */
+/** Playoff start week and team count, when Sleeper reports both sensibly. */
+export function playoffSettings(league: RawLeague): LeagueSnapshot["league"]["playoffs"] {
+  const startWeek = league.settings?.playoff_week_start;
+  const teams = league.settings?.playoff_teams;
+  if (!Number.isInteger(startWeek) || !Number.isInteger(teams)) return null;
+  if ((startWeek as number) < 1 || (teams as number) < 2) return null;
+  return { startWeek: startWeek as number, teams: teams as number };
+}
+
 export async function buildSnapshot(
   leagueId: string,
   fetchJson: FetchJson,
@@ -285,6 +294,7 @@ export async function buildSnapshot(
       totalRosters: league.total_rosters ?? asArray(rosters).length,
       rosterPositions: league.roster_positions ?? [],
       scoringSettings: league.scoring_settings ?? {},
+      playoffs: playoffSettings(league),
     },
     week,
     teams: buildTeams(league, asArray<RawRoster>(rosters), asArray<RawUser>(users), players),
