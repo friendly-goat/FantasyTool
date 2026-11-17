@@ -6,6 +6,7 @@ import { StatsService } from "../server/stats/service.ts";
 import { assignSlots, rosterPlayers } from "./analysis.ts";
 import { lockInValues } from "./lockin.ts";
 import {
+  bestNineLineup,
   buildModel,
   leagueStrength,
   projectedWeekly,
@@ -16,7 +17,7 @@ import {
   strengthScore,
   type StrengthModel,
 } from "./strength.ts";
-import { POSITIONS, positionProfile, teamSituations } from "./insight.ts";
+import { deepestSpot, POSITIONS, positionProfile, teamSituations, thinnestSpot } from "./insight.ts";
 import { availabilityOutlook, projectPlayer } from "./projection.ts";
 import {
   acceptance,
@@ -275,6 +276,29 @@ describe("team strength and trades (against the mock league)", async () => {
     if (result.outlook === "long-shot") expect(result.ideas.length).toBeLessThanOrEqual(3);
     if (result.outlook === "possible") expect(result.ideas.length).toBeLessThanOrEqual(5);
     for (const idea of result.ideas) expect(idea.likelihood === "likely").toBe(result.outlook === "likely");
+  });
+
+  it("lists the best nine slot by slot, each player legal for his slot and used once", () => {
+    for (const team of strengths) {
+      const lineup = bestNineLineup(model, ids(team.rosterId));
+      expect(lineup.map((entry) => entry.slot)).toEqual(model.slots);
+      const used = lineup.flatMap((entry) => (entry.player ? [entry.player.id] : []));
+      expect(new Set(used).size).toBe(used.length);
+      lineup.forEach((entry, index) => {
+        if (entry.player) expect(entry.player.eligible[index]).toBe(true);
+      });
+      // The same nine the strength score counts as "best nine".
+      expect(projectedWeekly(model, used)).toBeCloseTo(team.bestNine);
+    }
+  });
+
+  it("names the thinnest and deepest spots only when they matter", () => {
+    const note = (position: string, need: number, cover: number) => ({ position, need, cover, best: null });
+    const profile = [note("PG", 0.2, 3), note("SF", 2, 0.4), note("C", 0.4, 0.5)];
+    expect(thinnestSpot(profile)?.position).toBe("SF");
+    expect(deepestSpot(profile)?.position).toBe("PG");
+    expect(thinnestSpot([note("PG", 0.3, 0)])).toBeNull();
+    expect(deepestSpot([note("PG", 0, 0.9)])).toBeNull();
   });
 
   it("measures need and cover at every position", () => {

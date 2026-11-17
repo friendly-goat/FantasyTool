@@ -294,6 +294,12 @@ for 30 days; logo files are never stored in the repo. If a logo can't be
 downloaded, the abbreviation shows alone. `npm run check:logos` downloads all
 60 and writes `.cache/logo-preview.html` so you can see them side by side.
 
+In the trade builder, each team's card lists the players who would join
+(green +) and leave (red −), with each one's player value. The trade finder
+opens with your best nine starters in Sleeper's slots beside need and cover by
+position, with the thinnest spot and the position with the most depth tagged.
+These tags use the same rules as the trade explanations, so they always agree.
+
 Standings draw a dashed line under the last playoff spot, using the playoff
 start week and team count from the league's Sleeper settings.
 

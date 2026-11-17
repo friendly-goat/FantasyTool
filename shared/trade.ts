@@ -1,10 +1,12 @@
 import { rosterPlayers } from "./analysis.ts";
 import {
+  deepestSpot,
   MARKET_GAP_NOTE,
   marketGap,
   positionProfile,
   type PositionNote,
   type TeamSituation,
+  thinnestSpot,
 } from "./insight.ts";
 import { projectedWeekly, strengthScore, type ModelPlayer, type StrengthModel } from "./strength.ts";
 import type { LeagueSnapshot } from "./types.ts";
@@ -408,15 +410,12 @@ function reasonsFor(
   const myGain = result.a.projectedAfter - result.a.projectedBefore;
   if (myGain <= -0.05) reasons.push(`Costs you ${points(-myGain)} a week: the price of making this move.`);
   const team = snapshot.teams.find((candidate) => candidate.rosterId === result.b.rosterId);
-  const topNeed = (profile: PositionNote[]) => [...profile].sort((a, b) => b.need - a.need)[0];
-  const topCover = (profile: PositionNote[]) => [...profile].sort((a, b) => b.cover - a.cover)[0];
-
-  const myNeed = topNeed(mine);
-  if (myNeed && myNeed.need > 0.5 && result.a.gets.some((player) => player.positions.includes(myNeed.position))) {
+  const myNeed = thinnestSpot(mine);
+  if (myNeed && result.a.gets.some((player) => player.positions.includes(myNeed.position))) {
     reasons.push(`Fills your thinnest spot, ${myNeed.position}.`);
   }
-  const myDepth = topCover(mine);
-  if (myDepth && myDepth.cover > 1 && result.a.gives.some((player) => player.positions.includes(myDepth.position))) {
+  const myDepth = deepestSpot(mine);
+  if (myDepth && result.a.gives.some((player) => player.positions.includes(myDepth.position))) {
     reasons.push(`You have ${myDepth.position} to spare: your roster makes up ${points(myDepth.cover)} a week if your best one leaves.`);
   }
   for (const player of result.a.gives) {
@@ -429,8 +428,8 @@ function reasonsFor(
       reasons.push(`Buy low: ${player.name} averages ${points(player.average)} but projects to ${points(player.projected)}.`);
     }
   }
-  const theirNeed = topNeed(theirs);
-  if (theirNeed && theirNeed.need > 0.5 && result.b.gets.some((player) => player.positions.includes(theirNeed.position))) {
+  const theirNeed = thinnestSpot(theirs);
+  if (theirNeed && result.b.gets.some((player) => player.positions.includes(theirNeed.position))) {
     reasons.push(`${team?.teamName ?? "They"} are thin at ${theirNeed.position}, which this fills.`);
   }
   if (situation && team) {

@@ -557,13 +557,28 @@ export interface TeamStrength {
   starterAvailability: number;
 }
 
-export function rosterStrength(model: StrengthModel, playerIds: string[]): Omit<TeamStrength, "rosterId" | "rank"> {
-  const roster = playerIds.flatMap((id) => model.players.get(id) ?? []);
-  const lineup = assignSlots(
+function bestNinePicks(model: StrengthModel, roster: ModelPlayer[]) {
+  return assignSlots(
     roster.map((player) => player.eligible),
     roster.map((player) => player.healthy),
     model.slots.length,
   );
+}
+
+/**
+ * The best legal starting nine, slot by slot in the league's slot order: the
+ * same lineup the strength score calls "best nine". A slot nobody can fill
+ * has a null player.
+ */
+export function bestNineLineup(model: StrengthModel, playerIds: string[]): { slot: string; player: ModelPlayer | null }[] {
+  const roster = playerIds.flatMap((id) => model.players.get(id) ?? []);
+  const { picks } = bestNinePicks(model, roster);
+  return model.slots.map((slot, index) => ({ slot, player: picks[index]! >= 0 ? roster[picks[index]!]! : null }));
+}
+
+export function rosterStrength(model: StrengthModel, playerIds: string[]): Omit<TeamStrength, "rosterId" | "rank"> {
+  const roster = playerIds.flatMap((id) => model.players.get(id) ?? []);
+  const lineup = bestNinePicks(model, roster);
   const starters = lineup.picks.filter((index) => index >= 0).map((index) => roster[index]!);
   const projected = projectedWeekly(model, playerIds);
   const bestNine = projectedWeekly(model, starters.map((player) => player.id));

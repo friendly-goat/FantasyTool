@@ -37,6 +37,7 @@
   --accent-ink: #06211f;
   --accent-soft: rgba(63, 212, 196, 0.14);
   --win: #45d190;
+  --win-soft: rgba(69, 209, 144, 0.14);
   --loss: #ff7a7a;
   --loss-soft: rgba(255, 122, 122, 0.14);
   --warn: #f6c453;
@@ -57,6 +58,7 @@
   --accent-ink: #ffffff;
   --accent-soft: rgba(10, 125, 116, 0.1);
   --win: #127a4b;
+  --win-soft: rgba(18, 122, 75, 0.1);
   --loss: #c22f2f;
   --loss-soft: rgba(194, 47, 47, 0.09);
   --warn: #7a5200;
@@ -1291,20 +1293,115 @@ th[aria-sort] .sort-button {
 
 /* ---- Trade finder ---- */
 
-.shape {
-  max-width: 44rem;
+/* Your best nine beside need and cover by position. */
+.my-shape {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 1.25rem 2rem;
   margin-bottom: 1rem;
+  padding: 1.1rem 1.25rem 1.25rem;
 }
 
-.shape .players-table {
+.my-shape .players-table {
   min-width: 0;
+  margin-top: 0.5rem;
 }
 
-.shape caption {
-  caption-side: bottom;
-  text-align: left;
-  padding: 0.6rem 0.75rem;
+.my-shape .players-table th,
+.my-shape .players-table td {
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+
+.my-shape .players-table tr > :first-child {
+  padding-left: 0;
+}
+
+.my-shape .players-table tr > :last-child {
+  padding-right: 0;
+}
+
+.lineup-table td:first-child {
+  width: 4rem;
+}
+
+.my-shape-note {
+  margin: 0.6rem 0 0;
+  font-size: 0.8125rem;
+}
+
+.position-row {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.spot-tag {
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.spot-thin {
+  background: var(--loss-soft);
+  color: var(--loss);
+}
+
+.spot-deep {
+  background: var(--win-soft);
+  color: var(--win);
+}
+
+/* Players joining (+) and leaving (−) a team in a trade. */
+.moves {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
   border-top: 1px solid var(--line);
+}
+
+.move {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.move-sign {
+  display: inline-grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 50%;
+  font-size: 1.1rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.move-in .move-sign {
+  background: var(--win-soft);
+  color: var(--win);
+}
+
+.move-out .move-sign {
+  background: var(--loss-soft);
+  color: var(--loss);
+}
+
+.move-value {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.move-value .quiet {
+  font-weight: 400;
+  font-size: 0.8125rem;
 }
 
 .finder {
@@ -1547,6 +1644,10 @@ th[aria-sort] .sort-button {
 }
 
 @media (max-width: 720px) {
+  .my-shape {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .story-card {
     grid-template-columns: minmax(0, 1fr);
   }

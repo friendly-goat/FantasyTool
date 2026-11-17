@@ -59,6 +59,23 @@ export function positionProfile(model: StrengthModel, snapshot: LeagueSnapshot, 
   });
 }
 
+/** Smallest need, in weekly points, that counts as a thin spot. */
+export const THIN_NEED = 0.5;
+/** Smallest cover, in weekly points, that counts as depth to spare. */
+export const SPARE_COVER = 1;
+
+/** The position where a typical starter would add the most, if that is enough to matter. */
+export function thinnestSpot(profile: PositionNote[]): PositionNote | null {
+  const top = [...profile].sort((a, b) => b.need - a.need)[0];
+  return top && top.need > THIN_NEED ? top : null;
+}
+
+/** The position where losing the best player would hurt least, if the roster covers enough. */
+export function deepestSpot(profile: PositionNote[]): PositionNote | null {
+  const top = [...profile].sort((a, b) => b.cover - a.cover)[0];
+  return top && top.cover > SPARE_COVER ? top : null;
+}
+
 export interface TeamSituation {
   rosterId: number;
   winShare: number;

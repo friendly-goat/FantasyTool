@@ -1,12 +1,13 @@
 import { useMemo, useState } from "react";
 import { rosterPlayers } from "../../shared/analysis.ts";
-import { POSITIONS, positionProfile, type TeamSituation } from "../../shared/insight.ts";
-import type { ModelPlayer, StrengthModel } from "../../shared/strength.ts";
+import { deepestSpot, POSITIONS, positionProfile, type TeamSituation, thinnestSpot } from "../../shared/insight.ts";
+import { bestNineLineup, type ModelPlayer, type StrengthModel } from "../../shared/strength.ts";
 import {
   acceptance,
   evaluateTrade,
   likelihood,
   findTrades,
+  playerValue,
   gradeWord,
   type FinderOptions,
   type FinderResult,
@@ -134,7 +135,35 @@ function EffectBar({ change, scale, label }: { change: number; scale: number; la
   );
 }
 
-function SideResult({ side, team, scale }: { side: TradeSide; team: Team | undefined; scale: number }) {
+/** Players who join (green +) and leave (red −) one team in a trade, with each one's player value. */
+function MoveList({ side, model }: { side: TradeSide; model: StrengthModel }) {
+  const moves = [
+    ...side.gets.map((player) => ({ player, joins: true, note: undefined as string | undefined })),
+    ...side.adds.map((player) => ({ player, joins: true, note: "Free agent pickup" })),
+    ...side.gives.map((player) => ({ player, joins: false, note: undefined as string | undefined })),
+    ...side.drops.map((player) => ({ player, joins: false, note: "Dropped to make room" })),
+  ];
+  if (moves.length === 0) return <p className="quiet">No players change hands.</p>;
+  return (
+    <ul className="moves">
+      {moves.map(({ player, joins, note }) => (
+        <li key={`${joins ? "in" : "out"}-${player.id}`} className={`move ${joins ? "move-in" : "move-out"}`}>
+          <span className="move-sign" aria-hidden="true">
+            {joins ? "+" : "−"}
+          </span>
+          <span className="visually-hidden">{joins ? "Joins: " : "Leaves: "}</span>
+          <PlayerCell player={player} extra={note} />
+          <span className="move-value">
+            {formatPoints(playerValue(model, player))}
+            <span className="quiet"> value</span>
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function SideResult({ side, team, scale, model }: { side: TradeSide; team: Team | undefined; scale: number; model: StrengthModel }) {
   const strengthTone = side.strengthChange > 0 ? "up" : side.strengthChange < 0 ? "down" : "";
   return (
     <div className="card grade-card">
@@ -149,6 +178,8 @@ function SideResult({ side, team, scale }: { side: TradeSide; team: Team | undef
         <span className="grade-letter">{side.letter}</span>
         <span className="grade-word">{gradeWord(side.grade)}</span>
       </p>
+
+      <MoveList side={side} model={model} />
 
       <div className="effect-block">
         <div className="effect-head">
@@ -180,12 +211,6 @@ function SideResult({ side, team, scale }: { side: TradeSide; team: Team | undef
           <dd className={side.fit >= 1 ? "up" : side.fit <= -1 ? "down" : ""}>{formatSigned(side.fit)}</dd>
         </div>
       </dl>
-      <p className="quiet">
-        Sends {side.gives.length > 0 ? names(side.gives) : "nobody"}. Receives{" "}
-        {side.gets.length > 0 ? names(side.gets) : "nobody"}.
-        {side.adds.length > 0 && <> Assumes the open spot goes to free agent {names(side.adds)}.</>}
-        {side.drops.length > 0 && <> Assumes {names(side.drops)} is dropped to make room.</>}
-      </p>
     </div>
   );
 }
@@ -326,6 +351,12 @@ export function Trades({ snapshot, model, situations, myRosterId }: Props) {
     () => (model && myTeam ? positionProfile(model, snapshot, rosterPlayers(myTeam).map((player) => player.id)) : []),
     [model, snapshot, myTeam],
   );
+  const thinnest = thinnestSpot(profile);
+  const deepest = deepestSpot(profile);
+  const lineup = useMemo(
+    () => (model && myTeam ? bestNineLineup(model, rosterPlayers(myTeam).map((player) => player.id)) : []),
+    [model, myTeam],
+  );
 
   if (!model || !situations || !myTeam) {
     return <p className="quiet">The trade analyzer opens once player stats have loaded.</p>;
@@ -433,8 +464,8 @@ export function Trades({ snapshot, model, situations, myRosterId }: Props) {
                 </div>
                 {chance && <p className="verdict">{verdict(result, chance.chance, a.teamName, b.teamName)}</p>}
                 <div className="my-cards">
-                  <SideResult side={result.a} team={a} scale={effectScale(result)} />
-                  <SideResult side={result.b} team={b} scale={effectScale(result)} />
+                  <SideResult side={result.a} team={a} scale={effectScale(result)} model={model} />
+                  <SideResult side={result.b} team={b} scale={effectScale(result)} model={model} />
                 </div>
                 {story && chance && (
                   <div className="card story-card">
@@ -460,33 +491,65 @@ export function Trades({ snapshot, model, situations, myRosterId }: Props) {
       <h2 className="section-title ideas-title" id="trade-finder">
         Find a trade
       </h2>
-      <div className="table-scroll shape">
-        <table className="players-table">
-          <caption className="quiet">
-            Your roster by position. Need is the weekly points a typical starter would add in the slots reserved for that position. Cover is how
-            much of your best player's value the rest of your roster would make up if he left.
-          </caption>
-          <thead>
-            <tr>
-              <th scope="col">Position</th>
-              <th scope="col">Your best</th>
-              <th scope="col" className="num">Need</th>
-              <th scope="col" className="num">Cover</th>
-            </tr>
-          </thead>
-          <tbody>
-            {profile.map((note) => (
-              <tr key={note.position}>
-                <th scope="row">
-                  <PositionChip label={note.position} />
-                </th>
-                <td>{note.best ? <PlayerName player={note.best} /> : "Nobody"}</td>
-                <td className="num">{formatPoints(note.need)}</td>
-                <td className="num">{formatPoints(note.cover)}</td>
+      <div className="card my-shape">
+        <div className="my-shape-lineup">
+          <h3 className="my-card-title">Your best nine</h3>
+          <table className="players-table lineup-table">
+            <thead>
+              <tr>
+                <th scope="col">Slot</th>
+                <th scope="col">Player</th>
+                <th scope="col" className="num">Weekly value</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {lineup.map(({ slot, player }, index) => (
+                <tr key={`${slot}-${index}`}>
+                  <td>
+                    <PositionChip label={slot} />
+                  </td>
+                  <td>{player ? <PlayerCell player={player} /> : <span className="quiet">Nobody eligible</span>}</td>
+                  <td className="num">{player ? formatPoints(player.expected) : "–"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="quiet my-shape-note">
+            The starters your strength score is built on, placed in Sleeper's nine slots. Weekly value is what
+            a player locks on his own in an average week.
+          </p>
+        </div>
+        <div className="my-shape-positions">
+          <h3 className="my-card-title">By position</h3>
+          <table className="players-table position-table">
+            <thead>
+              <tr>
+                <th scope="col">Position</th>
+                <th scope="col" className="num">Need</th>
+                <th scope="col" className="num">Cover</th>
+              </tr>
+            </thead>
+            <tbody>
+              {profile.map((note) => (
+                <tr key={note.position}>
+                  <th scope="row">
+                    <span className="position-row">
+                      <PositionChip label={note.position} />
+                      {thinnest?.position === note.position && <span className="spot-tag spot-thin">Thinnest</span>}
+                      {deepest?.position === note.position && <span className="spot-tag spot-deep">Most depth</span>}
+                    </span>
+                  </th>
+                  <td className="num">{formatPoints(note.need)}</td>
+                  <td className="num">{formatPoints(note.cover)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="quiet my-shape-note">
+            Need is the weekly points a typical starter would add in the slots reserved for that position. Cover
+            is how much of your best player there the rest of your roster would make up if he left.
+          </p>
+        </div>
       </div>
 
       <div className="filters finder">
