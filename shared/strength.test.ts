@@ -5,7 +5,17 @@ import { createMockStats } from "../server/stats/mock.ts";
 import { StatsService } from "../server/stats/service.ts";
 import { assignSlots, rosterPlayers } from "./analysis.ts";
 import { lockInValues } from "./lockin.ts";
-import { buildModel, leagueStrength, projectedWeekly, rosterStrength, strengthScore } from "./strength.ts";
+import {
+  buildModel,
+  leagueStrength,
+  projectedWeekly,
+  projectRoster,
+  rosterStrength,
+  simulateWeek,
+  steadyPlayer,
+  strengthScore,
+  type StrengthModel,
+} from "./strength.ts";
 import { POSITIONS, positionProfile, teamSituations } from "./insight.ts";
 import { availabilityOutlook, projectPlayer } from "./projection.ts";
 import {
@@ -105,12 +115,37 @@ describe("team strength and trades (against the mock league)", async () => {
       expect(team.score).toBeLessThanOrEqual(1000);
       expect(team.rank).toBe(index + 1);
       if (index > 0) expect(strengths[index - 1]!.projected).toBeGreaterThanOrEqual(team.projected);
-      // Missed games can only cost points, and never more than the whole lineup.
-      expect(team.lostToAbsences).toBeGreaterThanOrEqual(-1e-9);
       expect(team.projected).toBeGreaterThan(0);
+      // A bench helps or, at worst, costs next to nothing.
+      expect(team.benchAdds).toBeGreaterThan(-0.5);
+      expect(team.projected).toBeCloseTo(team.bestNine + team.benchAdds);
       expect(team.starterAvailability).toBeGreaterThan(0.5);
       expect(team.starterAvailability).toBeLessThanOrEqual(1);
     });
+  });
+
+  it("lets a deep bench add value by rotating into open slots", () => {
+    const benchAdds = strengths.map((team) => team.benchAdds);
+    expect(benchAdds.reduce((a, b) => a + b, 0) / benchAdds.length).toBeGreaterThan(1);
+  });
+
+  it("follows lock-in rules every week: one game per slot, one slot per player", () => {
+    const roster = ids(strengths[3]!.rosterId).map((id) => model.players.get(id)!);
+    for (let week = 0; week < 50; week++) {
+      const result = simulateWeek(model, roster, week);
+      const used = result.lockedBy.filter((index) => index >= 0);
+      expect(new Set(used).size).toBe(used.length);
+      result.lockedBy.forEach((index, slot) => index >= 0 && expect(roster[index]!.eligible[slot]).toBe(true));
+      // Never more than each slot's best possible game.
+      const best = Math.max(0, ...roster.flatMap((p) => [...p.gameScore.slice(week * 4, week * 4 + 4)]));
+      expect(result.total).toBeLessThanOrEqual(best * model.slots.length + 1e-6);
+    }
+  });
+
+  it("is quick enough to rate a whole league", () => {
+    const started = Date.now();
+    leagueStrength(snapshot, buildModel(snapshot, report));
+    expect(Date.now() - started).toBeLessThan(3000);
   });
 
   it("anchors the scale to the two reference teams", () => {
@@ -361,5 +396,53 @@ describe("availabilityOutlook", () => {
     const outlook = availabilityOutlook([P, P, P, P, M, M, M, M, M, M, M, M, M, M], 68);
     expect(outlook).toMatchObject({ missedStreak: 10, longTermOut: true });
     expect(outlook.rate).toBeCloseTo(((4 + 4.5) / 9) * (1 - 10 / 68));
+  });
+});
+
+describe("a lock-in week, on made-up players", () => {
+  // One UTIL slot keeps the arithmetic easy to follow.
+  const model: StrengthModel = {
+    slots: ["UTIL"],
+    slotOrder: [0],
+    weeks: 1,
+    players: new Map(),
+    freeAgentIds: [],
+    replacementProjection: 0,
+    idealProjection: 0,
+  };
+  const player = (id: string, games: [number, number][]) => {
+    const made = steadyPlayer(model, id, ["SF"], 30);
+    made.gameDay.fill(-1);
+    games.forEach(([day, score], index) => {
+      made.gameDay[index] = day;
+      made.gameScore[index] = score;
+    });
+    return made;
+  };
+
+  it("locks a game that beats what is still to come", () => {
+    // A steady 30 who plays Monday (50) and Friday: 50 beats waiting for a 30.
+    expect(simulateWeek(model, [player("a", [[0, 50], [4, 30]])], 0).total).toBe(50);
+  });
+
+  it("passes on a poor game when a better one is likely later", () => {
+    expect(simulateWeek(model, [player("a", [[0, 10], [4, 30]])], 0).total).toBe(30);
+  });
+
+  it("uses a bench player's big game on a day the starter is off", () => {
+    // The starter plays only Friday. The bench player's 45 on Tuesday beats waiting for Friday's 30.
+    const starter = player("a", [[4, 30]]);
+    const bench = player("b", [[1, 45]]);
+    expect(simulateWeek(model, [starter], 0).total).toBe(30);
+    expect(simulateWeek(model, [starter, bench], 0).total).toBe(45);
+  });
+
+  it("can lose by waiting, as a real manager can", () => {
+    // Monday's 10 is passed over for a likely 30 on Wednesday, which comes in at 5.
+    expect(simulateWeek(model, [player("a", [[0, 10], [2, 5]])], 0).total).toBe(5);
+  });
+
+  it("averages weeks in projectRoster", () => {
+    expect(projectRoster(model, [player("a", [[2, 25]])])).toBe(25);
   });
 });

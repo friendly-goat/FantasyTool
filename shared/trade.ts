@@ -163,8 +163,14 @@ export interface FinderOptions {
   getPlayerId?: string;
 }
 
-/** Weeks used for the first pass over every possible swap. */
-const SCREEN_WEEKS = 40;
+/**
+ * Weeks used for the first pass over every possible swap. The shortlist is
+ * re-checked over all the weeks, so this only has to rank roughly; every
+ * player sees the same weeks on any roster, which keeps the comparison fair.
+ */
+const SCREEN_WEEKS = 24;
+/** An open search tries many more swaps, so it screens on fewer weeks. */
+const OPEN_SCREEN_WEEKS = 16;
 
 /**
  * A rough estimate of whether the other manager says yes. Three parts with
@@ -285,13 +291,14 @@ export function findTrades(
 ): FinderResult {
   const targeted = Boolean(options.givePlayerId || options.getPlayerId);
   const minGain = targeted ? -MAX_PRICE : MIN_GAIN;
+  const screenWeeks = targeted ? SCREEN_WEEKS : OPEN_SCREEN_WEEKS;
   const mine = rosterIds(snapshot, rosterId);
   const at = (position: string | undefined) => (player: ModelPlayer) =>
     !position || player.positions.includes(position);
   const givers = players(model, mine).filter(
     (player) => player.games > 0 && at(options.givePosition)(player) && (!options.givePlayerId || player.id === options.givePlayerId),
   );
-  const mineBefore = projectedWeekly(model, mine, SCREEN_WEEKS);
+  const mineBefore = projectedWeekly(model, mine, screenWeeks);
   const screened: { offer: TradeOffer; quick: number }[] = [];
   // A real gain is weighed by its chance. Ideas that gain you nothing (or
   // cost a little, when a player is named) rank below every real gain, the
@@ -305,7 +312,7 @@ export function findTrades(
       (player) => player.games > 0 && at(options.getPosition)(player) && (!options.getPlayerId || player.id === options.getPlayerId),
     );
     if (targets.length === 0) continue;
-    const theirsBefore = projectedWeekly(model, theirs, SCREEN_WEEKS);
+    const theirsBefore = projectedWeekly(model, theirs, screenWeeks);
     const urgency = situations.get(team.rosterId)?.urgency ?? 0;
     const weakest = players(model, theirs).reduce((a, b) => (b.expected < a.expected ? b : a));
 
@@ -313,13 +320,13 @@ export function findTrades(
       const giveIds = gives.map((player) => player.id);
       const myAfter = [...mine.filter((id) => !giveIds.includes(id)), get.id];
       // A one-for-two leaves you a spot short; the full evaluation picks the free agent.
-      const gain = projectedWeekly(model, myAfter, SCREEN_WEEKS) - mineBefore;
+      const gain = projectedWeekly(model, myAfter, screenWeeks) - mineBefore;
       if (gain < minGain - (gives.length - 1) * 2) return;
       // Receiving two for one, they drop their weakest player.
       let theirAfter = [...theirs.filter((id) => id !== get.id), ...giveIds];
       const dropped = gives.length > 1 ? weakest : null;
       if (dropped) theirAfter = theirAfter.filter((id) => id !== dropped.id);
-      const theirGain = projectedWeekly(model, theirAfter, SCREEN_WEEKS) - theirsBefore;
+      const theirGain = projectedWeekly(model, theirAfter, screenWeeks) - theirsBefore;
       const received = sumAverage(gives) - (dropped?.average ?? 0);
       const chance = chanceFrom(theirGain, received, get.average, urgency);
       if (chance < SCREEN_FLOOR) return;
@@ -331,8 +338,10 @@ export function findTrades(
 
     for (const get of targets) {
       for (const give of givers) {
-        // Without a named player, skip swaps of players worlds apart: they cannot suit both teams.
+        // Without a named player, skip swaps of players worlds apart (they cannot suit both
+        // teams) and swaps for a clearly lesser player (they rarely help you).
         if (!targeted && Math.abs(give.expected - get.expected) > 0.4 * Math.max(give.expected, get.expected)) continue;
+        if (!targeted && get.expected < 0.85 * give.expected) continue;
         consider([give], get);
       }
       // Two of the user's players for a named target.
@@ -355,7 +364,7 @@ export function findTrades(
   const order: Likelihood[] = ["likely", "possible", "long shot"];
   const evaluated = screened
     .sort((a, b) => b.quick - a.quick)
-    .slice(0, limit * 6)
+    .slice(0, limit * 4)
     .map(({ offer }) => {
       const result = evaluateTrade(model, snapshot, offer);
       const chance = acceptanceChance(result.b, situations.get(offer.teamB)?.urgency ?? 0);

@@ -27,7 +27,7 @@ export function StatsNotice({ stats, onRetry }: { stats: StatsReport; onRetry: (
     return (
       <p className="notice" role="status">
         Downloading game stats from {stats.source}
-        {stats.pagesFetched > 0 ? ` (${stats.pagesFetched} pages so far)` : ""}. The first download of a
+        {stats.pagesFetched > 0 ? ` (${stats.pagesFetched} ${stats.pagesFetched === 1 ? "page" : "pages"} so far)` : ""}. The first download of a
         season takes a minute or two.
       </p>
     );
@@ -58,7 +58,7 @@ export function StatsNotice({ stats, onRetry }: { stats: StatsReport; onRetry: (
       which adds each scoring bonus once to season totals. Game stats from {stats.source}
       {stats.syncedAt ? `, updated ${formatAgo(stats.syncedAt)}` : ""}.
       {stats.lastSeason === "loading" &&
-        ` Last season's stats are downloading in the background${stats.lastSeasonPages > 0 ? ` (${stats.lastSeasonPages} pages so far)` : ""}; projections will use them when they arrive, in a few minutes.`}
+        ` Last season's stats are downloading in the background${stats.lastSeasonPages > 0 ? ` (${stats.lastSeasonPages} ${stats.lastSeasonPages === 1 ? "page" : "pages"} so far)` : ""}; projections will use them when they arrive, in a few minutes.`}
       {stats.unmatchedRostered.length > 0 &&
         ` No stats found for: ${stats.unmatchedRostered.map((player) => player.name).join(", ")}.`}
     </p>
