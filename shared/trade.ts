@@ -183,8 +183,12 @@ export function evaluateTrade(model: StrengthModel, snapshot: LeagueSnapshot, of
 // It compares the trade on player value alone with its effect on each team,
 // and names what explains the gap.
 
-/** A team effect smaller than this (points a week) counts as no real change. */
-const REAL_CHANGE = 0.5;
+/**
+ * A team effect smaller than this (points a week) counts as no real change.
+ * It is where the letter grade turns from C+ ("About even") to B- ("Win"),
+ * so the labels and the letters always agree.
+ */
+const REAL_CHANGE = GRADE_STEP * Math.log(57 / 43);
 /** Fit this large (points a week) is worth pointing out. */
 const NOTABLE_FIT = 1;
 
@@ -305,33 +309,85 @@ const SCREEN_WEEKS = 24;
 /** An open search tries many more swaps, so it screens on fewer weeks. */
 const OPEN_SCREEN_WEEKS = 16;
 
-/**
- * A rough estimate of whether the other manager says yes. Three parts with
- * fixed shares, so none can dominate:
- *   55%  how much the trade helps their team, by this app's projection
- *   30%  whether it looks fair on the averages they can see
- *   15%  how much pressure their team is under
- * It is a reasoned guess, not a measured probability.
- */
+// ---- Will they accept? ------------------------------------------------------
+//
+// A reasoned estimate, not a measured probability. It starts from a manager's
+// reluctance to give up his own players and adds three separate parts, each
+// with a fixed limit, combined on the log-odds scale so that one bad part
+// pulls the chance down however good the others look:
+//
+//   What they see:      the averages they get back against what they send.
+//                       Up to +1.0 for a clear win, down to -2.0 for a clear loss.
+//   Their team:         what the trade does to their projected weekly score.
+//                       A manager senses this through his own needs: a thin
+//                       position filled, an injury covered. Limited to ±1.5.
+//   Pressure:           long absences, a losing record, a tough matchup this
+//                       week. Up to +0.6, never negative.
+//
+// An even trade (looks even, changes nothing, typical pressure) comes out
+// a little under 50%: people say no to sideways moves more often than yes.
+
+/** Reluctance to trade at all, on the log-odds scale. */
+const RELUCTANCE = -0.3;
+const SEEN_SCALE = 6; // a 10% edge on averages is worth about 0.57
+const SEEN_LIMITS = [-2, 1] as const;
+const TEAM_SCALE = 2.5; // 2.5 points a week is worth 1.0
+const TEAM_LIMIT = 1.5;
+const PRESSURE_WEIGHT = 0.6;
+
+export interface ChancePart {
+  label: string;
+  /** Percentage points the chance would lose if this part were left out (negative when it lowers it). */
+  points: number;
+}
+
+export interface Chance {
+  chance: number;
+  parts: ChancePart[];
+}
+
+const logistic = (x: number) => 1 / (1 + Math.exp(-x));
+const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value));
+
+export function chanceParts(theirWeeklyGain: number, receivedAverage: number, sentAverage: number, urgency: number): Chance {
+  const ratio = sentAverage > 0 ? Math.max(0.01, receivedAverage) / sentAverage : 2;
+  const seen = clamp(Math.log(ratio) * SEEN_SCALE, SEEN_LIMITS[0], SEEN_LIMITS[1]);
+  const team = clamp(theirWeeklyGain / TEAM_SCALE, -TEAM_LIMIT, TEAM_LIMIT);
+  const pressure = PRESSURE_WEIGHT * clamp(urgency, 0, 1);
+  const total = RELUCTANCE + seen + team + pressure;
+  const chance = logistic(total);
+  const without = (term: number) => Math.round((chance - logistic(total - term)) * 100);
+  return {
+    chance,
+    parts: [
+      { label: "What they see on averages", points: without(seen) },
+      { label: "What it does to their team", points: without(team) },
+      { label: "Pressure on their team", points: without(pressure) },
+    ],
+  };
+}
+
 export function chanceFrom(theirWeeklyGain: number, receivedAverage: number, sentAverage: number, urgency: number): number {
-  const helps = 1 / (1 + Math.exp(-theirWeeklyGain / GRADE_STEP));
-  // Getting back as much on average as they send looks fair; 25% less looks bad.
-  const looksFair = sentAverage > 0 ? Math.min(1, Math.max(0, (receivedAverage / sentAverage - 0.75) / 0.25)) : 1;
-  return 0.55 * helps + 0.3 * looksFair + 0.15 * Math.min(1, Math.max(0, urgency));
+  return chanceParts(theirWeeklyGain, receivedAverage, sentAverage, urgency).chance;
 }
 
 const sumAverage = (list: ModelPlayer[]) => list.reduce((total, player) => total + player.average, 0);
 
-export function acceptanceChance(theirs: TradeSide, urgency: number): number {
+/** The chance the other side (`theirs`) accepts, with its parts. */
+export function acceptance(theirs: TradeSide, urgency: number): Chance {
   // They know a two-for-one costs them a roster spot, so the player they
   // would drop is subtracted and any pickup is added.
   const received = sumAverage(theirs.gets) + sumAverage(theirs.adds) - sumAverage(theirs.drops);
-  return chanceFrom(theirs.projectedAfter - theirs.projectedBefore, received, sumAverage(theirs.gives), urgency);
+  return chanceParts(theirs.teamChange, received, sumAverage(theirs.gives), urgency);
+}
+
+export function acceptanceChance(theirs: TradeSide, urgency: number): number {
+  return acceptance(theirs, urgency).chance;
 }
 
 /** How likely an idea is to be accepted, in three plain bands. */
 export type Likelihood = "likely" | "possible" | "long shot";
-export const LIKELY = 0.5;
+export const LIKELY = 0.55;
 export const POSSIBLE = 0.4;
 
 export function likelihood(chance: number): Likelihood {
@@ -433,6 +489,12 @@ export function findTrades(
   );
   const mineBefore = projectedWeekly(model, mine, screenWeeks);
   const screened: { offer: TradeOffer; quick: number }[] = [];
+  const seenOffers = new Set<string>();
+  const profiles = new Map<number, PositionNote[]>();
+  const profileOf = (id: number) => {
+    if (!profiles.has(id)) profiles.set(id, positionProfile(model, snapshot, rosterIds(snapshot, id)));
+    return profiles.get(id)!;
+  };
   // A real gain is weighed by its chance. Ideas that gain you nothing (or
   // cost a little, when a player is named) rank below every real gain, the
   // more likely and cheaper ones first.
@@ -463,6 +525,9 @@ export function findTrades(
       const received = sumAverage(gives) - (dropped?.average ?? 0);
       const chance = chanceFrom(theirGain, received, get.average, urgency);
       if (chance < SCREEN_FLOOR) return;
+      const key = `${team.rosterId}:${[...giveIds].sort().join("+")}:${get.id}`;
+      if (seenOffers.has(key)) return;
+      seenOffers.add(key);
       screened.push({
         offer: { teamA: rosterId, teamB: team.rosterId, aGives: giveIds, bGives: [get.id] },
         quick: rank(gain, chance),
@@ -487,6 +552,36 @@ export function findTrades(
             const combined = pair[0]!.expected + pair[1]!.expected;
             if (combined < 0.9 * get.expected || combined > 1.8 * get.expected) continue;
             consider(pair, get);
+          }
+        }
+      }
+    }
+
+    // Selling to a need. When this team is thin at a position where you have
+    // a player, offer him plus one of your spare players for one of their
+    // better players at a position where they have depth. They fill a hole,
+    // you consolidate two roster spots into an upgrade. Guided by measured
+    // needs, so only a handful of packages per team are tried.
+    if (!targeted && !options.givePosition) {
+      const theirProfile = profileOf(team.rosterId);
+      const needs = theirProfile.filter((note) => note.need >= NOTABLE_FIT).sort((a, b) => b.need - a.need).slice(0, 2);
+      const depth = new Set(theirProfile.filter((note) => note.cover >= 0.8 * (note.best?.expected ?? Infinity)).map((note) => note.position));
+      const myPlayers = players(model, mine).filter((player) => player.games > 0).sort((a, b) => b.expected - a.expected);
+      const spares = myPlayers.slice(-4);
+      const upgrades = targets
+        .filter((player) => player.positions.some((position) => depth.has(position)))
+        .sort((a, b) => b.expected - a.expected)
+        .slice(0, 3);
+      for (const need of needs) {
+        const fillers = myPlayers.filter((player) => player.positions.includes(need.position)).slice(0, 2);
+        for (const filler of fillers) {
+          for (const spare of spares) {
+            if (spare === filler) continue;
+            for (const get of upgrades) {
+              // An upgrade for you, and not so far above the package that it cannot work.
+              if (get.expected <= filler.expected || get.expected > 1.6 * (filler.expected + spare.expected)) continue;
+              consider([filler, spare], get);
+            }
           }
         }
       }
@@ -524,6 +619,11 @@ export function findTrades(
       })(),
     );
 
+  // When there are enough real wins for you (B- or better), leave out the
+  // trades that are only about even for you; otherwise keep them.
+  const wins = evaluated.filter((idea) => idea.result.a.teamChange >= REAL_CHANGE);
+  if (!targeted && wins.length >= 3) evaluated.splice(0, evaluated.length, ...wins);
+
   // Show likely ideas; fill out a short list with possible ones; long shots only if nothing else.
   const likely = evaluated.filter((idea) => idea.likelihood === "likely");
   const possible = evaluated.filter((idea) => idea.likelihood === "possible");
@@ -544,12 +644,7 @@ export function findTrades(
     outlook = "none";
   }
 
-  const myProfile = positionProfile(model, snapshot, mine);
-  const theirProfiles = new Map<number, PositionNote[]>();
-  const profileOf = (id: number) => {
-    if (!theirProfiles.has(id)) theirProfiles.set(id, positionProfile(model, snapshot, rosterIds(snapshot, id)));
-    return theirProfiles.get(id)!;
-  };
+  const myProfile = profileOf(rosterId);
   return {
     outlook,
     ideas: chosen.map((idea) => ({

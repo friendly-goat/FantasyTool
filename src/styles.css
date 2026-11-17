@@ -1346,8 +1346,41 @@ th[aria-sort] .sort-button {
 }
 
 .story-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(15rem, 20rem);
+  gap: 1rem 2rem;
   padding: 1rem 1.25rem 1.1rem;
   margin-top: 1rem;
+}
+
+.chance-figure {
+  font-size: 1.75rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  margin: 0.25rem 0 0.4rem;
+}
+
+.chance-figure .likelihood {
+  font-size: 0.75rem;
+  vertical-align: 0.4em;
+}
+
+.chance-parts li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.2rem 0;
+}
+
+.chance-parts li span:last-child {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 720px) {
+  .story-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .story-kind {

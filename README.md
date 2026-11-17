@@ -146,9 +146,10 @@ happens to its projected weekly score.
 | Game-to-game spread | strength | his own, blended with the league's typical spread until he has 6 games; kept between 10% and 60% of his level |
 | Scattered missed games | availability | a rate, blended with a typical 90% early on |
 | Long absence (4+ games in a row) | availability | a current one is expected to last as long again; finished ones are not held against him |
-| How the trade helps the other team | chance they accept | 55% of the estimate |
-| Whether it looks fair on visible averages (players they would drop subtracted) | chance they accept | 30% |
-| Pressure on the other team (absences, record, this week's matchup) | chance they accept | 15% |
+| Reluctance to trade at all | chance they accept | fixed: an even trade comes out a little under 50% |
+| What they see on averages (players they would drop subtracted) | chance they accept | +1.0 to -2.0 on the log-odds scale |
+| What the trade does to their team | chance they accept | ±1.5 on the log-odds scale |
+| Pressure on the other team (absences, record, this week's matchup) | chance they accept | 0 to +0.6 on the log-odds scale |
 
 ### Projections
 
@@ -225,19 +226,26 @@ Every trade is shown three ways:
   is worth more to that team than its players' value says, usually because it
   fills a thin position, adds depth, or covers for an injury.
 
+The search also looks for one move on purpose: when another team is thin at
+a position where you have a player, it tries him plus one of your spare
+players for one of their better players at a position where they have depth.
+
 From these, each trade gets a plain label from the user's side: you get more
 player value because your side is worth more to them; win-win; even on paper
 but better for your roster; ahead on player value; worth more to your roster
 than on paper; costs you; or about even. The label and the points under it
 are an explanation only. Grades, chances and the ranking of ideas do not use
-them.
+the labels. "A real change" in a label means the same as a B- or better.
 
 ### Finding trades
 
 `findTrades` in `shared/trade.ts`, with `shared/insight.ts`. Trades are ranked
 by the weekly points they add for you multiplied by the estimated chance they
-are accepted, in three bands: likely (50% or more), possible (40 to 50%) and
-long shots. Likely ideas come first; possible ones fill out a short list or
+are accepted, in three bands: likely (55% or more), possible (40 to 55%) and
+long shots. The chance's parts are combined on the log-odds scale, so one bad
+part (say, the trade clearly hurts their team) pulls it down however fair the
+trade looks; the builder shows how many points each part adds or takes away,
+and its one-line verdict uses the same chance. Likely ideas come first; possible ones fill out a short list or
 are shown when nothing is likely; long shots appear only when there is
 nothing better, at most three, with a plain note saying so. Naming a player
 allows offers that cost you up to a point a week. You can search for the best trades overall, a player at a

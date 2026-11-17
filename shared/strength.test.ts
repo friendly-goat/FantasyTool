@@ -19,7 +19,9 @@ import {
 import { POSITIONS, positionProfile, teamSituations } from "./insight.ts";
 import { availabilityOutlook, projectPlayer } from "./projection.ts";
 import {
+  acceptance,
   acceptanceChance,
+  chanceParts,
   chanceFrom,
   evaluateTrade,
   findTrades,
@@ -298,10 +300,10 @@ describe("team strength and trades (against the mock league)", async () => {
   });
 
   it("bands chances, words grades, and places the balance between teams", () => {
-    expect([0.62, 0.5, 0.45, 0.4, 0.39].map(likelihood)).toEqual(["likely", "likely", "possible", "possible", "long shot"]);
+    expect([0.62, 0.55, 0.45, 0.4, 0.39].map(likelihood)).toEqual(["likely", "likely", "possible", "possible", "long shot"]);
     expect([95, 60, 50, 43, 30, 5].map(gradeWord)).toEqual(["Big win", "Win", "About even", "About even", "Loss", "Big loss"]);
-    // An even trade: helps neither, looks fair, average pressure.
-    expect(chanceFrom(0, 30, 30, 0.3)).toBeCloseTo(0.55 * 0.5 + 0.3 + 0.045);
+    // An even trade with typical pressure lands a little under 50%.
+    expect(chanceFrom(0, 30, 30, 0.3)).toBeCloseTo(1 / (1 + Math.exp(-(-0.3 + 0.18))));
     const even = evaluateTrade(model, snapshot, { teamA: strengths[0]!.rosterId, teamB: strengths[1]!.rosterId, aGives: [], bGives: [] });
     expect(even.valueBalance).toBe(50);
   });
@@ -355,7 +357,31 @@ describe("team strength and trades (against the mock league)", async () => {
     const generous = evaluateTrade(model, snapshot, { teamA: a, teamB: b, aGives: [sorted(a)[0]!.id], bGives: [sorted(b).at(-1)!.id] });
     const stingy = evaluateTrade(model, snapshot, { teamA: a, teamB: b, aGives: [sorted(a).at(-1)!.id], bGives: [sorted(b)[0]!.id] });
     expect(acceptanceChance(generous.b, 0)).toBeGreaterThan(acceptanceChance(stingy.b, 0));
-    expect(acceptanceChance(stingy.b, 1) - acceptanceChance(stingy.b, 0)).toBeCloseTo(0.15);
+    expect(acceptanceChance(stingy.b, 1)).toBeGreaterThan(acceptanceChance(stingy.b, 0));
+    expect(acceptance(stingy.b, 0.5).parts.map((part) => part.label)).toEqual([
+      "What they see on averages",
+      "What it does to their team",
+      "Pressure on their team",
+    ]);
+  });
+
+  it("does not call a trade likely when it clearly hurts the other team, however fair it looks", () => {
+    // Looks a little in their favor on averages, costs them 2 points a week (about a D+).
+    const hurt = chanceFrom(-2, 31, 30, 0.3);
+    expect(hurt).toBeLessThan(0.4);
+    // The same look, helping them by 2 a week, is likely.
+    expect(chanceFrom(2, 31, 30, 0.3)).toBeGreaterThan(0.55);
+  });
+
+  it("keeps each part within its limit", () => {
+    // Even a lopsided look cannot outweigh a trade that wrecks their team, and the reverse.
+    expect(chanceFrom(-50, 300, 10, 1)).toBeLessThan(0.5);
+    expect(chanceFrom(50, 1, 300, 1)).toBeLessThan(0.5);
+    expect(chanceFrom(50, 300, 10, 1)).toBeLessThan(0.96);
+    const { parts } = chanceParts(-3, 25, 30, 0);
+    expect(parts[0]!.points).toBeLessThan(0); // looks worse for them
+    expect(parts[1]!.points).toBeLessThan(0); // hurts their team
+    expect(parts[2]!.points).toBe(0); // no pressure
   });
 
   it("uses last season once it has loaded", async () => {

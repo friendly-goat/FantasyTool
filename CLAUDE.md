@@ -57,8 +57,11 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   deterministic (same imaginary weeks for a player on any roster).
 - Trades are shown three ways (`shared/trade.ts`): player value (value above
   a typical free agent, no team context), team effect (strength change), and
-  fit (the gap). `tradeStory` explains a trade from those; it must never feed
-  back into grades, chances or the ranking of ideas.
+  fit (the gap). `tradeStory` explains a trade from those; its labels must never
+  feed back into grades, chances or the ranking of ideas. The acceptance
+  chance (`chanceParts`) does use the other team's team effect and what they
+  see on averages, each capped, combined on the log-odds scale. Ideas are
+  ranked by your weekly gain times that chance.
 - The owner wants analysis that finds what he would not notice himself, done
   with data in code. No chatbot or LLM inside the app.
 - The user's own team is chosen once per league (`myRosterId` in `src/App.tsx`).

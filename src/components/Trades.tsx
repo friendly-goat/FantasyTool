@@ -3,7 +3,9 @@ import { rosterPlayers } from "../../shared/analysis.ts";
 import { POSITIONS, positionProfile, type TeamSituation } from "../../shared/insight.ts";
 import type { ModelPlayer, StrengthModel } from "../../shared/strength.ts";
 import {
+  acceptance,
   evaluateTrade,
+  likelihood,
   findTrades,
   gradeWord,
   type FinderOptions,
@@ -12,6 +14,7 @@ import {
   tradeStory,
   type TradeResult,
   type TradeSide,
+  type Chance,
   type TradeStory,
 } from "../../shared/trade.ts";
 import type { LeagueSnapshot, Team } from "../../shared/types.ts";
@@ -219,18 +222,38 @@ function effectScale(result: TradeResult): number {
   return Math.max(30, Math.abs(result.a.strengthChange), Math.abs(result.b.strengthChange));
 }
 
-function verdict(a: TradeSide, b: TradeSide, nameA: string, nameB: string): string {
-  const good = (side: TradeSide) => side.grade >= 55;
-  const bad = (side: TradeSide) => side.grade <= 45;
-  if (good(a) && good(b)) return "Good for both teams. This is the kind of offer that gets accepted.";
-  if (good(a) && bad(b)) return `Helps ${nameA} and hurts ${nameB}. Expect it to be turned down.`;
-  if (bad(a) && good(b)) return `Helps ${nameB} and hurts ${nameA}.`;
-  if (bad(a) && bad(b)) return "Makes both teams weaker.";
-  if (good(a)) return `Helps ${nameA} and leaves ${nameB} about where it was.`;
-  if (good(b)) return `Helps ${nameB} and leaves ${nameA} about where it was.`;
-  if (bad(a)) return `Hurts ${nameA} without doing much for ${nameB}.`;
-  if (bad(b)) return `Hurts ${nameB} without doing much for ${nameA}.`;
-  return "Changes little for either team.";
+/** One line that agrees with the grades and the chance shown below it. */
+function verdict(result: TradeResult, chance: number, nameA: string, nameB: string): string {
+  const pct = percent.format(chance);
+  const first =
+    result.a.grade >= 57 ? `Helps ${nameA}` : result.a.grade <= 43 ? `Costs ${nameA}` : `About even for ${nameA}`;
+  const band = likelihood(chance);
+  if (band === "likely") return `${first}, and ${nameB} would likely accept (${pct}).`;
+  if (band === "possible") return `${first}, and ${nameB} could go either way (${pct}).`;
+  return `${first}, ${result.a.grade >= 57 ? "but" : "and"} ${nameB} would likely turn it down (${pct}).`;
+}
+
+function ChanceBlock({ chance, name }: { chance: Chance; name: string }) {
+  const band = likelihood(chance.chance);
+  return (
+    <div className="chance-block">
+      <h3 className="my-card-title">Chance {name} accepts</h3>
+      <p className="chance-figure">
+        {percent.format(chance.chance)} <span className={`likelihood likelihood-${band.replace(" ", "-")}`}>{band}</span>
+      </p>
+      <ul className="chance-parts quiet">
+        {chance.parts.map((part) => (
+          <li key={part.label}>
+            <span>{part.label}</span>
+            <span className={part.points > 0 ? "up" : part.points < 0 ? "down" : ""}>
+              {part.points > 0 ? "+" : part.points < 0 ? "\u2212" : ""}
+              {Math.abs(part.points)} pts
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 /** Build a trade between two teams and see a grade and strength change for each. */
@@ -263,6 +286,10 @@ export function Trades({ snapshot, model, situations, myRosterId }: Props) {
     };
     return { mine: of(teamA), theirs: of(teamB) };
   }, [model, snapshot, teamA, teamB]);
+  const chance = useMemo(
+    () => (result ? acceptance(result.b, situations?.get(teamB)?.urgency ?? 0) : null),
+    [result, situations, teamB],
+  );
   const story = useMemo(
     () =>
       model && result && builderProfiles
@@ -373,15 +400,18 @@ export function Trades({ snapshot, model, situations, myRosterId }: Props) {
                 <div className="card balance-card">
                   <ValueBalance result={result} nameA={a.teamName} nameB={b.teamName} />
                 </div>
-                <p className="verdict">{verdict(result.a, result.b, a.teamName, b.teamName)}</p>
+                {chance && <p className="verdict">{verdict(result, chance.chance, a.teamName, b.teamName)}</p>}
                 <div className="my-cards">
                   <SideResult side={result.a} team={a} scale={effectScale(result)} />
                   <SideResult side={result.b} team={b} scale={effectScale(result)} />
                 </div>
-                {story && (
+                {story && chance && (
                   <div className="card story-card">
-                    <h3 className="my-card-title">Why, from {a.teamName}'s side</h3>
-                    <StoryBlock story={story} />
+                    <div>
+                      <h3 className="my-card-title">Why, from {a.teamName}'s side</h3>
+                      <StoryBlock story={story} />
+                    </div>
+                    <ChanceBlock chance={chance} name={b.teamName} />
                   </div>
                 )}
               </div>
@@ -567,9 +597,11 @@ export function Trades({ snapshot, model, situations, myRosterId }: Props) {
           multiplied by that chance. Less likely ones are shown only when nothing likely exists, and long shots
           (under 40%) only when there is nothing better. When you name a player, offers that cost you up to a
           point a week are allowed, since that is sometimes the price of a move you want.
-          That chance is an estimate, not a measurement: mostly how much the trade helps the other team, partly
-          whether it looks fair on the averages they can see, and a little on how much pressure their team is
-          under (long absences, a losing record, a tough matchup this week).
+          That chance is an estimate, not a measurement. It starts a little below even, since managers turn
+          down sideways moves more often than not, and adds three limited parts: what they see on the averages,
+          what the trade does to their team (which they sense through their own needs), and the pressure they are
+          under. One bad part pulls the chance down however good the others look. The builder shows how many
+          points each part adds or takes away.
         </p>
         <p>
           Weekly value is what a player is expected to lock in an average week, allowing for games he misses.
