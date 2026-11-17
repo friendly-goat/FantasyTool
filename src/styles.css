@@ -1177,7 +1177,7 @@ th[aria-sort] .sort-button {
 
 .idea-facts {
   display: grid;
-  grid-template-columns: repeat(4, auto);
+  grid-template-columns: repeat(5, auto);
   gap: 0.25rem 1.25rem;
   margin: 0;
 }
@@ -1269,6 +1269,110 @@ th[aria-sort] .sort-button {
 .balance-compact .balance-words {
   margin-top: 0.3rem;
   font-size: 0.75rem;
+}
+
+.balance-title {
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.balance-detail {
+  text-align: center;
+  max-width: 44rem;
+  margin: 0.35rem auto 0;
+}
+
+.grade-card .grade-facts {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.effect-block {
+  margin: 0.25rem 0 0.9rem;
+}
+
+.effect-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 0.4rem;
+}
+
+.effect-title {
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.effect-value {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.effect {
+  position: relative;
+  height: 0.6rem;
+  border-radius: 999px;
+  background: var(--surface-raised);
+}
+
+.effect-center {
+  position: absolute;
+  left: 50%;
+  top: -0.3rem;
+  width: 2px;
+  height: 1.2rem;
+  margin-left: -1px;
+  background: var(--muted);
+}
+
+.effect-fill {
+  position: absolute;
+  top: 0;
+  height: 100%;
+}
+
+.effect-up {
+  background: var(--win);
+  border-radius: 0 999px 999px 0;
+}
+
+.effect-down {
+  background: var(--loss);
+  border-radius: 999px 0 0 999px;
+}
+
+.effect-note {
+  margin-top: 0.45rem;
+}
+
+.story-card {
+  padding: 1rem 1.25rem 1.1rem;
+  margin-top: 1rem;
+}
+
+.story-kind {
+  display: inline-block;
+  margin: 0.35rem 0 0.15rem;
+  padding: 0.1rem 0.6rem;
+  border-radius: 999px;
+  background: var(--surface-raised);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.idea-main .story-kind {
+  margin-top: 0.4rem;
+}
+
+.kind-leverage,
+.kind-win-win {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.kind-costs-you {
+  background: var(--loss-soft);
+  color: var(--loss);
 }
 
 .grade-letter {

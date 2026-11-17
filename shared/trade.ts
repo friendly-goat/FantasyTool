@@ -40,6 +40,21 @@ export interface TradeSide {
   strengthChange: number;
   projectedBefore: number;
   projectedAfter: number;
+  /**
+   * Player value this side sends and receives: each player's own weekly
+   * value above a typical free agent, added up. No team context at all.
+   */
+  valueSent: number;
+  valueReceived: number;
+  valueChange: number;
+  /** Change in this team's projected weekly score: the trade in context. */
+  teamChange: number;
+  /**
+   * How much more (or less) the trade is worth to this team than its player
+   * value says: teamChange minus valueChange. Positive when the players fit
+   * the roster (a thin position, depth, injuries); negative when they do not.
+   */
+  fit: number;
   /** 1 to 100: how good the trade is for this manager. 50 means no real change. */
   grade: number;
   letter: string;
@@ -48,6 +63,16 @@ export interface TradeSide {
 export interface TradeResult {
   a: TradeSide;
   b: TradeSide;
+  /**
+   * Who the trade favors on player value alone, 0 to 100: 50 is even, lower
+   * favors team A, higher favors team B.
+   */
+  valueBalance: number;
+}
+
+/** A player's own weekly value above a typical free agent. Never below zero. */
+export function playerValue(model: StrengthModel, player: ModelPlayer): number {
+  return Math.max(0, player.expected - model.replacementWeekly);
 }
 
 /** Weekly points that move a grade from 50 to about 73 (and twice that to about 88). */
@@ -113,7 +138,16 @@ function side(
   const strengthBefore = strengthScore(model, projectedBefore);
   const strengthAfter = strengthScore(model, projectedAfter);
   const grade = tradeGrade(projectedAfter - projectedBefore);
+  const value = (ids: string[]) => players(model, ids).reduce((sum, player) => sum + playerValue(model, player), 0);
+  const valueSent = value(gives);
+  const valueReceived = value(gets);
+  const teamChange = projectedAfter - projectedBefore;
   return {
+    valueSent,
+    valueReceived,
+    valueChange: valueReceived - valueSent,
+    teamChange,
+    fit: teamChange - (valueReceived - valueSent),
     rosterId,
     gives: players(model, gives),
     gets: players(model, gets),
@@ -136,10 +170,109 @@ function rosterIds(snapshot: LeagueSnapshot, rosterId: number): string[] {
 
 export function evaluateTrade(model: StrengthModel, snapshot: LeagueSnapshot, offer: TradeOffer): TradeResult {
   const claimed = new Set<string>();
-  return {
-    a: side(model, offer.teamA, rosterIds(snapshot, offer.teamA), offer.aGives, offer.bGives, claimed),
-    b: side(model, offer.teamB, rosterIds(snapshot, offer.teamB), offer.bGives, offer.aGives, claimed),
-  };
+  const a = side(model, offer.teamA, rosterIds(snapshot, offer.teamA), offer.aGives, offer.bGives, claimed);
+  const b = side(model, offer.teamB, rosterIds(snapshot, offer.teamB), offer.bGives, offer.aGives, claimed);
+  const total = a.valueReceived + b.valueReceived;
+  const valueBalance = total > 0 ? Math.min(97, Math.max(3, 50 + (50 * (b.valueReceived - a.valueReceived)) / total)) : 50;
+  return { a, b, valueBalance };
+}
+
+// ---- Why a trade is the way it is -------------------------------------------
+//
+// An explanation only: nothing here changes a grade, a chance or a ranking.
+// It compares the trade on player value alone with its effect on each team,
+// and names what explains the gap.
+
+/** A team effect smaller than this (points a week) counts as no real change. */
+const REAL_CHANGE = 0.5;
+/** Fit this large (points a week) is worth pointing out. */
+const NOTABLE_FIT = 1;
+
+export type TradeKind =
+  | "leverage"
+  | "win-win"
+  | "fair-for-you"
+  | "value-edge"
+  | "fit-for-you"
+  | "costs-you"
+  | "even";
+
+export interface TradeStory {
+  kind: TradeKind;
+  headline: string;
+  points: string[];
+}
+
+/** True when the two sides are within 10% (or a point a week) on player value. */
+export function evenOnValue(result: TradeResult): boolean {
+  const gap = Math.abs(result.a.valueReceived - result.b.valueReceived);
+  return gap <= Math.max(1, 0.1 * Math.max(result.a.valueReceived, result.b.valueReceived));
+}
+
+/** The kind of trade, from team A's point of view. */
+export function tradeKind(result: TradeResult): TradeKind {
+  const { a, b } = result;
+  const gains = a.teamChange >= REAL_CHANGE;
+  // You get more player value, and they still come out about even or better
+  // because your side fits their roster.
+  if (gains && a.valueChange >= NOTABLE_FIT && b.fit >= NOTABLE_FIT && b.teamChange > -REAL_CHANGE) return "leverage";
+  if (gains && b.teamChange >= REAL_CHANGE) return "win-win";
+  if (gains && evenOnValue(result)) return "fair-for-you";
+  if (gains && a.valueChange >= NOTABLE_FIT) return "value-edge";
+  if (gains) return "fit-for-you";
+  if (a.teamChange <= -REAL_CHANGE) return "costs-you";
+  return "even";
+}
+
+const HEADLINES: Record<TradeKind, string> = {
+  leverage: "You get more player value, because your side is worth more to them",
+  "win-win": "Win-win: both teams get stronger",
+  "fair-for-you": "Even on paper, better for your roster",
+  "value-edge": "You come out ahead on player value",
+  "fit-for-you": "Worth more to your roster than on paper",
+  "costs-you": "Costs your team strength",
+  even: "About even all round",
+};
+
+const fixed = (value: number) => value.toFixed(2);
+const signed = (value: number) => (value >= 0 ? `+${value.toFixed(2)}` : `\u2212${(-value).toFixed(2)}`);
+
+/**
+ * Explains a trade from team A's point of view: the kind of trade, then
+ * short points in order of importance. `profiles` and `situation` add the
+ * roster and team details behind the numbers when they are available.
+ */
+export function tradeStory(
+  model: StrengthModel,
+  snapshot: LeagueSnapshot,
+  result: TradeResult,
+  profiles?: { mine: PositionNote[]; theirs: PositionNote[] },
+  situation?: TeamSituation,
+): TradeStory {
+  const { a, b } = result;
+  const kind = tradeKind(result);
+  const them = snapshot.teams.find((team) => team.rosterId === b.rosterId)?.teamName ?? "They";
+  const notes: string[] = [];
+
+  if (evenOnValue(result)) {
+    notes.push(`Even on player value: about ${fixed(a.valueReceived)} a week each way, above free-agent level.`);
+  } else if (a.valueChange > 0) {
+    notes.push(`You get ${fixed(a.valueChange)} a week more player value (${fixed(a.valueReceived)} for ${fixed(a.valueSent)}).`);
+  } else {
+    notes.push(`You give up ${fixed(-a.valueChange)} a week of player value (${fixed(a.valueSent)} for ${fixed(a.valueReceived)}).`);
+  }
+  if (a.fit >= NOTABLE_FIT) notes.push(`Worth ${fixed(a.fit)} a week more to your roster than its player value.`);
+  if (a.fit <= -NOTABLE_FIT) notes.push(`Fits your roster poorly: worth ${fixed(-a.fit)} a week less to you than its player value.`);
+  if (b.fit >= NOTABLE_FIT) notes.push(`Worth ${fixed(b.fit)} a week more to ${them} than its player value.`);
+  if (b.teamChange >= REAL_CHANGE) notes.push(`${them} get stronger too (${signed(b.teamChange)} a week).`);
+  else if (b.teamChange <= -REAL_CHANGE) notes.push(`${them} get weaker (${signed(b.teamChange)} a week).`);
+
+  if (profiles) {
+    for (const reason of reasonsFor(model, snapshot, result, profiles.mine, profiles.theirs, situation)) {
+      if (!notes.includes(reason)) notes.push(reason);
+    }
+  }
+  return { kind, headline: HEADLINES[kind], points: notes.slice(0, 7) };
 }
 
 export interface TradeIdea {
@@ -148,8 +281,8 @@ export interface TradeIdea {
   /** 0 to 1: a rough estimate of how likely the other manager is to accept. */
   chance: number;
   likelihood: Likelihood;
-  /** Short explanations of why this trade came up. */
-  reasons: string[];
+  /** What kind of trade it is and why it came up. */
+  story: TradeStory;
 }
 
 export interface FinderOptions {
@@ -163,8 +296,14 @@ export interface FinderOptions {
   getPlayerId?: string;
 }
 
-/** Weeks used for the first pass over every possible swap. */
-const SCREEN_WEEKS = 40;
+/**
+ * Weeks used for the first pass over every possible swap. The shortlist is
+ * re-checked over all the weeks, so this only has to rank roughly; every
+ * player sees the same weeks on any roster, which keeps the comparison fair.
+ */
+const SCREEN_WEEKS = 24;
+/** An open search tries many more swaps, so it screens on fewer weeks. */
+const OPEN_SCREEN_WEEKS = 16;
 
 /**
  * A rough estimate of whether the other manager says yes. Three parts with
@@ -285,13 +424,14 @@ export function findTrades(
 ): FinderResult {
   const targeted = Boolean(options.givePlayerId || options.getPlayerId);
   const minGain = targeted ? -MAX_PRICE : MIN_GAIN;
+  const screenWeeks = targeted ? SCREEN_WEEKS : OPEN_SCREEN_WEEKS;
   const mine = rosterIds(snapshot, rosterId);
   const at = (position: string | undefined) => (player: ModelPlayer) =>
     !position || player.positions.includes(position);
   const givers = players(model, mine).filter(
     (player) => player.games > 0 && at(options.givePosition)(player) && (!options.givePlayerId || player.id === options.givePlayerId),
   );
-  const mineBefore = projectedWeekly(model, mine, SCREEN_WEEKS);
+  const mineBefore = projectedWeekly(model, mine, screenWeeks);
   const screened: { offer: TradeOffer; quick: number }[] = [];
   // A real gain is weighed by its chance. Ideas that gain you nothing (or
   // cost a little, when a player is named) rank below every real gain, the
@@ -305,7 +445,7 @@ export function findTrades(
       (player) => player.games > 0 && at(options.getPosition)(player) && (!options.getPlayerId || player.id === options.getPlayerId),
     );
     if (targets.length === 0) continue;
-    const theirsBefore = projectedWeekly(model, theirs, SCREEN_WEEKS);
+    const theirsBefore = projectedWeekly(model, theirs, screenWeeks);
     const urgency = situations.get(team.rosterId)?.urgency ?? 0;
     const weakest = players(model, theirs).reduce((a, b) => (b.expected < a.expected ? b : a));
 
@@ -313,13 +453,13 @@ export function findTrades(
       const giveIds = gives.map((player) => player.id);
       const myAfter = [...mine.filter((id) => !giveIds.includes(id)), get.id];
       // A one-for-two leaves you a spot short; the full evaluation picks the free agent.
-      const gain = projectedWeekly(model, myAfter, SCREEN_WEEKS) - mineBefore;
+      const gain = projectedWeekly(model, myAfter, screenWeeks) - mineBefore;
       if (gain < minGain - (gives.length - 1) * 2) return;
       // Receiving two for one, they drop their weakest player.
       let theirAfter = [...theirs.filter((id) => id !== get.id), ...giveIds];
       const dropped = gives.length > 1 ? weakest : null;
       if (dropped) theirAfter = theirAfter.filter((id) => id !== dropped.id);
-      const theirGain = projectedWeekly(model, theirAfter, SCREEN_WEEKS) - theirsBefore;
+      const theirGain = projectedWeekly(model, theirAfter, screenWeeks) - theirsBefore;
       const received = sumAverage(gives) - (dropped?.average ?? 0);
       const chance = chanceFrom(theirGain, received, get.average, urgency);
       if (chance < SCREEN_FLOOR) return;
@@ -331,8 +471,10 @@ export function findTrades(
 
     for (const get of targets) {
       for (const give of givers) {
-        // Without a named player, skip swaps of players worlds apart: they cannot suit both teams.
+        // Without a named player, skip swaps of players worlds apart (they cannot suit both
+        // teams) and swaps for a clearly lesser player (they rarely help you).
         if (!targeted && Math.abs(give.expected - get.expected) > 0.4 * Math.max(give.expected, get.expected)) continue;
+        if (!targeted && get.expected < 0.85 * give.expected) continue;
         consider([give], get);
       }
       // Two of the user's players for a named target.
@@ -355,7 +497,7 @@ export function findTrades(
   const order: Likelihood[] = ["likely", "possible", "long shot"];
   const evaluated = screened
     .sort((a, b) => b.quick - a.quick)
-    .slice(0, limit * 6)
+    .slice(0, limit * 4)
     .map(({ offer }) => {
       const result = evaluateTrade(model, snapshot, offer);
       const chance = acceptanceChance(result.b, situations.get(offer.teamB)?.urgency ?? 0);
@@ -412,7 +554,13 @@ export function findTrades(
     outlook,
     ideas: chosen.map((idea) => ({
       ...idea,
-      reasons: reasonsFor(model, snapshot, idea.result, myProfile, profileOf(idea.offer.teamB), situations.get(idea.offer.teamB)),
+      story: tradeStory(
+        model,
+        snapshot,
+        idea.result,
+        { mine: myProfile, theirs: profileOf(idea.offer.teamB) },
+        situations.get(idea.offer.teamB),
+      ),
     })),
   };
 }
@@ -424,13 +572,4 @@ export function gradeWord(grade: number): string {
   if (grade >= 43) return "About even";
   if (grade >= 20) return "Loss";
   return "Big loss";
-}
-
-/**
- * Where a trade sits between the two teams, 0 to 100: 50 is even, lower
- * favors team A, higher favors team B. Both grades can be high when both
- * teams improve; this shows only which one gains more.
- */
-export function balance(result: TradeResult): number {
-  return Math.min(97, Math.max(3, 50 + (result.b.grade - result.a.grade) / 2));
 }

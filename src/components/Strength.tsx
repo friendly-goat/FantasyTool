@@ -1,6 +1,6 @@
 import { SIMULATED_WEEKS, type TeamStrength } from "../../shared/strength.ts";
 import type { LeagueSnapshot } from "../../shared/types.ts";
-import { formatPoints } from "../format.ts";
+import { formatPoints, formatSigned } from "../format.ts";
 import { Avatar } from "./Avatar.tsx";
 
 interface Props {
@@ -27,10 +27,9 @@ export function Strength({ snapshot, strengths, myRosterId, onOpenTeam }: Props)
               <th scope="col">Team</th>
               <th scope="col">Strength</th>
               <th scope="col" className="num">Projected weekly</th>
-              <th scope="col" className="num">Full-health lineup</th>
-              <th scope="col" className="num">Lost to absences</th>
-              <th scope="col" className="num">Starters play</th>
-              <th scope="col" className="num">Bench top 3</th>
+              <th scope="col" className="num">Best nine alone</th>
+              <th scope="col" className="num">Bench adds</th>
+              <th scope="col" className="num">Best nine play</th>
             </tr>
           </thead>
           <tbody>
@@ -62,10 +61,9 @@ export function Strength({ snapshot, strengths, myRosterId, onOpenTeam }: Props)
                     </div>
                   </td>
                   <td className="num strong">{formatPoints(strength.projected)}</td>
-                  <td className="num">{formatPoints(strength.fullHealth)}</td>
-                  <td className="num">{formatPoints(strength.lostToAbsences)}</td>
+                  <td className="num">{formatPoints(strength.bestNine)}</td>
+                  <td className="num">{formatSigned(strength.benchAdds)}</td>
                   <td className="num">{percent.format(strength.starterAvailability)}</td>
-                  <td className="num">{formatPoints(strength.bench)}</td>
                 </tr>
               );
             })}
@@ -74,21 +72,21 @@ export function Strength({ snapshot, strengths, myRosterId, onOpenTeam }: Props)
       </div>
       <div className="quiet legend explain">
         <p>
-          Strength rates each roster for the rest of the season. 1 is a team built only from the best free
-          agents; 1000 is the nine best players in the league never missing a game.
+          Strength rates each roster for the rest of the season. 1 is a roster of the best free agents; 1000 is
+          the league's best players on one roster.
         </p>
         <p>
-          It comes from the projected weekly score: the points a team's best lineup is expected to lock in an
-          average week. The app plays out {SIMULATED_WEEKS} weeks. In each, every player's team has two to four
-          games, he plays them as often as he has this season, he is worth his lock-in value for the games he
-          plays, and the team fields its best legal lineup from whoever is available. Star power, positional
-          fit, depth and durability all end up in that one number.
+          It comes from the projected weekly score: the points a team is expected to lock in an average week. The
+          app plays out {SIMULATED_WEEKS} weeks day by day. Each day the players with a game go into the open
+          starting slots, best first, whatever lineup is set in Sleeper right now. After the games, a slot is
+          locked when its score beats what that slot can still expect from the rest of the week; a locked slot is
+          done. Players score around their projected level with their own ups and downs, and miss games as often
+          as they are expected to.
         </p>
         <p>
-          The other columns show where it comes from: the lineup if nobody missed a game, the points lost to
-          missed games after the bench fills in, how often the starters play, and the bench's best three.
-          Players with only a few games are pulled toward an average free agent. Injuries are judged by games
-          missed so far, so a player who was just ruled out for months is still overrated.
+          Because an open slot can take a different player each day, bench players are extra chances at a big
+          game, not just cover for injuries. Bench adds is how much higher the projection is with the whole roster
+          than with the best nine alone. Best nine play is how often those nine are expected to play.
         </p>
       </div>
     </section>

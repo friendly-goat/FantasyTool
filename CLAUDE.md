@@ -5,7 +5,9 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
 
 ## The league
 
-- Lock-in mode: each starter counts ONE game per fantasy week. The manager
+- Lineup: PG, SG, G (PG/SG), SF, PF, F (SF/PF), C, UTIL, UTIL; 5 bench, 1 IR.
+- Lock-in mode: each starting slot counts ONE game per fantasy week, and a
+  player must be in the lineup when his game starts to be lock-eligible. The manager
   may lock a score after a game and before that player's next game; if
   nothing is locked, the last game of the week counts. Weeks run Monday to
   Sunday (`server/weeks.ts`). Value players accordingly: a week is a few
@@ -47,9 +49,16 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
 - A missed game is not an injury. Rest days are a rate; only a run of 4+
   missed team games is a long absence (`availabilityOutlook`).
 - Team strength (1 to 1000) and trade grades come from the projected weekly
-  score in `shared/strength.ts` and `shared/trade.ts`. The owner judges
+  score in `shared/strength.ts` and `shared/trade.ts`. It is a day-by-day
+  lock-in simulation (`simulateWeek`): open slots rotate players daily, so the
+  bench counts. Never judge a team by the lineup currently set in Sleeper;
+  managers bench good players on purpose to rotate others in. The owner judges
   everything over the rest of the season, not the coming week. Keep the model
   deterministic (same imaginary weeks for a player on any roster).
+- Trades are shown three ways (`shared/trade.ts`): player value (value above
+  a typical free agent, no team context), team effect (strength change), and
+  fit (the gap). `tradeStory` explains a trade from those; it must never feed
+  back into grades, chances or the ranking of ideas.
 - The owner wants analysis that finds what he would not notice himself, done
   with data in code. No chatbot or LLM inside the app.
 - The user's own team is chosen once per league (`myRosterId` in `src/App.tsx`).

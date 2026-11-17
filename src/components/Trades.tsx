@@ -3,15 +3,16 @@ import { rosterPlayers } from "../../shared/analysis.ts";
 import { POSITIONS, positionProfile, type TeamSituation } from "../../shared/insight.ts";
 import type { ModelPlayer, StrengthModel } from "../../shared/strength.ts";
 import {
-  balance,
   evaluateTrade,
   findTrades,
   gradeWord,
   type FinderOptions,
   type FinderResult,
   type TradeIdea,
+  tradeStory,
   type TradeResult,
   type TradeSide,
+  type TradeStory,
 } from "../../shared/trade.ts";
 import type { LeagueSnapshot, Team } from "../../shared/types.ts";
 import { formatPoints, formatSigned } from "../format.ts";
@@ -93,7 +94,22 @@ function RosterPicker({ team, model, chosen, onToggle, label }: {
   );
 }
 
-function SideResult({ side, team }: { side: TradeSide; team: Team | undefined }) {
+/** A bar from the middle: right and green for a gain, left and red for a loss. */
+function EffectBar({ change, scale, label }: { change: number; scale: number; label: string }) {
+  const width = Math.min(50, (Math.abs(change) / Math.max(1, scale)) * 50);
+  return (
+    <div className="effect" role="img" aria-label={label}>
+      <span className="effect-center" />
+      <span
+        className={`effect-fill ${change >= 0 ? "effect-up" : "effect-down"}`}
+        style={change >= 0 ? { left: "50%", width: `${width}%` } : { right: "50%", width: `${width}%` }}
+      />
+    </div>
+  );
+}
+
+function SideResult({ side, team, scale }: { side: TradeSide; team: Team | undefined; scale: number }) {
+  const strengthTone = side.strengthChange > 0 ? "up" : side.strengthChange < 0 ? "down" : "";
   return (
     <div className="card grade-card">
       <div className="team-cell">
@@ -107,21 +123,35 @@ function SideResult({ side, team }: { side: TradeSide; team: Team | undefined })
         <span className="grade-letter">{side.letter}</span>
         <span className="grade-word">{gradeWord(side.grade)}</span>
       </p>
+
+      <div className="effect-block">
+        <div className="effect-head">
+          <span className="effect-title">Team effect</span>
+          <span className={`effect-value ${strengthTone}`}>{whole(side.strengthChange)} strength</span>
+        </div>
+        <EffectBar
+          change={side.strengthChange}
+          scale={scale}
+          label={`Team strength ${side.strengthBefore} to ${side.strengthAfter}`}
+        />
+        <p className="quiet effect-note">
+          Strength {side.strengthBefore} to {side.strengthAfter}. Projected weekly score{" "}
+          {formatPoints(side.projectedAfter)} ({formatSigned(side.teamChange)}).
+        </p>
+      </div>
+
       <dl className="grade-facts">
         <div>
-          <dt>Team strength</dt>
-          <dd>
-            {side.strengthBefore} to {side.strengthAfter}{" "}
-            <span className={side.strengthChange > 0 ? "up" : side.strengthChange < 0 ? "down" : ""}>
-              ({whole(side.strengthChange)})
-            </span>
-          </dd>
+          <dt>Player value in</dt>
+          <dd>{formatPoints(side.valueReceived)}</dd>
         </div>
         <div>
-          <dt>Projected weekly score</dt>
-          <dd>
-            {formatPoints(side.projectedAfter)} ({formatSigned(side.projectedAfter - side.projectedBefore)})
-          </dd>
+          <dt>Player value out</dt>
+          <dd>{formatPoints(side.valueSent)}</dd>
+        </div>
+        <div>
+          <dt>Fit with roster</dt>
+          <dd className={side.fit >= 1 ? "up" : side.fit <= -1 ? "down" : ""}>{formatSigned(side.fit)}</dd>
         </div>
       </dl>
       <p className="quiet">
@@ -134,18 +164,25 @@ function SideResult({ side, team }: { side: TradeSide; team: Team | undefined })
   );
 }
 
-/** Where a trade sits between the two teams: the dot moves toward the team it favors. */
-function Balance({ result, nameA, nameB, compact = false }: { result: TradeResult; nameA: string; nameB: string; compact?: boolean }) {
-  const position = balance(result);
+/** Who the trade favors on player value alone: the dot moves toward the side that gets more. */
+function ValueBalance({ result, nameA, nameB, compact = false }: { result: TradeResult; nameA: string; nameB: string; compact?: boolean }) {
+  const position = result.valueBalance;
   const lean = Math.abs(position - 50);
   const favored = position < 50 ? nameA : nameB;
   const words =
-    lean < 4 ? "Even trade" : lean < 12 ? `Slightly favors ${favored}` : lean < 25 ? `Favors ${favored}` : `Strongly favors ${favored}`;
+    lean < 2.5
+      ? "Even on player value"
+      : lean < 7.5
+        ? `Slightly favors ${favored} on player value`
+        : lean < 15
+          ? `Favors ${favored} on player value`
+          : `Strongly favors ${favored} on player value`;
   return (
     <div className={`balance${compact ? " balance-compact" : ""}`}>
       {!compact && (
         <div className="balance-names">
           <span>{nameA}</span>
+          <span className="balance-title">Player value</span>
           <span>{nameB}</span>
         </div>
       )}
@@ -154,8 +191,32 @@ function Balance({ result, nameA, nameB, compact = false }: { result: TradeResul
         <span className="balance-dot" style={{ left: `${position}%` }} />
       </div>
       <p className="balance-words">{words}</p>
+      {!compact && (
+        <p className="quiet balance-detail">
+          {nameA} gets {formatPoints(result.a.valueReceived)} and {nameB} gets {formatPoints(result.b.valueReceived)} a
+          week of player value: each player's own weekly value above a typical free agent, before any team context.
+        </p>
+      )}
     </div>
   );
+}
+
+function StoryBlock({ story }: { story: TradeStory }) {
+  return (
+    <div className="story">
+      <p className={`story-kind kind-${story.kind}`}>{story.headline}</p>
+      <ul className="idea-reasons quiet">
+        {story.points.map((point) => (
+          <li key={point}>{point}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** Both team-effect bars share one scale, so they can be compared. */
+function effectScale(result: TradeResult): number {
+  return Math.max(30, Math.abs(result.a.strengthChange), Math.abs(result.b.strengthChange));
 }
 
 function verdict(a: TradeSide, b: TradeSide, nameA: string, nameB: string): string {
@@ -192,6 +253,23 @@ export function Trades({ snapshot, model, situations, myRosterId }: Props) {
     if (!model || teamA === teamB || aGives.size + bGives.size === 0) return null;
     return evaluateTrade(model, snapshot, { teamA, teamB, aGives: [...aGives], bGives: [...bGives] });
   }, [model, snapshot, teamA, teamB, aGives, bGives]);
+
+  // Roster needs for both builder teams, behind the explanation of a trade.
+  const builderProfiles = useMemo(() => {
+    if (!model || teamA === teamB) return null;
+    const of = (rosterId: number) => {
+      const found = snapshot.teams.find((candidate) => candidate.rosterId === rosterId);
+      return found ? positionProfile(model, snapshot, rosterPlayers(found).map((player) => player.id)) : [];
+    };
+    return { mine: of(teamA), theirs: of(teamB) };
+  }, [model, snapshot, teamA, teamB]);
+  const story = useMemo(
+    () =>
+      model && result && builderProfiles
+        ? tradeStory(model, snapshot, result, builderProfiles, situations?.get(teamB))
+        : null,
+    [model, snapshot, result, builderProfiles, situations, teamB],
+  );
 
   const myTeam = snapshot.teams.find((candidate) => candidate.rosterId === myRosterId);
   const profile = useMemo(
@@ -293,13 +371,19 @@ export function Trades({ snapshot, model, situations, myRosterId }: Props) {
             {result ? (
               <div className="trade-result" role="status">
                 <div className="card balance-card">
-                  <Balance result={result} nameA={a.teamName} nameB={b.teamName} />
+                  <ValueBalance result={result} nameA={a.teamName} nameB={b.teamName} />
                 </div>
                 <p className="verdict">{verdict(result.a, result.b, a.teamName, b.teamName)}</p>
                 <div className="my-cards">
-                  <SideResult side={result.a} team={a} />
-                  <SideResult side={result.b} team={b} />
+                  <SideResult side={result.a} team={a} scale={effectScale(result)} />
+                  <SideResult side={result.b} team={b} scale={effectScale(result)} />
                 </div>
+                {story && (
+                  <div className="card story-card">
+                    <h3 className="my-card-title">Why, from {a.teamName}'s side</h3>
+                    <StoryBlock story={story} />
+                  </div>
+                )}
               </div>
             ) : (
               <p className="quiet trade-hint">Tick the players each team would send to see a grade for both managers.</p>
@@ -427,13 +511,7 @@ export function Trades({ snapshot, model, situations, myRosterId }: Props) {
                 <p className="idea-deal">
                   Send {names(idea.result.a.gives)} to {team(idea.offer.teamB)?.teamName} for {names(idea.result.a.gets)}
                 </p>
-                {idea.reasons.length > 0 && (
-                  <ul className="idea-reasons quiet">
-                    {idea.reasons.map((reason) => (
-                      <li key={reason}>{reason}</li>
-                    ))}
-                  </ul>
-                )}
+                <StoryBlock story={idea.story} />
               </div>
               <div className="idea-side">
                 <dl className="idea-facts">
@@ -447,7 +525,15 @@ export function Trades({ snapshot, model, situations, myRosterId }: Props) {
                   </div>
                   <div>
                     <dt>Your strength</dt>
-                    <dd>{whole(idea.result.a.strengthChange)}</dd>
+                    <dd className={idea.result.a.strengthChange > 0 ? "up" : idea.result.a.strengthChange < 0 ? "down" : ""}>
+                      {whole(idea.result.a.strengthChange)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Their strength</dt>
+                    <dd className={idea.result.b.strengthChange > 0 ? "up" : idea.result.b.strengthChange < 0 ? "down" : ""}>
+                      {whole(idea.result.b.strengthChange)}
+                    </dd>
                   </div>
                   <div>
                     <dt>Chance they accept</dt>
@@ -456,7 +542,7 @@ export function Trades({ snapshot, model, situations, myRosterId }: Props) {
                     </dd>
                   </div>
                 </dl>
-                <Balance result={idea.result} nameA="You" nameB="Them" compact />
+                <ValueBalance result={idea.result} nameA="you" nameB="them" compact />
               </div>
               <button type="button" className="button button-plain" onClick={() => load(idea)}>
                 Open in builder
@@ -470,8 +556,11 @@ export function Trades({ snapshot, model, situations, myRosterId }: Props) {
         <p>
           Each manager's letter says how good the trade is for their own team over the rest of the season: A is a
           big win, B a win, C about even, D a loss, F a big loss. Both can get an A when a trade suits both teams.
-          The slider shows which team gains more, from the change in projected weekly score, the same number
-          behind team strength.
+          The top slider compares player value alone: each player's own weekly value above a typical free agent,
+          with no team context. The bar on each team's card is the trade in context: the change in that team's
+          strength. The gap between the two is fit: a trade worth more to a team than its player value usually
+          fills a thin position, adds depth, or covers for an injury. Trade ideas are still ranked the same way;
+          this only explains them.
         </p>
         <p>
           Ideas likely to be accepted (50% or better) come first, ranked by the weekly points they add for you

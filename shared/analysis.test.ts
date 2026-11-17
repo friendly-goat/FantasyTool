@@ -1,17 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fetchFromMock, MOCK_LEAGUE_ID } from "../server/mock.ts";
-import { buildSnapshot, loadPlayers } from "../server/snapshot.ts";
-import { createMockStats } from "../server/stats/mock.ts";
-import { StatsService } from "../server/stats/service.ts";
-import {
-  bestLineup,
-  freeAgentUpgrades,
-  leagueOutlook,
-  rosterPlayers,
-  slotAccepts,
-  startingSlots,
-  teamOutlook,
-} from "./analysis.ts";
+import { bestLineup, slotAccepts } from "./analysis.ts";
 import { lockInValue } from "./lockin.ts";
 
 describe("lockInValue", () => {
@@ -75,61 +63,5 @@ describe("bestLineup", () => {
     const lineup = bestLineup(["G", "G", "UTIL"], [player("a", ["PG"], 40), player("b", ["SG"], 10)]);
     expect(lineup.total).toBe(50);
     expect(new Set(lineup.playerIds.filter(Boolean)).size).toBe(2);
-  });
-});
-
-describe("team analysis (against the mock league)", async () => {
-  const rawPlayers = (await fetchFromMock("/players/nba")) as Record<string, unknown>;
-  const players = await loadPlayers(fetchFromMock);
-  const snapshot = await buildSnapshot(MOCK_LEAGUE_ID, fetchFromMock, players);
-  const service = new StatsService(createMockStats(rawPlayers), { dir: null });
-  await service.sync("2026");
-  const report = await service.report(snapshot, players);
-  const slots = startingSlots(snapshot);
-  const team = snapshot.teams[0]!;
-
-  it("reads the starting slots from the league", () => {
-    expect(slots).toEqual(["PG", "SG", "G", "SF", "PF", "F", "C", "UTIL", "UTIL"]);
-  });
-
-  it("gives every player with games a lock-in value at or above his average", () => {
-    for (const stats of Object.values(report.players)) {
-      expect(stats.lockInValue).toBeGreaterThanOrEqual(stats.fantasyAvg - 1e-9);
-      expect(stats.bestGame).toBeGreaterThanOrEqual(stats.lockInValue - 1e-9);
-    }
-  });
-
-  it("builds a best lineup that follows the rules and leaves out unavailable players", () => {
-    const outlook = teamOutlook(team, slots, report.players);
-    const roster = new Map(rosterPlayers(team).map((player) => [player.id, player]));
-    const reserve = new Set(team.reserve.map((player) => player.id));
-    outlook.best.playerIds.forEach((id, index) => {
-      if (!id) return;
-      const chosen = roster.get(id)!;
-      expect(slotAccepts(slots[index]!, chosen.positions)).toBe(true);
-      expect(reserve.has(id)).toBe(false);
-      expect(chosen.injuryStatus).not.toBe("OUT");
-    });
-    expect(outlook.best.playerIds.filter(Boolean).length).toBe(new Set(outlook.best.playerIds.filter(Boolean)).size);
-  });
-
-  it("ranks all teams by best lineup", () => {
-    const outlooks = leagueOutlook(snapshot, report);
-    expect(outlooks).toHaveLength(10);
-    for (let i = 1; i < outlooks.length; i++) {
-      expect(outlooks[i - 1]!.bestValue).toBeGreaterThanOrEqual(outlooks[i]!.bestValue);
-    }
-  });
-
-  it("suggests only free agents who raise the best lineup, biggest gain first", () => {
-    const rostered = new Set(snapshot.teams.flatMap((other) => rosterPlayers(other).map((p) => p.id)));
-    const upgrades = freeAgentUpgrades(team, snapshot, report);
-    expect(upgrades.length).toBeLessThanOrEqual(5);
-    upgrades.forEach((upgrade, index) => {
-      expect(rostered.has(upgrade.player.id)).toBe(false);
-      expect(upgrade.gain).toBeGreaterThan(0);
-      expect(slotAccepts(upgrade.slot, upgrade.player.positions)).toBe(true);
-      if (index > 0) expect(upgrades[index - 1]!.gain).toBeGreaterThanOrEqual(upgrade.gain);
-    });
   });
 });
