@@ -1,6 +1,8 @@
+// Fantasy points show two decimals, as Sleeper does. All calculations keep
+// full precision; rounding happens only here, when a number is displayed.
 const pointsFormat = new Intl.NumberFormat("en-US", {
-  minimumFractionDigits: 1,
-  maximumFractionDigits: 1,
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
 });
 const dateFormat = new Intl.DateTimeFormat("en-US", {
   weekday: "short",
@@ -43,7 +45,7 @@ export function formatRecord(wins: number, losses: number, ties: number): string
 
 const oneDecimal = new Intl.NumberFormat("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
-/** Per-game averages: one decimal place. */
+/** Box-score averages (points, rebounds, minutes per game): one decimal place. */
 export function formatAverage(value: number): string {
   return oneDecimal.format(value);
 }

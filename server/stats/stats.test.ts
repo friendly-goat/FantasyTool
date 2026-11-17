@@ -3,7 +3,7 @@ import type { PlayerRef, StatLine } from "../../shared/types.ts";
 import { fetchFromMock, MOCK_LEAGUE_ID } from "../mock.ts";
 import { buildSnapshot, loadPlayers } from "../snapshot.ts";
 import { createBalldontlie, parseMinutes, toGameLine } from "./balldontlie.ts";
-import { matchPlayers, normalizeName } from "./match.ts";
+import { matchPlayers, normalizeName, sameLastName } from "./match.ts";
 import { createMockStats } from "./mock.ts";
 import type { GameLine, StatsProvider } from "./provider.ts";
 import { StatsService } from "./service.ts";
@@ -70,6 +70,50 @@ describe("matchPlayers", () => {
       lines,
     );
     expect([...matches.entries()]).toEqual([["current", "1"]]);
+  });
+
+  it("matches a nickname to a full first name on the same team", () => {
+    const lines = [
+      gameLine({ playerId: "1", playerName: "Nicolas Claxton", team: "BKN" }),
+      gameLine({ playerId: "2", playerName: "Alexandre Sarr", team: "WAS" }),
+    ];
+    const matches = matchPlayers(
+      { a: sleeper("a", "Nic Claxton", "BKN"), b: sleeper("b", "Alex Sarr", "WAS") },
+      lines,
+    );
+    expect([...matches.entries()].sort()).toEqual([["a", "1"], ["b", "2"]]);
+  });
+
+  it("does not guess a nickname across teams, initials, or when two players fit", () => {
+    const lines = [
+      gameLine({ playerId: "1", playerName: "Nicolas Claxton", team: "BKN" }),
+      gameLine({ playerId: "2", playerName: "Jalen Williams", team: "OKC" }),
+      gameLine({ playerId: "3", playerName: "Jaylin Williams", team: "OKC" }),
+    ];
+    const matches = matchPlayers(
+      {
+        a: sleeper("a", "Nic Claxton", "NYK"), // other team
+        b: sleeper("b", "Rob Claxton", "BKN"), // other initial
+        c: sleeper("c", "JJ Williams", "OKC"), // two candidates
+      },
+      lines,
+    );
+    expect(matches.size).toBe(0);
+  });
+
+  it("never gives an already matched stats player to a nickname", () => {
+    const lines = [gameLine({ playerId: "2", playerName: "Stephen Curry", team: "GSW" })];
+    const matches = matchPlayers(
+      { a: sleeper("a", "Stephen Curry", "GSW"), b: sleeper("b", "Steph Curry", "GSW") },
+      lines,
+    );
+    expect([...matches.entries()]).toEqual([["a", "2"]]);
+  });
+
+  it("lists stats players with the same last name", () => {
+    const lines = [gameLine({ playerId: "1", playerName: "Airious Bailey", team: "UTA" })];
+    expect(sameLastName("Ace Bailey", lines)).toEqual([{ name: "Airious Bailey", team: "UTA", games: 1 }]);
+    expect(sameLastName("Carmelo Anthony", lines)).toEqual([]);
   });
 
   it("lets a manual override win", () => {

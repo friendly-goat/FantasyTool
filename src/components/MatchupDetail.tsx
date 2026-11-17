@@ -1,5 +1,5 @@
 import type { LeagueSnapshot, Matchup, MatchupSide, MatchupSlot, StatsReport, Team } from "../../shared/types.ts";
-import { formatAverage, formatPoints, formatRecord } from "../format.ts";
+import { formatPoints, formatRecord } from "../format.ts";
 import { Avatar } from "./Avatar.tsx";
 import { PlayerName } from "./PlayerName.tsx";
 import { PositionChip } from "./PositionChip.tsx";
@@ -27,7 +27,7 @@ function SlotCell({ entry, stats, side }: { entry: MatchupSlot | undefined; stat
             </span>
             <span className="quiet">
               {[player.positions.join("/"), player.team].filter(Boolean).join(", ")}
-              {average != null && `, averages ${formatAverage(average)}`}
+              {average != null && `, averages ${formatPoints(average)}`}
             </span>
           </>
         ) : (

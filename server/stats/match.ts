@@ -112,8 +112,52 @@ export function matchPlayers(
     });
     matches.set(winner.sleeper.id, sourceId);
   }
+  // Step 3: nicknames. The two sources sometimes disagree on a first name
+  // ("Nic" and "Nicolas", "Alex" and "Alexandre"). A leftover Sleeper player
+  // is matched to a leftover stats player when they share a last name, an
+  // NBA team and a first initial, and nobody else fits that description.
+  const taken = new Set(matches.values());
+  const leftovers = new Map<string, SourcePlayer[]>();
+  for (const [name, players] of byName) {
+    for (const player of players) {
+      const team = normalizeTeam(player.team);
+      if (taken.has(player.id) || !team) continue;
+      const key = nicknameKey(name, team);
+      if (key) leftovers.set(key, [...(leftovers.get(key) ?? []), player]);
+    }
+  }
+  const nicknameClaims = new Map<string, string[]>();
+  for (const sleeper of Object.values(sleeperPlayers)) {
+    const team = normalizeTeam(sleeper.team);
+    if (matches.has(sleeper.id) || overrides[sleeper.id] || !team) continue;
+    const key = nicknameKey(normalizeName(sleeper.name), team);
+    const candidates = key ? leftovers.get(key) : undefined;
+    if (candidates?.length !== 1) continue;
+    const sourceId = candidates[0]!.id;
+    nicknameClaims.set(sourceId, [...(nicknameClaims.get(sourceId) ?? []), sleeper.id]);
+  }
+  for (const [sourceId, sleeperIds] of nicknameClaims) {
+    if (sleeperIds.length === 1) matches.set(sleeperIds[0]!, sourceId);
+  }
+
   for (const [sleeperId, sourceId] of Object.entries(overrides)) {
     matches.set(sleeperId, sourceId);
   }
   return matches;
+}
+
+/** "nicolas claxton" on BKN -> "BKN|n|claxton". Null for single-word names. */
+function nicknameKey(normalizedName: string, team: string): string | null {
+  const [first, ...rest] = normalizedName.split(" ");
+  if (!first || rest.length === 0) return null;
+  return `${team}|${first[0]}|${rest.join(" ")}`;
+}
+
+/** Stats-source players who share a last name with `name`, for diagnosing a failed match. */
+export function sameLastName(name: string, lines: GameLine[]): { name: string; team: string | null; games: number }[] {
+  const last = normalizeName(name).split(" ").slice(1).join(" ");
+  if (!last) return [];
+  return sourcePlayers(lines)
+    .filter((player) => normalizeName(player.name).split(" ").slice(1).join(" ") === last)
+    .map((player) => ({ name: player.name, team: player.team, games: player.games }));
 }

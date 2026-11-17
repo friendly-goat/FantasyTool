@@ -14,6 +14,7 @@ import { buildSnapshot, loadPlayers } from "../server/snapshot.ts";
 import { normalizeName } from "../server/stats/match.ts";
 import { createBalldontlie } from "../server/stats/balldontlie.ts";
 import { createMockStats } from "../server/stats/mock.ts";
+import { weekRange } from "../server/weeks.ts";
 import { StatsService } from "../server/stats/service.ts";
 
 try {
@@ -74,8 +75,9 @@ async function main() {
     player: player.name,
     team: player.team,
     games: player.games,
-    fantasyAvg: Number(player.fantasyAvg.toFixed(1)),
-    last5: player.recentAvg == null ? null : Number(player.recentAvg.toFixed(1)),
+    fantasyAvg: Number(player.fantasyAvg.toFixed(2)),
+    shownInSleeper: Number(player.sleeperAvg.toFixed(2)),
+    last5: player.recentAvg == null ? null : Number(player.recentAvg.toFixed(2)),
     pts: Number(player.averages.pts.toFixed(1)),
     reb: Number(player.averages.reb.toFixed(1)),
     ast: Number(player.averages.ast.toFixed(1)),
@@ -89,6 +91,14 @@ async function main() {
     "Rostered players without stats (injured all season, or a name mismatch):",
     report.unmatchedRostered.map((player) => `${player.name} [Sleeper ID ${player.id}]`),
   );
+  for (const player of report.unmatchedRostered) {
+    // Shows whether the stats source has this player under another first name.
+    const similar = await service.similarPlayers(snapshot.league.season, player.name);
+    console.log(
+      `  ${player.name} (${player.team ?? "no NBA team"}): stats source has`,
+      similar.length > 0 ? similar : "nobody with that last name, so no games played",
+    );
+  }
   console.log("Scoring settings not covered by the stats source:", report.ignoredScoring);
 
   console.log("\nTop 10 rostered players by fantasy average:");
@@ -112,10 +122,13 @@ async function main() {
     if (!details.has(id)) details.set(id, await service.playerDetail(snapshot, players, id));
     return details.get(id) ?? null;
   };
-  let compared = 0;
-  let exact = 0;
+  const technical = snapshot.league.scoringSettings.tf ?? 0;
+  const flagrant = snapshot.league.scoringSettings.ff ?? 0;
+  const near = (a: number, b: number) => Math.abs(a - b) < 0.011;
+  const tally = { exact: 0, technicalFoul: 0, flagrantFoul: 0, other: 0, noGameThatWeek: 0 };
   const misses: Record<string, unknown>[] = [];
   for (let week = 1; week <= snapshot.week; week++) {
+    const range = seasonStart ? weekRange(seasonStart, week) : null;
     const raw = (await fetchJson(`/league/${leagueId}/matchups/${week}`)) as RawMatchup[] | null;
     for (const entry of raw ?? []) {
       const starters = entry.starters ?? [];
@@ -123,30 +136,47 @@ async function main() {
         const credited = entry.players_points?.[id] ?? entry.starters_points?.[index] ?? 0;
         if (!credited) continue;
         const detail = await detailFor(id);
-        if (!detail || detail.games.length === 0) continue;
-        compared++;
-        const closest = detail.games.reduce((a, b) =>
+        // Only games played in that fantasy week can be the locked game.
+        const games = (detail?.games ?? []).filter(
+          (game) => !range || (game.date >= range.start && game.date <= range.end),
+        );
+        if (!detail || games.length === 0) {
+          tally.noGameThatWeek++;
+          continue;
+        }
+        const closest = games.reduce((a, b) =>
           Math.abs(b.fantasyPoints - credited) < Math.abs(a.fantasyPoints - credited) ? b : a,
         );
         const difference = credited - closest.fantasyPoints;
-        if (Math.abs(difference) < 0.011) exact++;
-        else if (misses.length < 20) {
-          misses.push({
-            week,
-            player: detail.player.name,
-            sleeper: credited,
-            ourClosestGame: Number(closest.fantasyPoints.toFixed(2)),
-            difference: Number(difference.toFixed(2)),
-            date: closest.date,
-            line: `${closest.stats.pts}p ${closest.stats.reb}r ${closest.stats.ast}a ${closest.stats.stl}s ${closest.stats.blk}b ${closest.stats.tov}to`,
-          });
+        if (near(difference, 0)) tally.exact++;
+        else if (technical && near(difference, technical)) tally.technicalFoul++;
+        else if (flagrant && near(difference, flagrant)) tally.flagrantFoul++;
+        else {
+          tally.other++;
+          if (misses.length < 20) {
+            misses.push({
+              week,
+              player: detail.player.name,
+              sleeper: credited,
+              ourClosestGame: Number(closest.fantasyPoints.toFixed(2)),
+              difference: Number(difference.toFixed(2)),
+              date: closest.date,
+              line: `${closest.stats.pts}p ${closest.stats.reb}r ${closest.stats.ast}a ${closest.stats.stl}s ${closest.stats.blk}b ${closest.stats.tov}to`,
+            });
+          }
         }
       }
     }
   }
-  console.log(`\nScoring check: ${exact} of ${compared} scores credited by Sleeper match one of our game scores exactly.`);
+  console.log(
+    "\nScoring check. Each score Sleeper credited to a starter, compared with our score for that player's games in the same week:",
+  );
+  console.log(tally);
+  console.log(
+    "exact: same to the cent. technicalFoul / flagrantFoul: off by exactly that penalty, which box scores do not include.",
+  );
   if (misses.length > 0) {
-    console.log("First mismatches (a constant difference points at a scoring rule):");
+    console.log("Other differences (usually one stat recorded differently by the two data sources):");
     console.table(misses);
   }
 
@@ -159,7 +189,9 @@ async function main() {
       const detail = await detailFor(player.id);
       if (!detail || detail.games.length === 0) continue;
       console.log(
-        `\n${player.name} (${player.team ?? "no team"}): ${detail.stats!.games} games, fantasy average ${detail.stats!.fantasyAvg.toFixed(2)}`,
+        `\n${player.name} (${player.team ?? "no team"}): ${detail.stats!.games} games, ` +
+          `fantasy average ${detail.stats!.fantasyAvg.toFixed(2)}, ` +
+          `Sleeper's app should show ${detail.stats!.sleeperAvg.toFixed(2)}`,
       );
       console.table(
         detail.games.map((game) => ({

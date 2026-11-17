@@ -167,7 +167,11 @@ function build() {
     status: "in_season",
     total_rosters: MANAGERS.length,
     roster_positions: ROSTER_POSITIONS,
-    scoring_settings: { pts: 1, reb: 1.2, ast: 1.5, stl: 3, blk: 3, to: -1 },
+    // Same shape as the owner's league, so bonus handling shows up in the sample data.
+    scoring_settings: {
+      pts: 1, reb: 1.2, ast: 1.5, stl: 2, blk: 3, to: -1, dd: 3, td: 5,
+      bonus_pt_40p: 5, bonus_pt_50p: 10, bonus_reb_20p: 10, bonus_ast_15p: 5,
+    },
   };
 
   return { players, users, rosters, matchups, transactions, league };

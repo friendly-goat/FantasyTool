@@ -1,5 +1,5 @@
 import type { LeagueSnapshot, PlayerRef, PlayerStats, StatsReport } from "../../shared/types.ts";
-import { formatAverage, formatPoints, formatRecord } from "../format.ts";
+import { formatPoints, formatRecord } from "../format.ts";
 import { Avatar } from "./Avatar.tsx";
 import { PlayerName } from "./PlayerName.tsx";
 import { PositionChip } from "./PositionChip.tsx";
@@ -41,8 +41,8 @@ function PlayerLine({ slot, player, stats, showStats }: LineProps) {
       </th>
       {showStats && (
         <>
-          <td className="num strong">{stats ? formatAverage(stats.fantasyAvg) : "–"}</td>
-          <td className="num">{stats?.recentAvg != null ? formatAverage(stats.recentAvg) : "–"}</td>
+          <td className="num strong">{stats ? formatPoints(stats.fantasyAvg) : "–"}</td>
+          <td className="num">{stats?.recentAvg != null ? formatPoints(stats.recentAvg) : "–"}</td>
           <td className="num quiet-cell">{stats ? stats.games : "–"}</td>
         </>
       )}
@@ -101,7 +101,7 @@ export function Teams({ snapshot, stats, selectedRosterId, onSelect }: Props) {
 
         {showStats && (
           <p className="roster-summary">
-            Starters average <strong>{formatAverage(starterTotal)}</strong> fantasy points per game combined.
+            Starters average <strong>{formatPoints(starterTotal)}</strong> fantasy points per game combined.
           </p>
         )}
 

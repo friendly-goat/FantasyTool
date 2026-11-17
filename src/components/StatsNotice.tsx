@@ -54,7 +54,8 @@ export function StatsNotice({ stats, onRetry }: { stats: StatsReport; onRetry: (
       Fantasy points use this league's scoring settings
       {stats.ignoredScoring.length > 0 &&
         `, except ${describeIgnored(stats.ignoredScoring)}, which the stats source does not track`}
-      . Game stats from {stats.source}
+      . Averages are the mean of a player's game scores, so they can read lower than the Sleeper app,
+      which adds each scoring bonus once to season totals. Game stats from {stats.source}
       {stats.syncedAt ? `, updated ${formatAgo(stats.syncedAt)}` : ""}.
       {stats.unmatchedRostered.length > 0 &&
         ` No stats found for: ${stats.unmatchedRostered.map((player) => player.name).join(", ")}.`}
