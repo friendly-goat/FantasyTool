@@ -1,5 +1,5 @@
 import { rosterPlayers, slotAccepts } from "./analysis.ts";
-import { projectRoster, type ModelPlayer, type StrengthModel, type TeamStrength } from "./strength.ts";
+import { projectRoster, projectedWeekly, steadyPlayer, type ModelPlayer, type StrengthModel, type TeamStrength } from "./strength.ts";
 import type { LeagueSnapshot } from "./types.ts";
 
 // Reading a roster and a team's situation. Nothing here is a fixed rule
@@ -8,7 +8,7 @@ import type { LeagueSnapshot } from "./types.ts";
 
 export const POSITIONS = ["PG", "SG", "SF", "PF", "C"];
 /** Weeks used for these what-if checks. Fewer than the full set, for speed. */
-const WHAT_IF_WEEKS = 80;
+const WHAT_IF_WEEKS = 40;
 
 export interface PositionNote {
   position: string;
@@ -23,7 +23,12 @@ export interface PositionNote {
   cover: number;
 }
 
-/** A typical starter at one position: the middle value among all teams' starters. */
+/**
+ * A typical starter at one position: the middle value among all teams' best
+ * nine, playing three games a week. He may fill only the slots reserved for
+ * his position, not the open UTIL slots; otherwise every position would show
+ * the same need.
+ */
 function typicalStarter(model: StrengthModel, snapshot: LeagueSnapshot, position: string): ModelPlayer {
   const starters = snapshot.teams
     .flatMap((team) =>
@@ -32,29 +37,12 @@ function typicalStarter(model: StrengthModel, snapshot: LeagueSnapshot, position
         .sort((a, b) => b.expected - a.expected)
         .slice(0, model.slots.length),
     )
-    .map((player) => player.expected)
+    .map((player) => player.waitValue[1]!)
     .sort((a, b) => a - b);
-  const value = starters[Math.floor(starters.length / 2)] ?? 0;
-  const weeks = model.players.values().next().value?.weeks.length ?? 0;
-  return {
-    id: `typical-${position}`,
-    name: `Typical ${position}`,
-    team: null,
-    positions: [position],
-    injuryStatus: null,
-    games: 1,
-    average: value,
-    projected: value,
-    longTermOut: false,
-    availability: 1,
-    healthy: value,
-    expected: value,
-    // He may fill only the slots reserved for his position, not the open
-    // UTIL slots. Otherwise every position would show the same need: the
-    // gap between a typical starter and the team's weakest starter.
-    eligible: model.slots.map((slot) => slot !== "UTIL" && slotAccepts(slot, [position])),
-    weeks: new Float64Array(weeks).fill(value),
-  };
+  const level = starters[Math.floor(starters.length / 2)] ?? 0;
+  const player = steadyPlayer(model, `typical-${position}`, [position], level);
+  player.eligible = model.slots.map((slot) => slot !== "UTIL" && slotAccepts(slot, [position]));
+  return player;
 }
 
 /** Where a roster is thin and where it has players to spare, position by position. */
@@ -128,3 +116,31 @@ export function marketGap(player: ModelPlayer): number {
 }
 /** A gap of this size earns a "buy low" or "sell high" note. */
 export const MARKET_GAP_NOTE = 0.05;
+
+export interface Pickup {
+  player: ModelPlayer;
+  /** The roster player he would replace: the one the roster misses least. */
+  drop: ModelPlayer;
+  /** Weekly points the swap adds to the projected weekly score. */
+  gain: number;
+}
+
+/** Free agents worth picking up, with who to drop for each, biggest gain first. */
+export function freeAgentPickups(model: StrengthModel, playerIds: string[], limit = 5): Pickup[] {
+  const roster = playerIds.flatMap((id) => model.players.get(id) ?? []);
+  if (roster.length === 0) return [];
+  const base = projectedWeekly(model, playerIds, WHAT_IF_WEEKS);
+  // The player the roster misses least, measured, among its five least valuable.
+  const drop = [...roster]
+    .sort((a, b) => a.expected - b.expected)
+    .slice(0, 5)
+    .map((player) => ({ player, cost: base - projectedWeekly(model, playerIds.filter((id) => id !== player.id), WHAT_IF_WEEKS) }))
+    .reduce((a, b) => (b.cost < a.cost ? b : a)).player;
+  const kept = playerIds.filter((id) => id !== drop.id);
+  return model.freeAgentIds
+    .slice(0, 25)
+    .map((id) => ({ player: model.players.get(id)!, drop, gain: projectedWeekly(model, [...kept, id], WHAT_IF_WEEKS) - base }))
+    .filter((pickup) => pickup.gain >= 0.05 && !pickup.player.longTermOut)
+    .sort((a, b) => b.gain - a.gain)
+    .slice(0, limit);
+}

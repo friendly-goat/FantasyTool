@@ -285,6 +285,8 @@ export function App() {
             <MyTeam
               snapshot={snapshot}
               stats={stats}
+              model={model}
+              strengths={strengths}
               team={myTeam}
               onChangeTeam={() => setChoosingTeam(true)}
               onOpenMatchup={openMatchup}

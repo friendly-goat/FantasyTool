@@ -123,12 +123,12 @@ This was worked out from the numbers, not from Sleeper documentation.
 Players are valued by the score you can expect to lock from them in a week,
 not by their average. With three games in a week you can pass on a poor game
 and wait, so a player whose scores swing is worth more than a steady player
-with the same average. `lockInValue` works this out from the player's own game
-scores this season. It assumes three games in every week for now.
+with the same average. `lockInValue` works this out from a list of game
+scores. A player's "weekly value" is this on his own, over weeks of 2 to 4
+games, allowing for games he misses.
 
-A team's strength is the combined lock-in value of its best legal lineup,
-found by trying every way to fill the slots. The trade analyzer will compare
-that number before and after a trade, for both teams.
+A team is more than the sum of its players' weekly values, because slots can
+rotate players day to day; see Team strength below.
 
 ### How the analysis is kept in balance
 
@@ -143,6 +143,7 @@ happens to its projected weekly score.
 | Recent games count more | projection | a game 15 games ago counts half |
 | Last season's level | projection | counts like 10 extra games, fading as this season grows |
 | Minutes rising or falling | projection | at most 8% either way |
+| Game-to-game spread | strength | his own, blended with the league's typical spread until he has 6 games; kept between 10% and 60% of his level |
 | Scattered missed games | availability | a rate, blended with a typical 90% early on |
 | Long absence (4+ games in a row) | availability | a current one is expected to last as long again; finished ones are not held against him |
 | How the trade helps the other team | chance they accept | 55% of the estimate |
@@ -164,22 +165,32 @@ Last season's stats download once, in the background, after this season's
 ### Team strength (1 to 1000)
 
 `shared/strength.ts`. The number behind it is a team's projected weekly score:
-the points its best lineup is expected to lock in an average week for the rest
-of the season. The app plays out 200 imaginary weeks. In each one:
+the points it is expected to lock in an average week for the rest of the
+season. The app plays out 200 imaginary weeks, day by day, the way a lock-in
+week is managed:
 
-1. every player's NBA team has 2, 3 or 4 games;
-2. he plays each game as often as he is expected to for the rest of the season
-   (see the availability rows above);
-3. he is worth his lock-in value at his projected level for the games he
-   plays, or nothing;
-4. the team fields its best legal lineup from whoever is available.
+1. each NBA team has 2, 3 or 4 games on set days, and a player plays each as
+   often as he is expected to (see the availability rows above);
+2. each game's score is drawn around his projected level, with his own
+   game-to-game spread;
+3. each day, the players with a game go into the open starting slots, best
+   first, tightest slots first. The lineup set in Sleeper is ignored: the app
+   assumes the best lineup every day;
+4. after the games, a slot is locked when its score beats what that slot can
+   still expect from the rest of the week, from everyone left on the roster.
+   A locked slot and its player are done for the week;
+5. at the end of the week an open slot keeps the last game played in it.
 
-The average is the projected weekly score. It is put on a 1 to 1000 scale
-between two reference teams from the same league: a team built from the best
-free agents (1) and the nine best players never missing a game (1000).
-Players with few games are pulled toward a typical free agent. Each player
-sees the same imaginary weeks on any roster, so before-and-after comparisons
-are not blurred by luck, and results are identical on every run.
+Because an open slot can take a different player each day, bench players are
+extra chances at a big game, not just injury cover. The Strength tab shows
+how much the bench adds over the best nine alone.
+
+The average is put on a 1 to 1000 scale between two reference rosters from
+the same league: the best free agents (1) and the league's best players on one
+roster (1000). Each player sees the same imaginary weeks on any roster, so
+before-and-after comparisons are not blurred by luck, and results are
+identical on every run. Trade searches rank swaps on a short run of weeks and
+re-check the shortlist on all 200.
 
 ### Trade grades
 
@@ -188,8 +199,8 @@ weekly score. Rosters keep their size: a team that receives fewer players
 picks up the free agent who helps it most, and a team that receives more
 drops its least valuable player. Each manager gets:
 
-- a grade from 1 to 100 with a letter, where 50 means no real change and
-  +4 points a week is about 73;
+- a letter grade (from a 1 to 100 score that is not shown, where 50 means no
+  real change and +4 points a week is about 73);
 - the change in team strength.
 
 ### Grades and the balance slider

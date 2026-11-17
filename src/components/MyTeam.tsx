@@ -1,6 +1,7 @@
 import { useMemo } from "react";
-import { freeAgentUpgrades, leagueOutlook, startingSlots } from "../../shared/analysis.ts";
-import { TYPICAL_GAMES_PER_WEEK } from "../../shared/lockin.ts";
+import { rosterPlayers } from "../../shared/analysis.ts";
+import { freeAgentPickups } from "../../shared/insight.ts";
+import type { StrengthModel, TeamStrength } from "../../shared/strength.ts";
 import type { LeagueSnapshot, PlayerRef, StatsReport, Team } from "../../shared/types.ts";
 import { formatPoints, formatRecord, formatSigned } from "../format.ts";
 import { Avatar } from "./Avatar.tsx";
@@ -10,6 +11,8 @@ import { PositionChip } from "./PositionChip.tsx";
 interface Props {
   snapshot: LeagueSnapshot;
   stats: StatsReport | null;
+  model: StrengthModel | null;
+  strengths: TeamStrength[] | null;
   team: Team;
   onChangeTeam: () => void;
   onOpenMatchup: (matchupId: number) => void;
@@ -21,21 +24,15 @@ function ordinal(n: number): string {
 }
 
 /** The user's own team: this week's matchup, a lineup check, the roster, and free agents worth adding. */
-export function MyTeam({ snapshot, stats, team, onChangeTeam, onOpenMatchup }: Props) {
+export function MyTeam({ snapshot, stats, model, strengths, team, onChangeTeam, onOpenMatchup }: Props) {
   const players = stats?.players ?? {};
   const hasStats = Object.keys(players).length > 0;
-  const slots = startingSlots(snapshot);
-
-  const analysis = useMemo(() => {
-    if (!stats || Object.keys(stats.players).length === 0) return null;
-    const outlooks = leagueOutlook(snapshot, stats);
-    const index = outlooks.findIndex((outlook) => outlook.rosterId === team.rosterId);
-    return {
-      outlook: outlooks[index]!,
-      rank: index + 1,
-      upgrades: freeAgentUpgrades(team, snapshot, stats),
-    };
-  }, [snapshot, stats, team]);
+  
+  const strength = strengths?.find((entry) => entry.rosterId === team.rosterId) ?? null;
+  const pickups = useMemo(
+    () => (model ? freeAgentPickups(model, rosterPlayers(team).map((player) => player.id)) : []),
+    [model, team],
+  );
 
   const matchup = snapshot.matchups.find((candidate) =>
     candidate.sides.some((side) => side.rosterId === team.rosterId),
@@ -44,16 +41,6 @@ export function MyTeam({ snapshot, stats, team, onChangeTeam, onOpenMatchup }: P
   const theirs = matchup?.sides.find((side) => side.rosterId !== team.rosterId);
   const opponent = theirs ? snapshot.teams.find((candidate) => candidate.rosterId === theirs.rosterId) : undefined;
   const stillToScore = (side: typeof mine) => side?.starters.filter((entry) => entry.player && !entry.points).length ?? 0;
-
-  // Players the best lineup starts who are not starting now, and the reverse.
-  const everyone = new Map<string, PlayerRef>(
-    [...team.starters.flatMap((s) => (s.player ? [s.player] : [])), ...team.bench, ...team.reserve].map((p) => [p.id, p]),
-  );
-  const startingNow = new Set(team.starters.flatMap((starter) => (starter.player ? [starter.player.id] : [])));
-  const bestIds = new Set(analysis?.outlook.best.playerIds.filter((id): id is string => id !== null) ?? []);
-  const bringIn = [...bestIds].filter((id) => !startingNow.has(id)).map((id) => everyone.get(id)!);
-  const sitDown = [...startingNow].filter((id) => !bestIds.has(id)).map((id) => everyone.get(id)!);
-  const lineupGain = analysis ? analysis.outlook.bestValue - analysis.outlook.currentValue : 0;
 
   const rows: { slot: string; player: PlayerRef | null }[] = [
     ...team.starters,
@@ -103,42 +90,19 @@ export function MyTeam({ snapshot, stats, team, onChangeTeam, onOpenMatchup }: P
         </div>
 
         <div className="card my-card">
-          <h3 className="my-card-title">Lineup check</h3>
-          {analysis ? (
+          <h3 className="my-card-title">Team strength</h3>
+          {strength ? (
             <>
               <p className="my-score">
-                <span className="num">{formatPoints(analysis.outlook.bestValue)}</span>
+                <span className="num">{strength.score}</span>
+                <span className="quiet">of 1000, {ordinal(strength.rank)} of {snapshot.teams.length}</span>
               </p>
-              <p>
-                Lock-in value of your best lineup, {ordinal(analysis.rank)} of {snapshot.teams.length} in the
-                league.
+              <p>Projected to lock {formatPoints(strength.projected)} points in an average week.</p>
+              <p className="quiet">
+                Your best nine alone would lock {formatPoints(strength.bestNine)}; the rest of your roster adds{" "}
+                {formatSigned(strength.benchAdds)} by rotating into open slots and covering missed games. This
+                assumes you set the best lineup each day, whatever your lineup in Sleeper shows right now.
               </p>
-              {lineupGain > 0.005 && bringIn.length > 0 ? (
-                <p className="quiet">
-                  Your current lineup is worth {formatPoints(analysis.outlook.currentValue)}. Starting{" "}
-                  {bringIn.map((player, index) => (
-                    <span key={player.id}>
-                      {index > 0 && ", "}
-                      <PlayerName player={player} />
-                    </span>
-                  ))}
-                  {sitDown.length > 0 && (
-                    <>
-                      {" "}
-                      over{" "}
-                      {sitDown.map((player, index) => (
-                        <span key={player.id}>
-                          {index > 0 && ", "}
-                          <PlayerName player={player} />
-                        </span>
-                      ))}
-                    </>
-                  )}{" "}
-                  would add {formatPoints(lineupGain)}.
-                </p>
-              ) : (
-                <p className="quiet">Your current lineup is already your best one by lock-in value.</p>
-              )}
             </>
           ) : (
             <p className="quiet">Available once player stats have loaded.</p>
@@ -155,8 +119,9 @@ export function MyTeam({ snapshot, stats, team, onChangeTeam, onOpenMatchup }: P
               <th scope="col">Player</th>
               {hasStats && (
                 <>
-                  <th scope="col" className="num">Lock-in value</th>
+                  <th scope="col" className="num">Weekly value</th>
                   <th scope="col" className="num">Fantasy avg</th>
+                  <th scope="col" className="num">Projected</th>
                   <th scope="col" className="num">Last {stats?.recentWindow ?? 5}</th>
                   <th scope="col" className="num">Best game</th>
                   <th scope="col" className="num">Games</th>
@@ -189,8 +154,13 @@ export function MyTeam({ snapshot, stats, team, onChangeTeam, onOpenMatchup }: P
                   </th>
                   {hasStats && (
                     <>
-                      <td className="num strong">{line ? formatPoints(line.lockInValue) : "–"}</td>
+                      <td className="num strong">
+                        {line && row.player && model?.players.get(row.player.id)
+                          ? formatPoints(model.players.get(row.player.id)!.expected)
+                          : "–"}
+                      </td>
                       <td className="num">{line ? formatPoints(line.fantasyAvg) : "–"}</td>
+                      <td className="num">{line ? formatPoints(line.projection.perGame) : "–"}</td>
                       <td className="num">{line?.recentAvg != null ? formatPoints(line.recentAvg) : "–"}</td>
                       <td className="num">{line ? formatPoints(line.bestGame) : "–"}</td>
                       <td className="num quiet-cell">{line ? line.games : "–"}</td>
@@ -203,56 +173,54 @@ export function MyTeam({ snapshot, stats, team, onChangeTeam, onOpenMatchup }: P
         </table>
       </div>
 
-      {analysis && (
+      {model && (
         <>
-          <h3 className="panel-heading">Free agents who would improve your best lineup</h3>
-          {analysis.upgrades.length > 0 ? (
+          <h3 className="panel-heading">Free agents worth picking up</h3>
+          {pickups.length > 0 ? (
             <div className="table-scroll">
               <table className="players-table">
                 <thead>
                   <tr>
-                    <th scope="col">Player</th>
-                    <th scope="col">Would start at</th>
-                    <th scope="col" className="num">Lock-in value</th>
+                    <th scope="col">Add</th>
+                    <th scope="col">Drop</th>
+                    <th scope="col" className="num">His weekly value</th>
                     <th scope="col" className="num">Games</th>
-                    <th scope="col" className="num">Lineup gain</th>
+                    <th scope="col" className="num">Your weekly score</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {analysis.upgrades.map((upgrade) => (
-                    <tr key={upgrade.player.id}>
+                  {pickups.map((pickup) => (
+                    <tr key={pickup.player.id}>
                       <th scope="row">
                         <span className="player-name">
-                          <PlayerName player={upgrade.player} />
+                          <PlayerName player={pickup.player} />
                         </span>
                         <span className="quiet">
-                          {[upgrade.player.positions.join("/"), upgrade.player.team].filter(Boolean).join(", ")}
+                          {[pickup.player.positions.join("/"), pickup.player.team].filter(Boolean).join(", ")}
                         </span>
                       </th>
                       <td>
-                        <PositionChip label={upgrade.slot} />
+                        <PlayerName player={pickup.drop} />
                       </td>
-                      <td className="num">{formatPoints(upgrade.player.lockInValue)}</td>
-                      <td className="num quiet-cell">{upgrade.player.games}</td>
-                      <td className="num up">{formatSigned(upgrade.gain)}</td>
+                      <td className="num">{formatPoints(pickup.player.expected)}</td>
+                      <td className="num quiet-cell">{pickup.player.games}</td>
+                      <td className="num up">{formatSigned(pickup.gain)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           ) : (
-            <p className="quiet">No free agent would start for you right now.</p>
+            <p className="quiet">No free agent would improve your projected weekly score right now.</p>
           )}
         </>
       )}
 
       {hasStats && (
         <p className="quiet legend">
-          Lock-in value is the score you can expect to lock from a player in a week with{" "}
-          {TYPICAL_GAMES_PER_WEEK} games, if you lock a game only when it beats what his remaining games are
-          likely to give. It comes from his own game scores this season, so it is rough for players with few
-          games, and it does not yet know how many games each player has this week. Players ruled out or on
-          injured reserve are left out of the best lineup ({slots.length} starting slots).
+          Weekly value is what a player is expected to lock on his own in an average week, allowing for games he
+          misses. Free agents are checked against your whole roster: the gain is the change in your projected
+          weekly score if you add him and drop the player your roster would miss least.
         </p>
       )}
     </section>
