@@ -265,7 +265,8 @@ export function App() {
                 type="button"
                 className="tab"
                 aria-current={view === name ? "page" : undefined}
-                onClick={() => {
+                onClick={(event) => {
+                  event.currentTarget.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
                   setView(name);
                   setOpenMatchupId(null); // the Matchups tab opens on the list
                 }}

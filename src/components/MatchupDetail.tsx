@@ -1,8 +1,8 @@
 import type { LeagueSnapshot, Matchup, MatchupSide, MatchupSlot, StatsReport, Team } from "../../shared/types.ts";
 import { formatPoints, formatRecord } from "../format.ts";
 import { Avatar } from "./Avatar.tsx";
-import { PlayerName } from "./PlayerName.tsx";
 import { PositionChip } from "./PositionChip.tsx";
+import { PlayerCell } from "./PlayerCell.tsx";
 
 interface Props {
   snapshot: LeagueSnapshot;
@@ -21,14 +21,7 @@ function SlotCell({ entry, stats, side }: { entry: MatchupSlot | undefined; stat
       <div className="duel-player">
         {player ? (
           <>
-            <span className="duel-name">
-              <PlayerName player={player} />
-              {player.injuryStatus && <span className="injury">{player.injuryStatus}</span>}
-            </span>
-            <span className="quiet">
-              {[player.positions.join("/"), player.team].filter(Boolean).join(", ")}
-              {average != null && `, averages ${formatPoints(average)}`}
-            </span>
+            <PlayerCell player={player} extra={average != null ? `avg ${formatPoints(average)}` : undefined} />
           </>
         ) : (
           <span className="quiet">Empty slot</span>

@@ -21,6 +21,8 @@ import type { LeagueSnapshot, Team } from "../../shared/types.ts";
 import { formatPoints, formatSigned } from "../format.ts";
 import { Avatar } from "./Avatar.tsx";
 import { PlayerName } from "./PlayerName.tsx";
+import { PlayerCell } from "./PlayerCell.tsx";
+import { PositionChip } from "./PositionChip.tsx";
 
 interface Props {
   snapshot: LeagueSnapshot;
@@ -44,6 +46,15 @@ function names(players: ModelPlayer[]) {
   ));
 }
 
+/** Whether the screen is wide enough to show both rosters open by default. */
+function wideScreen(): boolean {
+  try {
+    return window.matchMedia("(min-width: 721px)").matches;
+  } catch {
+    return true;
+  }
+}
+
 function RosterPicker({ team, model, chosen, onToggle, label }: {
   team: Team;
   model: StrengthModel;
@@ -51,12 +62,26 @@ function RosterPicker({ team, model, chosen, onToggle, label }: {
   onToggle: (id: string) => void;
   label: string;
 }) {
+  // Open on wide screens; on a phone, closed so the trade finder is not far below.
+  const [open, setOpen] = useState(wideScreen);
   const roster = rosterPlayers(team)
     .flatMap((player) => model.players.get(player.id) ?? [])
     .sort((a, b) => b.expected - a.expected);
   return (
-    <div className="card trade-roster">
-      <h3 className="my-card-title">{label}</h3>
+    <details className="card trade-roster" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
+      <summary className="trade-roster-summary">
+        <span className="my-card-title">{label}</span>
+        <span className="quiet">
+          {chosen.size > 0
+            ? roster
+                .filter((player) => chosen.has(player.id))
+                .map((player) => player.name)
+                .join(", ")
+            : open
+              ? "Tick players to trade"
+              : "Show players"}
+        </span>
+      </summary>
       <div className="roster-scroll">
         <table className="roster-table">
           <thead>
@@ -71,19 +96,17 @@ function RosterPicker({ team, model, chosen, onToggle, label }: {
             {roster.map((player) => (
               <tr key={player.id} className={chosen.has(player.id) ? "picked" : undefined}>
                 <th scope="row">
-                  <label className="pick">
-                    <input
-                      type="checkbox"
-                      checked={chosen.has(player.id)}
-                      onChange={() => onToggle(player.id)}
-                      aria-label={`Trade ${player.name}`}
-                    />
-                  </label>
-                  <span className="player-name">
-                    <PlayerName player={player} />
+                  <span className="pick-row">
+                    <label className="pick">
+                      <input
+                        type="checkbox"
+                        checked={chosen.has(player.id)}
+                        onChange={() => onToggle(player.id)}
+                        aria-label={`Trade ${player.name}`}
+                      />
+                    </label>
+                    <PlayerCell player={player} showTeam={false} />
                   </span>
-                  {player.injuryStatus && <span className="injury">{player.injuryStatus}</span>}
-                  <span className="quiet player-meta">{player.positions.join("/")}</span>
                 </th>
                 <td className="num strong">{player.games > 0 ? formatPoints(player.expected) : "–"}</td>
                 <td className="num">{player.games > 0 ? formatPoints(player.average) : "–"}</td>
@@ -93,7 +116,7 @@ function RosterPicker({ team, model, chosen, onToggle, label }: {
           </tbody>
         </table>
       </div>
-    </div>
+    </details>
   );
 }
 
@@ -371,6 +394,14 @@ export function Trades({ snapshot, model, situations, myRosterId }: Props) {
 
   return (
     <section aria-label="Trades">
+      <nav className="jump" aria-label="Trade tools">
+        <a className="button button-plain" href="#trade-builder">
+          Build a trade
+        </a>
+        <a className="button button-plain" href="#trade-finder">
+          Find a trade
+        </a>
+      </nav>
       <h2 className="section-title" id="trade-builder">Build a trade</h2>
       <div className="filters">
         {teamSelect("a", teamA, "Team")}
@@ -426,7 +457,9 @@ export function Trades({ snapshot, model, situations, myRosterId }: Props) {
         )
       )}
 
-      <h2 className="section-title ideas-title">Find a trade</h2>
+      <h2 className="section-title ideas-title" id="trade-finder">
+        Find a trade
+      </h2>
       <div className="table-scroll shape">
         <table className="players-table">
           <caption className="quiet">
@@ -444,7 +477,9 @@ export function Trades({ snapshot, model, situations, myRosterId }: Props) {
           <tbody>
             {profile.map((note) => (
               <tr key={note.position}>
-                <th scope="row">{note.position}</th>
+                <th scope="row">
+                  <PositionChip label={note.position} />
+                </th>
                 <td>{note.best ? <PlayerName player={note.best} /> : "Nobody"}</td>
                 <td className="num">{formatPoints(note.need)}</td>
                 <td className="num">{formatPoints(note.cover)}</td>

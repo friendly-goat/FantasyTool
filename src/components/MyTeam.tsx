@@ -6,6 +6,7 @@ import type { LeagueSnapshot, PlayerRef, StatsReport, Team } from "../../shared/
 import { formatPoints, formatRecord, formatSigned } from "../format.ts";
 import { Avatar } from "./Avatar.tsx";
 import { PlayerName } from "./PlayerName.tsx";
+import { PlayerCell } from "./PlayerCell.tsx";
 import { PositionChip } from "./PositionChip.tsx";
 
 interface Props {
@@ -140,13 +141,7 @@ export function MyTeam({ snapshot, stats, model, strengths, team, onChangeTeam, 
                   <th scope="row">
                     {row.player ? (
                       <>
-                        <span className="player-name">
-                          <PlayerName player={row.player} />
-                        </span>
-                        {row.player.injuryStatus && <span className="injury">{row.player.injuryStatus}</span>}
-                        <span className="quiet">
-                          {[row.player.positions.join("/"), row.player.team].filter(Boolean).join(", ")}
-                        </span>
+                        <PlayerCell player={row.player} />
                       </>
                     ) : (
                       <span className="quiet">Empty slot</span>
@@ -192,12 +187,7 @@ export function MyTeam({ snapshot, stats, model, strengths, team, onChangeTeam, 
                   {pickups.map((pickup) => (
                     <tr key={pickup.player.id}>
                       <th scope="row">
-                        <span className="player-name">
-                          <PlayerName player={pickup.player} />
-                        </span>
-                        <span className="quiet">
-                          {[pickup.player.positions.join("/"), pickup.player.team].filter(Boolean).join(", ")}
-                        </span>
+                        <PlayerCell player={pickup.player} />
                       </th>
                       <td>
                         <PlayerName player={pickup.drop} />

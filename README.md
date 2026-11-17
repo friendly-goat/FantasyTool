@@ -274,6 +274,15 @@ run Monday to Sunday (`server/weeks.ts`).
 | `npm run check:stats` | Confirms the stats key works and shows player matching |
 | `npm start` | Builds the React app and serves everything from :8787 |
 
+## Look
+
+Positions always appear as colored chips (PG pink, SG orange, G coral, SF
+green, PF blue, F teal, C purple, UTIL periwinkle), with the colors set once at
+the top of `src/styles.css`. On a phone, secondary table columns are hidden,
+wide tables keep player names in view while they scroll, notes fold away under
+"About these numbers", and the trade rosters start folded so the trade finder
+is close at hand.
+
 ## Layout
 
 ```

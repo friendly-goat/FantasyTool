@@ -1,8 +1,7 @@
 import { useMemo, useState } from "react";
 import type { LeagueSnapshot, PlayerStats, StatsReport } from "../../shared/types.ts";
 import { formatAverage, formatPoints } from "../format.ts";
-import { PlayerName } from "./PlayerName.tsx";
-import { PositionChip } from "./PositionChip.tsx";
+import { PlayerCell } from "./PlayerCell.tsx";
 
 type Availability = "all" | "free" | "rostered";
 
@@ -144,16 +143,7 @@ export function Players({ snapshot, stats }: { snapshot: LeagueSnapshot; stats: 
               return (
                 <tr key={player.id}>
                   <th scope="row">
-                    <span className="player-name">
-                      <PlayerName player={player} />
-                    </span>
-                    {player.injuryStatus && <span className="injury">{player.injuryStatus}</span>}
-                    <span className="player-tags">
-                      {player.positions.map((name) => (
-                        <PositionChip key={name} label={name} />
-                      ))}
-                      <span className="quiet">{player.team ?? "No NBA team"}</span>
-                    </span>
+                    <PlayerCell player={player} />
                   </th>
                   {availability !== "free" && (
                     <td className={owners.has(player.id) ? "" : "quiet-cell"}>

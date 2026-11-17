@@ -7,6 +7,16 @@
    data-theme on <html> before the page paints. */
 
 :root {
+  /* Position colors, the same in both themes: dark ink on a bright fill. */
+  --pos-ink: #141a2a;
+  --pos-pg: #f2738c;
+  --pos-sg: #f5b14c;
+  --pos-g: #f6926a;
+  --pos-sf: #74df73;
+  --pos-pf: #63d4f4;
+  --pos-f: #6fdcbb;
+  --pos-c: #c286f4;
+  --pos-util: #a3b4ff;
   --font: "Archivo Variable", "Helvetica Neue", Arial, sans-serif;
   --radius: 14px;
   --radius-small: 8px;
@@ -31,12 +41,6 @@
   --loss-soft: rgba(255, 122, 122, 0.14);
   --warn: #f6c453;
   --warn-soft: rgba(246, 196, 83, 0.16);
-  --guard: #7fb4ff;
-  --guard-soft: rgba(127, 180, 255, 0.16);
-  --forward: #6fdc9f;
-  --forward-soft: rgba(111, 220, 159, 0.15);
-  --center: #ffad66;
-  --center-soft: rgba(255, 173, 102, 0.16);
 }
 
 :root[data-theme="light"] {
@@ -57,12 +61,6 @@
   --loss-soft: rgba(194, 47, 47, 0.09);
   --warn: #7a5200;
   --warn-soft: rgba(214, 158, 20, 0.2);
-  --guard: #1f56b3;
-  --guard-soft: rgba(31, 86, 179, 0.1);
-  --forward: #14703f;
-  --forward-soft: rgba(20, 112, 63, 0.1);
-  --center: #a34a00;
-  --center-soft: rgba(163, 74, 0, 0.1);
 }
 
 * {
@@ -283,29 +281,88 @@ code {
 
 .chip {
   display: inline-block;
-  min-width: 2.5rem;
-  padding: 0.05rem 0.4rem;
+  min-width: 2.4rem;
+  padding: 0.1rem 0.4rem;
   border-radius: 6px;
   font-size: 0.75rem;
-  font-weight: 700;
+  font-weight: 800;
+  line-height: 1.35;
   text-align: center;
   background: var(--surface-raised);
   color: var(--muted);
 }
 
-.chip-guard {
-  background: var(--guard-soft);
-  color: var(--guard);
+.chip-pg,
+.chip-sg,
+.chip-g,
+.chip-sf,
+.chip-pf,
+.chip-f,
+.chip-c,
+.chip-util {
+  color: var(--pos-ink);
 }
 
-.chip-forward {
-  background: var(--forward-soft);
-  color: var(--forward);
+.chip-pg { background: var(--pos-pg); }
+.chip-sg { background: var(--pos-sg); }
+.chip-g { background: var(--pos-g); }
+.chip-sf { background: var(--pos-sf); }
+.chip-pf { background: var(--pos-pf); }
+.chip-f { background: var(--pos-f); }
+.chip-c { background: var(--pos-c); }
+.chip-util { background: var(--pos-util); }
+
+.chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  vertical-align: middle;
 }
 
-.chip-center {
-  background: var(--center-soft);
-  color: var(--center);
+.chips .chip {
+  min-width: 0;
+  font-size: 0.6875rem;
+  padding: 0 0.35rem;
+}
+
+/* ---- Player cell: name, then position chips and team ---- */
+
+.pcell {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+  vertical-align: middle;
+}
+
+.pcell-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.15rem 0.45rem;
+  font-weight: 600;
+}
+
+.pcell-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.45rem;
+  font-size: 0.8125rem;
+  font-weight: 400;
+}
+
+.pcell .injury {
+  margin: 0;
+}
+
+.duel-right .pcell {
+  align-items: flex-end;
+}
+
+.duel-right .pcell-name,
+.duel-right .pcell-meta {
+  justify-content: flex-end;
 }
 
 /* ---- Standings ---- */
@@ -652,6 +709,25 @@ th[aria-sort] .sort-button {
 .stats-footnote {
   max-width: 52rem;
   margin: -0.5rem 0 1rem;
+}
+
+.stats-footnote summary {
+  cursor: pointer;
+  font-weight: 600;
+  width: fit-content;
+}
+
+.stats-footnote[open] summary {
+  margin-bottom: 0.35rem;
+}
+
+/* Names stay in view while a wide table scrolls sideways. */
+.table-scroll .players-table tbody th[scope="row"],
+.table-scroll .players-table thead th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--surface);
 }
 
 /* ---- Matchups ---- */
@@ -1035,7 +1111,61 @@ th[aria-sort] .sort-button {
 }
 
 .trade-roster {
-  padding: 1rem 1.25rem;
+  padding: 0;
+  align-self: start;
+}
+
+.trade-roster > .roster-scroll {
+  padding: 0 1.25rem 1rem;
+}
+
+.trade-roster-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 1rem 2.75rem 1rem 1.25rem;
+  cursor: pointer;
+  list-style: none;
+  position: relative;
+}
+
+.trade-roster-summary::-webkit-details-marker {
+  display: none;
+}
+
+/* A chevron that turns when the list opens. */
+.trade-roster-summary::after {
+  content: "";
+  position: absolute;
+  right: 1.25rem;
+  top: 1.35rem;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg);
+  transition: transform 0.15s ease;
+}
+
+.trade-roster[open] > .trade-roster-summary::after {
+  transform: rotate(-135deg);
+  top: 1.6rem;
+}
+
+.pick-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+
+.jump {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.jump .button {
+  text-decoration: none;
 }
 
 .trade-roster .group-row th {
@@ -1044,8 +1174,7 @@ th[aria-sort] .sort-button {
 
 .pick {
   display: inline-flex;
-  vertical-align: middle;
-  margin-right: 0.5rem;
+  padding-top: 0.15rem;
 }
 
 .pick input {
@@ -1480,13 +1609,13 @@ th[aria-sort] .sort-button {
 
 .chart-line {
   fill: none;
-  stroke: var(--guard);
+  stroke: var(--accent);
   stroke-width: 2;
   stroke-linejoin: round;
 }
 
 .chart-dot {
-  fill: var(--guard);
+  fill: var(--accent);
   stroke: var(--surface);
   stroke-width: 2;
 }
@@ -1523,7 +1652,7 @@ th[aria-sort] .sort-button {
 }
 
 .key-line {
-  background: var(--guard);
+  background: var(--accent);
 }
 
 .key-projection {
@@ -1543,10 +1672,7 @@ th[aria-sort] .sort-button {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .idea-facts {
-    grid-template-columns: repeat(2, auto);
-    justify-content: start;
-  }
+
 }
 
 /* ---- Activity ---- */
@@ -1657,6 +1783,93 @@ th[aria-sort] .sort-button {
 /* ---- Small screens ---- */
 
 @media (max-width: 720px) {
+  .page {
+    padding: 1.25rem 0.9rem 3rem;
+  }
+
+  .hide-narrow {
+    display: none;
+  }
+
+  .tabs {
+    display: flex;
+    scrollbar-width: none;
+  }
+
+  .tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .standings,
+  .strength-table {
+    min-width: 0;
+  }
+
+  .standings th,
+  .standings td,
+  .strength-table th,
+  .strength-table td {
+    padding: 0.6rem 0.5rem;
+  }
+
+  .rank {
+    width: 2rem;
+  }
+
+  .scored {
+    display: block;
+  }
+
+  .scored .bar,
+  .strength-cell .meter,
+  .standings + .legend,
+  .table-scroll + .legend {
+    display: none;
+  }
+
+  .strength-cell {
+    display: block;
+  }
+
+  .team-cell .avatar {
+    width: 2rem;
+    height: 2rem;
+  }
+
+  .team-link {
+    font-size: 0.9375rem;
+  }
+
+  .trade-rosters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .filters label,
+  .filters select {
+    width: 100%;
+  }
+
+  .filters label {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.3rem;
+  }
+
+  .idea-facts {
+    grid-template-columns: repeat(3, auto);
+    justify-content: start;
+    gap: 0.4rem 1.25rem;
+  }
+
+  .jump .button {
+    flex: 1;
+    text-align: center;
+  }
+
+  .finder .button {
+    width: 100%;
+  }
+
   .league-name {
     font-size: 1.5rem;
   }

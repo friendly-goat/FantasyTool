@@ -30,8 +30,8 @@ export function Standings({ snapshot, myRosterId, onOpenTeam }: Props) {
               <th scope="col">Team</th>
               <th scope="col" className="num">Record</th>
               <th scope="col">Points scored</th>
-              <th scope="col" className="num">Points against</th>
-              <th scope="col" className="num">Difference</th>
+              <th scope="col" className="num hide-narrow">Points against</th>
+              <th scope="col" className="num hide-narrow">Difference</th>
             </tr>
           </thead>
           <tbody>
@@ -64,8 +64,8 @@ export function Standings({ snapshot, myRosterId, onOpenTeam }: Props) {
                       </span>
                     </div>
                   </td>
-                  <td className="num">{formatPoints(team.pointsAgainst)}</td>
-                  <td className={`num ${difference >= 0 ? "up" : "down"}`}>{formatSigned(difference)}</td>
+                  <td className="num hide-narrow">{formatPoints(team.pointsAgainst)}</td>
+                  <td className={`num hide-narrow ${difference >= 0 ? "up" : "down"}`}>{formatSigned(difference)}</td>
                 </tr>
               );
             })}

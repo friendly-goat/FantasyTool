@@ -1,14 +1,16 @@
-const GROUPS: Record<string, string> = {
-  PG: "guard",
-  SG: "guard",
-  G: "guard",
-  SF: "forward",
-  PF: "forward",
-  F: "forward",
-  C: "center",
-};
-
-/** Small colored label for a lineup slot or player position. */
+/** Colored label for a lineup slot or player position, in the same colors everywhere. */
 export function PositionChip({ label }: { label: string }) {
-  return <span className={`chip chip-${GROUPS[label] ?? "flex"}`}>{label}</span>;
+  return <span className={`chip chip-${label.toLowerCase()}`}>{label}</span>;
+}
+
+/** A player's positions as a row of colored labels. */
+export function PositionChips({ positions }: { positions: string[] }) {
+  if (positions.length === 0) return null;
+  return (
+    <span className="chips">
+      {positions.map((position) => (
+        <PositionChip key={position} label={position} />
+      ))}
+    </span>
+  );
 }

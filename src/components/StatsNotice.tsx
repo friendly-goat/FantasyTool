@@ -50,7 +50,8 @@ export function StatsNotice({ stats, onRetry }: { stats: StatsReport; onRetry: (
   }
 
   return (
-    <p className="quiet stats-footnote">
+    <details className="quiet stats-footnote">
+      <summary>About these numbers</summary>
       Fantasy points use this league's scoring settings
       {stats.ignoredScoring.length > 0 &&
         `, except ${describeIgnored(stats.ignoredScoring)}, which the stats source does not track`}
@@ -61,6 +62,6 @@ export function StatsNotice({ stats, onRetry }: { stats: StatsReport; onRetry: (
         ` Last season's stats are downloading in the background${stats.lastSeasonPages > 0 ? ` (${stats.lastSeasonPages} ${stats.lastSeasonPages === 1 ? "page" : "pages"} so far)` : ""}; projections will use them when they arrive, in a few minutes.`}
       {stats.unmatchedRostered.length > 0 &&
         ` No stats found for: ${stats.unmatchedRostered.map((player) => player.name).join(", ")}.`}
-    </p>
+    </details>
   );
 }

@@ -1,8 +1,8 @@
 import type { LeagueSnapshot, PlayerRef, PlayerStats, StatsReport } from "../../shared/types.ts";
 import { formatPoints, formatRecord } from "../format.ts";
 import { Avatar } from "./Avatar.tsx";
-import { PlayerName } from "./PlayerName.tsx";
 import { PositionChip } from "./PositionChip.tsx";
+import { PlayerCell } from "./PlayerCell.tsx";
 
 interface Props {
   snapshot: LeagueSnapshot;
@@ -28,13 +28,7 @@ function PlayerLine({ slot, player, stats, showStats }: LineProps) {
       <th scope="row">
         {player ? (
           <>
-            <span className="player-name">
-              <PlayerName player={player} />
-            </span>
-            {player.injuryStatus && <span className="injury">{player.injuryStatus}</span>}
-            <span className="quiet player-meta">
-              {[player.positions.join("/"), player.team ?? "Free agent"].filter(Boolean).join(", ")}
-            </span>
+            <PlayerCell player={player} />
           </>
         ) : (
           <span className="quiet">Empty slot</span>
@@ -44,7 +38,7 @@ function PlayerLine({ slot, player, stats, showStats }: LineProps) {
         <>
           <td className="num strong">{stats ? formatPoints(stats.fantasyAvg) : "–"}</td>
           <td className="num">{stats?.recentAvg != null ? formatPoints(stats.recentAvg) : "–"}</td>
-          <td className="num quiet-cell">{stats ? stats.games : "–"}</td>
+          <td className="num quiet-cell hide-narrow">{stats ? stats.games : "–"}</td>
         </>
       )}
     </tr>
@@ -125,7 +119,7 @@ export function Teams({ snapshot, stats, myRosterId, selectedRosterId, onSelect 
                       <th scope="col" className="num">
                         {groupIndex === 0 ? `Last ${stats?.recentWindow ?? 5}` : ""}
                       </th>
-                      <th scope="col" className="num">
+                      <th scope="col" className="num hide-narrow">
                         {groupIndex === 0 ? "Games" : ""}
                       </th>
                     </>

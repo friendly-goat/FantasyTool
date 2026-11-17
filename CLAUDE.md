@@ -76,6 +76,12 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   confirming.
 - Wherever the UI names a player, render it with `PlayerName`
   (`src/components/PlayerName.tsx`) so the name opens the player's details.
+  In a list, use `PlayerCell` (name, injury tag, position chips, team).
+- Positions are always colored chips (`PositionChip`, `PositionChips`), never
+  plain text like "PF/C". Colors are the `--pos-*` tokens in `src/styles.css`,
+  matching Sleeper's: PG pink, SG orange, SF green, PF blue, C purple.
+- Check every UI change at phone width (390px) as well as desktop. Use the
+  `hide-narrow` class for columns that can go on a phone.
 - Fantasy points display with two decimals (`formatPoints`), box-score
   averages with one (`formatAverage`). Keep full precision until display.
 - UI copy: sentence case, plain language. Visual tokens live at the top of
