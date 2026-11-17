@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { buildModel, leagueStrength } from "../shared/strength.ts";
 import type { AppConfig, LeagueSnapshot, PlayerRef, StatsReport } from "../shared/types.ts";
 import {
   getConfig,
@@ -18,12 +19,14 @@ import { PlayerPanel } from "./components/PlayerPanel.tsx";
 import { Players } from "./components/Players.tsx";
 import { Standings } from "./components/Standings.tsx";
 import { StatsNotice } from "./components/StatsNotice.tsx";
+import { Strength } from "./components/Strength.tsx";
 import { TeamChooser } from "./components/TeamChooser.tsx";
 import { Teams } from "./components/Teams.tsx";
+import { Trades } from "./components/Trades.tsx";
 import { formatAgo, formatDate } from "./format.ts";
 import { useTheme } from "./theme.ts";
 
-const VIEWS = ["My team", "Standings", "Teams", "Players", "Matchups", "Activity"] as const;
+const VIEWS = ["My team", "Standings", "Strength", "Teams", "Players", "Matchups", "Trades", "Activity"] as const;
 /** How often to ask the server for progress while stats are downloading. */
 const STATS_POLL_MS = 2500;
 type View = (typeof VIEWS)[number];
@@ -109,6 +112,17 @@ export function App() {
     if (owned) saveMyRosterId(snapshot.league.id, owned.rosterId);
     setMyRosterId(owned?.rosterId ?? null);
   }, [snapshot, pickedUserId]);
+
+  // The strength model behind the Strength and Trades tabs. Rebuilt only
+  // when the league or the stats change.
+  const model = useMemo(
+    () => (snapshot && stats && Object.keys(stats.players).length > 0 ? buildModel(snapshot, stats) : null),
+    [snapshot, stats],
+  );
+  const strengths = useMemo(
+    () => (snapshot && model ? leagueStrength(snapshot, model) : null),
+    [snapshot, model],
+  );
 
   function chooseTeam(rosterId: number) {
     if (snapshot) saveMyRosterId(snapshot.league.id, rosterId);
@@ -237,7 +251,9 @@ export function App() {
             ))}
           </nav>
 
-          {(view === "My team" || view === "Teams" || view === "Players") && stats && (
+          {(view === "My team" || view === "Teams" || view === "Players" || view === "Strength" || view === "Trades") &&
+            stats &&
+            (stats.status !== "ready" || view === "My team" || view === "Teams" || view === "Players") && (
             <StatsNotice stats={stats} onRetry={() => void loadStats(snapshot.league.id, true)} />
           )}
 
@@ -253,6 +269,10 @@ export function App() {
           {view === "Standings" && (
             <Standings snapshot={snapshot} myRosterId={myRosterId} onOpenTeam={openTeam} />
           )}
+          {view === "Strength" && (
+            <Strength snapshot={snapshot} strengths={strengths} myRosterId={myRosterId} onOpenTeam={openTeam} />
+          )}
+          {view === "Trades" && <Trades snapshot={snapshot} model={model} myRosterId={myTeam.rosterId} />}
           {view === "Teams" && (
             <Teams
               snapshot={snapshot}

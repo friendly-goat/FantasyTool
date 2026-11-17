@@ -1,5 +1,5 @@
 import type { PlayerGame, PlayerRef, PlayerStats, StatLine } from "../../shared/types.ts";
-import { lockInValue } from "../../shared/lockin.ts";
+import { lockInValue, lockInValues } from "../../shared/lockin.ts";
 import { fantasyPoints, sleeperDisplayedAverage } from "../scoring.ts";
 import type { GameLine } from "./provider.ts";
 
@@ -37,11 +37,27 @@ export function countedGames(lines: GameLine[], seasonStart: string | null): Map
   return bySource;
 }
 
+/** How many games each NBA team has played: team abbreviation -> number of game dates. */
+export function teamGameCounts(lines: GameLine[], seasonStart: string | null): Map<string, number> {
+  const dates = new Map<string, Set<string>>();
+  for (const line of lines) {
+    if (!line.team || !line.final || (seasonStart !== null && line.date < seasonStart)) continue;
+    const seen = dates.get(line.team);
+    if (seen) seen.add(line.date);
+    else dates.set(line.team, new Set([line.date]));
+  }
+  return new Map([...dates].map(([team, seen]) => [team, seen.size]));
+}
+
 function summarizePlayer(
   player: PlayerRef,
   games: GameLine[],
   scoring: Record<string, number>,
+  teamGames: Map<string, number>,
 ): PlayerStats {
+  // His current team's game count, never less than the games he played.
+  const latestTeam = games[games.length - 1]?.team;
+  const played = Math.max(games.length, (latestTeam && teamGames.get(latestTeam)) || 0);
   const fantasy = games.map((game) => fantasyPoints(game.stats, scoring));
   const recent = fantasy.slice(-RECENT_WINDOW);
   const averages = Object.fromEntries(
@@ -54,6 +70,8 @@ function summarizePlayer(
     fantasyAvg: mean(fantasy),
     sleeperAvg: sleeperDisplayedAverage(games.map((game) => game.stats), scoring),
     lockInValue: lockInValue(fantasy),
+    lockInByGames: lockInValues(fantasy),
+    teamGames: played,
     bestGame: Math.max(...fantasy),
     recentAvg: recent.length > 0 ? mean(recent) : null,
     recentGames: recent.length,
@@ -70,12 +88,13 @@ export function summarize(
   seasonStart: string | null = null,
 ): Record<string, PlayerStats> {
   const bySource = countedGames(lines, seasonStart);
+  const teamGames = teamGameCounts(lines, seasonStart);
   const result: Record<string, PlayerStats> = {};
   for (const [sleeperId, sourceId] of matches) {
     const player = sleeperPlayers[sleeperId];
     const games = bySource.get(sourceId);
     if (!player || !games || games.length === 0) continue;
-    result[sleeperId] = summarizePlayer(player, games, scoring);
+    result[sleeperId] = summarizePlayer(player, games, scoring, teamGames);
   }
   return result;
 }
@@ -99,7 +118,7 @@ export function playerLog(
   }
 
   return {
-    stats: summarizePlayer(player, games, scoring),
+    stats: summarizePlayer(player, games, scoring, teamGameCounts(lines, seasonStart)),
     games: games
       .map((game) => ({
         date: game.date,

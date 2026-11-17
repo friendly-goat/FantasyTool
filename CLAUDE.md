@@ -34,6 +34,12 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   is the best legal lineup's combined value (`bestLineup` in
   `shared/analysis.ts`). Build new analysis on these, as pure tested functions
   in `shared/`.
+- Team strength (1 to 1000) and trade grades come from the projected weekly
+  score in `shared/strength.ts` and `shared/trade.ts`. The owner judges
+  everything over the rest of the season, not the coming week. Keep the model
+  deterministic (same imaginary weeks for a player on any roster).
+- The owner wants analysis that finds what he would not notice himself, done
+  with data in code. No chatbot or LLM inside the app.
 - The user's own team is chosen once per league (`myRosterId` in `src/App.tsx`).
   Features that give advice take that team's point of view.
 - Player stats come through the `StatsProvider` interface

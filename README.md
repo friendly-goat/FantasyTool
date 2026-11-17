@@ -4,10 +4,11 @@ An analysis tool for a Sleeper NBA fantasy league. It reads your league
 from Sleeper's public read-only API, shows it in a dashboard, and will grow
 into a trade idea and analysis tool.
 
-**Status:** milestone 3 of 5 under way. Working: the league dashboard, player
-stats scored with your league's settings, player details, matchup lineups, and
-a **My team** tab with a lineup check and free agents worth adding, valued for
-lock-in scoring. Next: the trade analyzer. See [Roadmap](#roadmap).
+**Status:** milestone 4 of 5 under way. Working: the league dashboard, player
+stats scored with your league's settings, a My team tab, a **Strength** tab
+rating every team from 1 to 1000 for the rest of the season, and a **Trades**
+tab that grades any trade for both managers and suggests one-for-one swaps.
+See [Roadmap](#roadmap).
 
 ## Run it
 
@@ -129,6 +130,40 @@ A team's strength is the combined lock-in value of its best legal lineup,
 found by trying every way to fill the slots. The trade analyzer will compare
 that number before and after a trade, for both teams.
 
+### Team strength (1 to 1000)
+
+`shared/strength.ts`. The number behind it is a team's projected weekly score:
+the points its best lineup is expected to lock in an average week for the rest
+of the season. The app plays out 200 imaginary weeks. In each one:
+
+1. every player's NBA team has 2, 3 or 4 games;
+2. he plays each game as often as he has this season (`games / teamGames`,
+   blended with a typical rate early on);
+3. he is worth his lock-in value for the games he plays, or nothing;
+4. the team fields its best legal lineup from whoever is available.
+
+The average is the projected weekly score. It is put on a 1 to 1000 scale
+between two reference teams from the same league: a team built from the best
+free agents (1) and the nine best players never missing a game (1000).
+Players with few games are pulled toward a typical free agent. Each player
+sees the same imaginary weeks on any roster, so before-and-after comparisons
+are not blurred by luck, and results are identical on every run.
+
+### Trade grades
+
+`shared/trade.ts`. A trade is judged by the change in each team's projected
+weekly score. Rosters keep their size: a team that receives fewer players
+picks up the free agent who helps it most, and a team that receives more
+drops its least valuable player. Each manager gets:
+
+- a grade from 1 to 100 with a letter, where 50 means no real change and
+  +4 points a week is about 73;
+- the change in team strength.
+
+Trade ideas are one-for-one swaps that raise your projected score without
+lowering the other team's, where your player does not look clearly worse on
+average than the one you ask for.
+
 ### Lock-in scoring
 
 This is a lock-in league: each starter counts one game per week. After a
@@ -163,13 +198,15 @@ scripts/  One-off tools
 1. **League dashboard.** Done.
 2. **Player stats.** Done. A stats source behind a `StatsProvider` interface,
    matched to Sleeper's player IDs, scored with the league's settings.
-3. **Team analysis.** In progress. Done: lock-in value per player
-   (`shared/lockin.ts`), exact best-lineup search and free-agent upgrades
-   (`shared/analysis.ts`), shown on the My team tab. To do: each player's
-   games in the coming week, so value reflects the real schedule.
-4. **Trade analyzer.** Build a trade, see the impact on both teams.
-5. **AI suggestions.** An LLM proposes and explains moves using the numbers
-   from the valuation engine.
+3. **Team analysis.** Done: lock-in value, best-lineup search, free-agent
+   upgrades, team strength.
+4. **Trade analyzer.** In progress. Done: grades and strength change for any
+   two-team trade, one-for-one trade ideas. To do: two-for-one and
+   two-for-two ideas, each player's real schedule, and using past seasons to
+   judge how early-season form holds up.
+5. **Deeper analysis.** Past seasons as a guide to who is likely to rise or
+   fade, and other ways to surface moves that are easy to miss. No chatbot:
+   everything is computed from data.
 
 ## Notes on Sleeper's API
 

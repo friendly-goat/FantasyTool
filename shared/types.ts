@@ -152,6 +152,10 @@ export interface PlayerStats extends PlayerRef {
    * (see shared/lockin.ts). The value used for lineup and trade analysis.
    */
   lockInValue: number;
+  /** Lock-in value for weeks of 1, 2, 3 and 4 games, in that order. */
+  lockInByGames: number[];
+  /** Games his NBA team has played this season; `games / teamGames` is how often he plays. */
+  teamGames: number;
   /** Highest single-game fantasy score this season. */
   bestGame: number;
   /** Fantasy points per game over the most recent games, or null if none. */

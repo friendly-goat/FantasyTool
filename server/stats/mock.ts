@@ -12,6 +12,7 @@ function seeded(seed: number): () => number {
 }
 
 const GAMES_PER_PLAYER = 12;
+const ROSTERED_PLAYERS = 130;
 /** Low-minute games dated before the season, to exercise the preseason filter. */
 const PRESEASON_GAMES = 2;
 /** Mock players whose index divides by this have no games, to show the "no stats" case. */
@@ -27,7 +28,9 @@ export function createMockStats(players: Record<string, unknown>): StatsProvider
       Object.values(players as Record<string, { player_id: string; full_name: string; team: string }>).forEach(
         (player, index) => {
           if (index % NO_GAMES_EVERY === NO_GAMES_EVERY - 1) return;
-          const talent = 0.35 + random() * 0.9; // Scales every stat for this player.
+          // Scales every stat for this player. The mock league rosters the first
+          // 130 players; the rest are free agents and, as in a real league, weaker.
+          const talent = (0.35 + random() * 0.9) * (index >= ROSTERED_PLAYERS ? 0.6 : 1);
           for (let game = -PRESEASON_GAMES; game < GAMES_PER_PLAYER; game++) {
             const preseason = game < 0;
             const date = new Date(Date.UTC(2026, 9, preseason ? 14 + game * 2 : 21 + game * 2))

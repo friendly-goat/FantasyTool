@@ -980,6 +980,158 @@ th[aria-sort] .sort-button {
   margin-top: 0.9rem;
 }
 
+/* ---- Strength and trades ---- */
+
+.strength-table {
+  min-width: 58rem;
+}
+
+.strength-table th,
+.strength-table td {
+  padding-left: 0.6rem;
+  padding-right: 0.6rem;
+}
+
+.strength-cell {
+  display: grid;
+  grid-template-columns: 3rem minmax(5rem, 1fr);
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.strength-score {
+  font-size: 1.25rem;
+  font-weight: 800;
+}
+
+.meter {
+  display: block;
+  height: 0.4rem;
+  background: var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.meter-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+.explain {
+  max-width: 52rem;
+}
+
+.explain p + p {
+  margin-top: 0.5rem;
+}
+
+.trade-rosters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.trade-roster {
+  padding: 1rem 1.25rem;
+}
+
+.trade-roster .group-row th {
+  padding-top: 0.5rem;
+}
+
+.pick {
+  display: inline-flex;
+  vertical-align: middle;
+  margin-right: 0.5rem;
+}
+
+.pick input {
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--accent);
+}
+
+.roster-table tr.picked th,
+.roster-table tr.picked td {
+  background: var(--accent-soft);
+}
+
+.trade-hint {
+  margin: 0.25rem 0;
+}
+
+.verdict {
+  font-size: 1.0625rem;
+  font-weight: 700;
+  margin-bottom: 0.75rem;
+}
+
+.grade-card {
+  padding: 1.1rem 1.25rem 1.25rem;
+}
+
+.grade-card .league-option-name {
+  display: block;
+}
+
+.grade {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin: 0.75rem 0 0.5rem;
+  font-weight: 400;
+}
+
+.grade-number {
+  font-size: 2.75rem;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.grade-letter {
+  font-size: 1.5rem;
+  font-weight: 800;
+}
+
+.grade-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.5rem 1rem;
+  margin: 0 0 0.75rem;
+}
+
+.grade-facts dt {
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.grade-facts dd {
+  margin: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.ideas-title {
+  margin-top: 2rem;
+}
+
+.ideas-title + .explain {
+  margin-bottom: 0.75rem;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 /* ---- Activity ---- */
 
 .activity {
