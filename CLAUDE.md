@@ -79,6 +79,9 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
 - Wherever the UI names a player, render it with `PlayerName`
   (`src/components/PlayerName.tsx`) so the name opens the player's details.
   In a list, use `PlayerCell` (name, injury tag, position chips, team).
+- The Draft tab's rising and falling marks (`shared/draft.ts`) are a display
+  label only: rank by weekly value now against pick order, one round either
+  way. Never feed them into strength, grades or trade ideas.
 - An NBA team is shown with `TeamTag` (logo and abbreviation). Logos come
   through `/api/logos/:team/:variant` (`server/logos.ts`, cached); the NBA
   team table is `shared/nbaTeams.ts`. Never commit logo files to the repo.

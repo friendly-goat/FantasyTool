@@ -1,4 +1,6 @@
 import type {
+  DraftBoard,
+  DraftSelection,
   LeagueSnapshot,
   LeagueSummary,
   Matchup,
@@ -13,6 +15,8 @@ import type {
 } from "../shared/types.ts";
 import type {
   FetchJson,
+  RawDraft,
+  RawDraftSelection,
   RawLeague,
   RawMatchup,
   RawPlayer,
@@ -310,6 +314,84 @@ export async function buildSnapshot(
 }
 
 /** Finds a Sleeper user by username and lists their NBA leagues. */
+/**
+ * The league's draft, if it has one. When there are several (for example a
+ * rerun draft), the most recently started completed one is used, else the
+ * most recent of any status. Three requests: the draft list, the draft and
+ * its picks.
+ */
+export async function loadDraftBoard(
+  leagueId: string,
+  fetchJson: FetchJson,
+  players: PlayerMap,
+): Promise<DraftBoard | null> {
+  const drafts = asArray<RawDraft>(await fetchJson(`/league/${encodeURIComponent(leagueId)}/drafts`)).filter(
+    (draft) => typeof draft.draft_id === "string",
+  );
+  if (drafts.length === 0) return null;
+  const newestFirst = [...drafts].sort((a, b) => (b.start_time ?? 0) - (a.start_time ?? 0));
+  const chosen = newestFirst.find((draft) => draft.status === "complete") ?? newestFirst[0]!;
+  const id = encodeURIComponent(chosen.draft_id!);
+  const [draft, picks] = await Promise.all([fetchJson(`/draft/${id}`), fetchJson(`/draft/${id}/picks`)]);
+  return buildDraftBoard({ ...chosen, ...((draft ?? {}) as RawDraft) }, asArray<RawDraftSelection>(picks), players);
+}
+
+export function buildDraftBoard(draft: RawDraft, picks: RawDraftSelection[], players: PlayerMap): DraftBoard {
+  const slotToRoster = draft.slot_to_roster_id ?? {};
+  const usable = picks.filter(
+    (pick) => typeof pick.player_id === "string" && Number.isInteger(pick.round) && Number.isInteger(pick.draft_slot),
+  );
+  const teams = Math.max(
+    draft.settings?.teams ?? 0,
+    Object.keys(slotToRoster).length,
+    ...usable.map((pick) => pick.draft_slot!),
+  );
+  const rounds = Math.max(draft.settings?.rounds ?? 0, ...usable.map((pick) => pick.round!));
+
+  const selections: DraftSelection[] = usable.map((pick) => {
+    const round = pick.round!;
+    const slot = pick.draft_slot!;
+    // Sleeper's overall pick number places the pick within its round, whatever
+    // the draft order rules (snake, third-round reversal). Without it, assume
+    // a plain snake or linear order.
+    const snakeBack = draft.type === "snake" && round % 2 === 0;
+    const fromNumber = Number.isInteger(pick.pick_no) ? pick.pick_no! - (round - 1) * teams : 0;
+    const pickInRound = fromNumber >= 1 && fromNumber <= teams ? fromNumber : snakeBack ? teams - slot + 1 : slot;
+    const known = players[pick.player_id!];
+    const meta = pick.metadata ?? {};
+    const player: PlayerRef = known ?? {
+      id: pick.player_id!,
+      name: [meta.first_name, meta.last_name].filter(Boolean).join(" ") || `Player ${pick.player_id}`,
+      team: meta.team || null,
+      positions: meta.position ? [meta.position] : [],
+      injuryStatus: null,
+    };
+    return {
+      pickNo: pick.pick_no ?? (round - 1) * teams + pickInRound,
+      round,
+      slot,
+      pickInRound,
+      rosterId: pick.roster_id ?? null,
+      keeper: pick.is_keeper === true,
+      player,
+    };
+  });
+  selections.sort((a, b) => a.pickNo - b.pickNo);
+
+  return {
+    draftId: draft.draft_id ?? "",
+    status: draft.status ?? "unknown",
+    type: draft.type ?? "unknown",
+    rounds,
+    teams,
+    slots: Array.from({ length: teams }, (_, index) => {
+      const rosterId = slotToRoster[String(index + 1)];
+      return { slot: index + 1, rosterId: Number.isInteger(rosterId) ? rosterId! : null };
+    }),
+    picks: selections,
+  };
+}
+
 export async function loadUserLeagues(
   username: string,
   fetchJson: FetchJson,

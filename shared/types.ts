@@ -100,6 +100,33 @@ export interface LeagueSnapshot {
   transactions: Transaction[];
 }
 
+/** One pick on the draft board. */
+export interface DraftSelection {
+  /** Overall pick number, from 1. */
+  pickNo: number;
+  round: number;
+  /** Draft slot (board column), from 1. */
+  slot: number;
+  /** Pick number within the round, as Sleeper labels it ("2.12"). */
+  pickInRound: number;
+  /** Roster that made the pick; differs from the slot's owner after a pick trade. */
+  rosterId: number | null;
+  keeper: boolean;
+  player: PlayerRef;
+}
+
+export interface DraftBoard {
+  draftId: string;
+  status: string;
+  /** "snake", "linear" or "auction". */
+  type: string;
+  rounds: number;
+  teams: number;
+  /** One column per draft slot, in board order, with the roster that owns it. */
+  slots: { slot: number; rosterId: number | null }[];
+  picks: DraftSelection[];
+}
+
 export interface LeagueSummary {
   id: string;
   name: string;

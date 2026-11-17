@@ -146,6 +146,38 @@ export interface RawTransaction {
   draft_picks?: RawDraftPick[] | null;
 }
 
+/** A draft, from /league/:id/drafts or /draft/:id. */
+export interface RawDraft {
+  draft_id?: string;
+  status?: string;
+  /** "snake", "linear" or "auction". */
+  type?: string;
+  season?: string;
+  start_time?: number | null;
+  settings?: { rounds?: number; teams?: number } | null;
+  /** User ID -> draft slot. */
+  draft_order?: Record<string, number> | null;
+  /** Draft slot -> roster ID. */
+  slot_to_roster_id?: Record<string, number> | null;
+}
+
+/** One selection, from /draft/:id/picks. */
+export interface RawDraftSelection {
+  player_id?: string;
+  picked_by?: string;
+  roster_id?: number | null;
+  round?: number;
+  draft_slot?: number;
+  pick_no?: number;
+  is_keeper?: boolean | null;
+  metadata?: {
+    first_name?: string;
+    last_name?: string;
+    position?: string;
+    team?: string;
+  } | null;
+}
+
 export interface RawPlayer {
   player_id?: string;
   full_name?: string;

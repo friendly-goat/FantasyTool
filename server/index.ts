@@ -7,7 +7,7 @@ import { Cache } from "./cache.ts";
 import { createLogoSource } from "./logos.ts";
 import { fetchFromMock, MOCK_LEAGUE_ID } from "./mock.ts";
 import { fetchFromSleeper, SleeperError } from "./sleeper.ts";
-import { buildSnapshot, loadPlayers, loadUserLeagues } from "./snapshot.ts";
+import { buildSnapshot, loadDraftBoard, loadPlayers, loadUserLeagues } from "./snapshot.ts";
 import { createBalldontlie } from "./stats/balldontlie.ts";
 import { createMockStats } from "./stats/mock.ts";
 import type { StatsProvider } from "./stats/provider.ts";
@@ -139,6 +139,20 @@ app.get("/api/league/:leagueId/players/:playerId", async (req, res) => {
       return;
     }
     res.json(detail);
+  } catch (error) {
+    sendError(res, error);
+  }
+});
+
+// The draft board. A finished draft never changes, but one still running
+// does, so it uses the same cache time as the league.
+app.get("/api/league/:leagueId/draft", async (req, res) => {
+  try {
+    const leagueId = req.params.leagueId.trim();
+    const result = await cache.get(`draft-v1-${leagueId}`, leagueTtl, async () => ({
+      board: await loadDraftBoard(leagueId, fetchJson, (await getPlayers()).value),
+    }));
+    res.json(result.value);
   } catch (error) {
     sendError(res, error);
   }

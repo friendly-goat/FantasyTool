@@ -2070,3 +2070,218 @@ th[aria-sort] .sort-button {
     text-align: right;
   }
 }
+
+/* ---- Draft board ---- */
+
+.draft-summary {
+  margin: 0 0 0.75rem;
+}
+
+.draft-scroll {
+  overflow: auto;
+  max-height: min(80vh, 62rem);
+  padding: 0 0.5rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.draft-scroll:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.draft-grid {
+  --draft-col: 7rem;
+  display: grid;
+  grid-template-columns: repeat(var(--draft-teams, 12), minmax(var(--draft-col), 1fr));
+  gap: 0.4rem;
+}
+
+/* On wide screens the board grows past the page column, so a 12-team board
+   fits without scrolling sideways. */
+@media (min-width: 1100px) {
+  .draft-scroll {
+    --board-width: min(calc(100vw - 4rem), 100rem);
+    width: var(--board-width);
+    margin-left: calc(50% - var(--board-width) / 2);
+  }
+}
+
+@media (max-width: 720px) {
+  .draft-grid {
+    --draft-col: 6.5rem;
+  }
+
+  .draft-card-body {
+    padding: 0.35rem 0.4rem 0.25rem;
+  }
+}
+
+.draft-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+  padding: 0.65rem 0.25rem 0.5rem;
+  background: var(--surface);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.draft-head-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.draft-head-mine {
+  box-shadow: inset 0 -2px var(--accent);
+}
+
+.draft-head .mine {
+  margin: 0;
+}
+
+/* Neutral card; position colors fill only the bottom third, split evenly
+   between a player's positions. */
+.draft-card {
+  display: flex;
+  flex-direction: column;
+  height: 7rem;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: var(--radius-small);
+  background: var(--surface-raised);
+}
+
+.draft-card-empty {
+  border: 1px dashed var(--line);
+  background: transparent;
+}
+
+.draft-card-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-height: 0;
+  padding: 0.4rem 0.5rem 0.3rem;
+}
+
+.draft-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem;
+  min-height: 1rem;
+}
+
+.draft-pick {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.draft-trend {
+  display: inline-flex;
+}
+
+.draft-card .player-link-stacked {
+  width: 100%;
+}
+
+.player-link-stacked {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  line-height: 1.15;
+  text-align: left;
+}
+
+.name-first {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.name-last {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 0.875rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.draft-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+}
+
+.draft-note {
+  color: var(--muted);
+  font-size: 0.6875rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.draft-bands {
+  display: flex;
+  flex: 0 0 33%;
+  background: var(--line);
+}
+
+.draft-band {
+  display: grid;
+  flex: 1 1 0;
+  place-items: center;
+  font-size: 0.6875rem;
+  font-weight: 800;
+}
+
+.draft-band + .draft-band {
+  box-shadow: inset 1px 0 rgba(20, 26, 42, 0.25);
+}
+
+.trend-icon {
+  width: 1.05rem;
+  height: 1.05rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.trend-up {
+  color: var(--win);
+}
+
+.trend-down {
+  color: var(--loss);
+}
+
+.draft-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.25rem;
+  margin-top: 0.75rem;
+}
+
+.draft-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}

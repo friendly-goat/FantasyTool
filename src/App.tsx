@@ -12,6 +12,7 @@ import {
   saveMyRosterId,
 } from "./api.ts";
 import { Activity } from "./components/Activity.tsx";
+import { Draft } from "./components/Draft.tsx";
 import { LeaguePicker } from "./components/LeaguePicker.tsx";
 import { Matchups } from "./components/Matchups.tsx";
 import { MyTeam } from "./components/MyTeam.tsx";
@@ -27,7 +28,7 @@ import { Trades } from "./components/Trades.tsx";
 import { formatAgo, formatDate } from "./format.ts";
 import { useTheme } from "./theme.ts";
 
-const VIEWS = ["My team", "Standings", "Strength", "Teams", "Players", "Matchups", "Trades", "Activity"] as const;
+const VIEWS = ["My team", "Standings", "Strength", "Teams", "Players", "Matchups", "Trades", "Draft", "Activity"] as const;
 /** How often to ask the server for progress while stats are downloading. */
 const STATS_POLL_MS = 2500;
 const LAST_SEASON_POLL_MS = 20000;
@@ -328,6 +329,9 @@ export function App() {
               onOpenMatchup={setOpenMatchupId}
               onOpenTeam={openTeam}
             />
+          )}
+          {view === "Draft" && (
+            <Draft leagueId={snapshot.league.id} snapshot={snapshot} model={model} myRosterId={myTeam.rosterId} />
           )}
           {view === "Activity" && <Activity snapshot={snapshot} />}
 

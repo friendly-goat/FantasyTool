@@ -275,6 +275,22 @@ run Monday to Sunday (`server/weeks.ts`).
 | `npm run check:logos` | Downloads every team logo and writes a preview page |
 | `npm start` | Builds the React app and serves everything from :8787 |
 
+## Draft board
+
+The Draft tab shows the league's draft the way Sleeper's board does: one
+column per draft slot, one row per round, each card labeled with Sleeper's
+pick number ("2.12"). Cards are neutral; the bottom third shows the player's
+positions in their colors, split evenly when he has two or three. The backend
+loads the draft with three requests (`/league/:id/drafts`, `/draft/:id`,
+`/draft/:id/picks`), cached like the league.
+
+A green rising mark means a player is worth at least a round earlier than he
+went; a red falling mark, at least a round later. Every drafted player is
+ranked by his weekly value now (what he locks in an average week at his
+projected level, allowing for missed games), and that rank is compared with
+the order he was picked in (`shared/draft.ts`). Anything within a round shows
+no mark. It is a display label only and feeds nothing else.
+
 ## Look
 
 Positions always appear as colored chips (PG pink, SG orange, G coral, SF

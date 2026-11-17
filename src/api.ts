@@ -1,5 +1,6 @@
 import type {
   AppConfig,
+  DraftBoard,
   LeagueSnapshot,
   PlayerDetail,
   StatsReport,
@@ -31,6 +32,10 @@ export function getStats(leagueId: string, retry = false): Promise<StatsReport> 
 
 export function getPlayerDetail(leagueId: string, playerId: string): Promise<PlayerDetail> {
   return getJson(`/api/league/${encodeURIComponent(leagueId)}/players/${encodeURIComponent(playerId)}`);
+}
+
+export function getDraft(leagueId: string): Promise<{ board: DraftBoard | null }> {
+  return getJson(`/api/league/${encodeURIComponent(leagueId)}/draft`);
 }
 
 export function getUserLeagues(username: string): Promise<UserLeagues> {

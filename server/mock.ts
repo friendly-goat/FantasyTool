@@ -175,7 +175,52 @@ function build() {
     settings: { playoff_week_start: 22, playoff_teams: 6 },
   };
 
-  return { players, users, rosters, matchups, transactions, league };
+  // A completed snake draft of each roster's players. It uses its own random
+  // stream so the rest of the mock league stays the same.
+  const draftRandom = seeded(11);
+  const slotToRoster: Record<string, number> = {};
+  const draftOrder: Record<string, number> = {};
+  rosters.forEach((roster, i) => {
+    const slot = ((i * 7) % MANAGERS.length) + 1;
+    slotToRoster[String(slot)] = roster.roster_id;
+    draftOrder[roster.owner_id] = slot;
+  });
+  const draftOrderOf = rosters.map((roster) =>
+    roster.players
+      .map((id) => ({ id, key: draftRandom() }))
+      .sort((a, b) => a.key - b.key)
+      .map((entry) => entry.id),
+  );
+  const draftPicks: Record<string, unknown>[] = [];
+  for (let round = 1; round <= ROSTER_SIZE; round++) {
+    for (let k = 1; k <= MANAGERS.length; k++) {
+      const slot = round % 2 === 1 ? k : MANAGERS.length - k + 1;
+      const rosterId = slotToRoster[String(slot)]!;
+      const playerId = draftOrderOf[rosterId - 1]![round - 1]!;
+      draftPicks.push({
+        player_id: playerId,
+        picked_by: `u${rosterId}`,
+        roster_id: rosterId,
+        round,
+        draft_slot: slot,
+        pick_no: (round - 1) * MANAGERS.length + k,
+        is_keeper: null,
+        metadata: {},
+      });
+    }
+  }
+  const draft = {
+    draft_id: "mock-draft",
+    status: "complete",
+    type: "snake",
+    season: "2026",
+    start_time: Date.UTC(2026, 9, 12),
+    settings: { rounds: ROSTER_SIZE, teams: MANAGERS.length },
+    draft_order: draftOrder,
+    slot_to_roster_id: slotToRoster,
+  };
+
+  return { players, users, rosters, matchups, transactions, league, draft, draftPicks };
 }
 
 const data = build();
@@ -203,8 +248,11 @@ export const fetchFromMock: FetchJson = async (path) => {
     if (rest === "/rosters") return data.rosters;
     if (rest === "/users") return data.users;
     if (/^\/matchups\/\d+$/.test(rest)) return data.matchups;
+    if (rest === "/drafts") return [data.draft];
     const tx = rest.match(/^\/transactions\/(\d+)$/);
     if (tx) return data.transactions[Number(tx[1])] ?? [];
   }
+  if (path === "/draft/mock-draft") return data.draft;
+  if (path === "/draft/mock-draft/picks") return data.draftPicks;
   throw new Error(`Mock Sleeper API has no answer for ${path}`);
 };

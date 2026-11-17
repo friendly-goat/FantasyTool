@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { fetchFromMock, MOCK_LEAGUE_ID } from "./mock.ts";
 import {
+  buildDraftBoard,
+  loadDraftBoard,
   playoffSettings,
   buildMatchups,
   buildSnapshot,
@@ -159,6 +161,42 @@ describe("tolerance for incomplete Sleeper data", () => {
     expect(players).toEqual({
       a: { id: "a", name: "Ada Stone", team: null, positions: [], injuryStatus: null },
     });
+  });
+});
+
+describe("draft board", () => {
+  it("loads the mock league's snake draft with Sleeper-style pick labels", async () => {
+    const players = await loadPlayers(fetchFromMock);
+    const board = await loadDraftBoard(MOCK_LEAGUE_ID, fetchFromMock, players);
+    expect(board).not.toBeNull();
+    expect(board!.teams).toBe(10);
+    expect(board!.rounds).toBe(13);
+    expect(board!.picks).toHaveLength(130);
+    expect(board!.slots.every((slot) => slot.rosterId !== null)).toBe(true);
+    // Round 2 runs backwards: slot 1 makes the tenth pick of the round.
+    const back = board!.picks.find((pick) => pick.round === 2 && pick.slot === 1)!;
+    expect(back.pickInRound).toBe(10);
+    expect(back.pickNo).toBe(20);
+    expect(back.player.name).not.toMatch(/^Player /);
+  });
+
+  it("copes with missing fields and unknown players", () => {
+    const board = buildDraftBoard(
+      { draft_id: "d", type: "snake", settings: { teams: 2 } },
+      [
+        { player_id: "x", round: 1, draft_slot: 2, metadata: { first_name: "Al", last_name: "Bee", position: "C", team: "LAL" } },
+        { player_id: "y", round: 2, draft_slot: 2 },
+        { round: 1, draft_slot: 1 },
+      ],
+      {},
+    );
+    expect(board.picks.map((pick) => [pick.pickNo, pick.pickInRound])).toEqual([[2, 2], [3, 1]]);
+    expect(board.picks[0]!.player).toMatchObject({ name: "Al Bee", team: "LAL", positions: ["C"] });
+    expect(board.slots).toEqual([{ slot: 1, rosterId: null }, { slot: 2, rosterId: null }]);
+  });
+
+  it("returns null when the league has no draft", async () => {
+    expect(await loadDraftBoard("x", async () => [], {})).toBeNull();
   });
 });
 
