@@ -910,6 +910,76 @@ th[aria-sort] .sort-button {
   font-weight: 600;
 }
 
+/* ---- My team ---- */
+
+.mine {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0 0.45rem;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.chooser {
+  max-width: 34rem;
+}
+
+.chooser-option {
+  align-items: center;
+}
+
+.chooser-option .league-option-name {
+  display: block;
+}
+
+.my-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.my-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+  gap: 1rem;
+}
+
+.my-card {
+  padding: 1.1rem 1.25rem 1.25rem;
+}
+
+.my-card-title {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.my-score {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin: 0.25rem 0;
+}
+
+.my-score .num {
+  font-size: 1.75rem;
+  font-weight: 800;
+}
+
+.my-card .quiet {
+  margin-top: 0.4rem;
+}
+
+.my-card-action {
+  margin-top: 0.9rem;
+}
+
 /* ---- Activity ---- */
 
 .activity {

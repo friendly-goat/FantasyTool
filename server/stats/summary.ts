@@ -1,4 +1,5 @@
 import type { PlayerGame, PlayerRef, PlayerStats, StatLine } from "../../shared/types.ts";
+import { lockInValue } from "../../shared/lockin.ts";
 import { fantasyPoints, sleeperDisplayedAverage } from "../scoring.ts";
 import type { GameLine } from "./provider.ts";
 
@@ -52,6 +53,8 @@ function summarizePlayer(
     minutes: mean(games.map((game) => game.minutes)),
     fantasyAvg: mean(fantasy),
     sleeperAvg: sleeperDisplayedAverage(games.map((game) => game.stats), scoring),
+    lockInValue: lockInValue(fantasy),
+    bestGame: Math.max(...fantasy),
     recentAvg: recent.length > 0 ? mean(recent) : null,
     recentGames: recent.length,
     averages,

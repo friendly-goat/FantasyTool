@@ -1,19 +1,29 @@
 import { useCallback, useEffect, useState } from "react";
 import type { AppConfig, LeagueSnapshot, PlayerRef, StatsReport } from "../shared/types.ts";
-import { getConfig, getLeague, getStats, loadSavedLeagueId, saveLeagueId } from "./api.ts";
+import {
+  getConfig,
+  getLeague,
+  getStats,
+  loadMyRosterId,
+  loadSavedLeagueId,
+  saveLeagueId,
+  saveMyRosterId,
+} from "./api.ts";
 import { Activity } from "./components/Activity.tsx";
 import { LeaguePicker } from "./components/LeaguePicker.tsx";
 import { Matchups } from "./components/Matchups.tsx";
+import { MyTeam } from "./components/MyTeam.tsx";
 import { OpenPlayerContext } from "./components/PlayerName.tsx";
 import { PlayerPanel } from "./components/PlayerPanel.tsx";
 import { Players } from "./components/Players.tsx";
 import { Standings } from "./components/Standings.tsx";
 import { StatsNotice } from "./components/StatsNotice.tsx";
+import { TeamChooser } from "./components/TeamChooser.tsx";
 import { Teams } from "./components/Teams.tsx";
 import { formatAgo, formatDate } from "./format.ts";
 import { useTheme } from "./theme.ts";
 
-const VIEWS = ["Standings", "Teams", "Players", "Matchups", "Activity"] as const;
+const VIEWS = ["My team", "Standings", "Teams", "Players", "Matchups", "Activity"] as const;
 /** How often to ask the server for progress while stats are downloading. */
 const STATS_POLL_MS = 2500;
 type View = (typeof VIEWS)[number];
@@ -25,7 +35,12 @@ export function App() {
   const [stats, setStats] = useState<StatsReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [view, setView] = useState<View>("Standings");
+  const [view, setView] = useState<View>("My team");
+  const [myRosterId, setMyRosterId] = useState<number | null>(null);
+  const [choosingTeam, setChoosingTeam] = useState(false);
+  /** Sleeper user ID from the league picker, used once to find the user's team. */
+  const [pickedUserId, setPickedUserId] = useState<string | null>(null);
+  const [openMatchupId, setOpenMatchupId] = useState<number | null>(null);
   const [selectedRosterId, setSelectedRosterId] = useState<number | null>(null);
   const [openPlayer, setOpenPlayer] = useState<PlayerRef | null>(null);
   const { theme, toggleTheme } = useTheme();
@@ -79,17 +94,48 @@ export function App() {
     return () => clearTimeout(timer);
   }, [loadedLeagueId, stats, loadStats]);
 
-  function openLeague(id: string) {
+  // Work out which team is the user's: the saved choice for this league, or
+  // the team owned by the username they searched with.
+  useEffect(() => {
+    if (!snapshot) return;
+    const known = (rosterId: number | null) =>
+      rosterId !== null && snapshot.teams.some((team) => team.rosterId === rosterId);
+    const saved = loadMyRosterId(snapshot.league.id);
+    if (known(saved)) {
+      setMyRosterId(saved);
+      return;
+    }
+    const owned = snapshot.teams.find((team) => pickedUserId && team.ownerId === pickedUserId);
+    if (owned) saveMyRosterId(snapshot.league.id, owned.rosterId);
+    setMyRosterId(owned?.rosterId ?? null);
+  }, [snapshot, pickedUserId]);
+
+  function chooseTeam(rosterId: number) {
+    if (snapshot) saveMyRosterId(snapshot.league.id, rosterId);
+    setMyRosterId(rosterId);
+    setChoosingTeam(false);
+    setView("My team");
+  }
+
+  function openLeague(id: string, userId?: string) {
     saveLeagueId(id);
     setSnapshot(null);
     setStats(null);
+    setMyRosterId(null);
+    setPickedUserId(userId ?? null);
     setLeagueId(id);
+  }
+
+  function openMatchup(matchupId: number) {
+    setOpenMatchupId(matchupId);
+    setView("Matchups");
   }
 
   function switchLeague() {
     saveLeagueId(null);
     setSnapshot(null);
     setStats(null);
+    setMyRosterId(null);
     setError(null);
     setLeagueId(null);
   }
@@ -113,6 +159,7 @@ export function App() {
   }
 
   const canSwitch = !config.defaultLeagueId;
+  const myTeam = snapshot?.teams.find((team) => team.rosterId === myRosterId);
 
   return (
     <main className="page">
@@ -167,7 +214,11 @@ export function App() {
         </p>
       )}
 
-      {snapshot && (
+      {snapshot && (myRosterId === null || choosingTeam) && (
+        <TeamChooser snapshot={snapshot} onChoose={chooseTeam} />
+      )}
+
+      {snapshot && myTeam && !choosingTeam && (
         <OpenPlayerContext.Provider value={setOpenPlayer}>
           <nav className="tabs" aria-label="League views">
             {VIEWS.map((name) => (
@@ -176,28 +227,52 @@ export function App() {
                 type="button"
                 className="tab"
                 aria-current={view === name ? "page" : undefined}
-                onClick={() => setView(name)}
+                onClick={() => {
+                  setView(name);
+                  setOpenMatchupId(null); // the Matchups tab opens on the list
+                }}
               >
                 {name}
               </button>
             ))}
           </nav>
 
-          {(view === "Teams" || view === "Players") && stats && (
+          {(view === "My team" || view === "Teams" || view === "Players") && stats && (
             <StatsNotice stats={stats} onRetry={() => void loadStats(snapshot.league.id, true)} />
           )}
 
-          {view === "Standings" && <Standings snapshot={snapshot} onOpenTeam={openTeam} />}
+          {view === "My team" && (
+            <MyTeam
+              snapshot={snapshot}
+              stats={stats}
+              team={myTeam}
+              onChangeTeam={() => setChoosingTeam(true)}
+              onOpenMatchup={openMatchup}
+            />
+          )}
+          {view === "Standings" && (
+            <Standings snapshot={snapshot} myRosterId={myRosterId} onOpenTeam={openTeam} />
+          )}
           {view === "Teams" && (
             <Teams
               snapshot={snapshot}
               stats={stats}
+              myRosterId={myRosterId}
               selectedRosterId={selectedRosterId}
               onSelect={setSelectedRosterId}
             />
           )}
           {view === "Players" && <Players snapshot={snapshot} stats={stats} />}
-          {view === "Matchups" && <Matchups snapshot={snapshot} stats={stats} onOpenTeam={openTeam} />}
+          {view === "Matchups" && (
+            <Matchups
+              snapshot={snapshot}
+              stats={stats}
+              myRosterId={myRosterId}
+              openMatchupId={openMatchupId}
+              onOpenMatchup={setOpenMatchupId}
+              onOpenTeam={openTeam}
+            />
+          )}
           {view === "Activity" && <Activity snapshot={snapshot} />}
 
           {openPlayer && (

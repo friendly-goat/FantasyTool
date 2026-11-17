@@ -57,3 +57,24 @@ export function saveLeagueId(leagueId: string | null): void {
     // Not remembered; nothing else to do.
   }
 }
+
+// Which team in a league is the user's own. Remembered per league.
+const myTeamKey = (leagueId: string) => `fantasytool.myTeam.${leagueId}`;
+
+export function loadMyRosterId(leagueId: string): number | null {
+  try {
+    const saved = localStorage.getItem(myTeamKey(leagueId));
+    return saved === null ? null : Number(saved);
+  } catch {
+    return null;
+  }
+}
+
+export function saveMyRosterId(leagueId: string, rosterId: number | null): void {
+  try {
+    if (rosterId === null) localStorage.removeItem(myTeamKey(leagueId));
+    else localStorage.setItem(myTeamKey(leagueId), String(rosterId));
+  } catch {
+    // Not remembered; the choice still holds for this visit.
+  }
+}

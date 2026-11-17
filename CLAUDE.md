@@ -29,6 +29,13 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   `shared/types.ts` inside `server/snapshot.ts`.
 - Fantasy numbers (values, projections, trade impact) are computed in code with
   tests. An LLM may explain or propose, never do the arithmetic.
+- A player's value for any lineup, waiver or trade question is his
+  `lockInValue` (`shared/lockin.ts`), never his plain average. Team strength
+  is the best legal lineup's combined value (`bestLineup` in
+  `shared/analysis.ts`). Build new analysis on these, as pure tested functions
+  in `shared/`.
+- The user's own team is chosen once per league (`myRosterId` in `src/App.tsx`).
+  Features that give advice take that team's point of view.
 - Player stats come through the `StatsProvider` interface
   (`server/stats/provider.ts`). Nothing outside `server/stats/` may know
   which vendor is in use. API keys live in `.env` only, never in the repo.

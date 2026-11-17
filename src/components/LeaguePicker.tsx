@@ -2,7 +2,8 @@ import { useState, type FormEvent } from "react";
 import type { UserLeagues } from "../../shared/types.ts";
 import { getUserLeagues } from "../api.ts";
 
-export function LeaguePicker({ onOpen }: { onOpen: (leagueId: string) => void }) {
+/** `userId` is passed when the league was found by username, so the user's own team can be picked for them. */
+export function LeaguePicker({ onOpen }: { onOpen: (leagueId: string, userId?: string) => void }) {
   const [username, setUsername] = useState("");
   const [leagueId, setLeagueId] = useState("");
   const [result, setResult] = useState<UserLeagues | null>(null);
@@ -69,7 +70,7 @@ export function LeaguePicker({ onOpen }: { onOpen: (leagueId: string) => void })
         <ul className="league-list">
           {result.leagues.map((league) => (
             <li key={league.id}>
-              <button type="button" className="league-option" onClick={() => onOpen(league.id)}>
+              <button type="button" className="league-option" onClick={() => onOpen(league.id, result.user.id)}>
                 <span className="league-option-name">{league.name}</span>
                 <span className="quiet">
                   {league.totalRosters} teams, {league.season}
