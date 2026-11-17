@@ -142,6 +142,11 @@ export interface PlayerStats extends PlayerRef {
   minutes: number;
   /** Fantasy points per game this season, under this league's scoring. */
   fantasyAvg: number;
+  /**
+   * The season average as Sleeper's app displays it, which counts each
+   * threshold bonus once against season totals. For comparison only.
+   */
+  sleeperAvg: number;
   /** Fantasy points per game over the most recent games, or null if none. */
   recentAvg: number | null;
   recentGames: number;

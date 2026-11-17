@@ -3,6 +3,21 @@
 Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
 (`src/`), small Express backend (`server/`), shared types (`shared/`).
 
+## The league
+
+- Lock-in mode: each starter counts ONE game per fantasy week. The manager
+  may lock a score after a game and before that player's next game; if
+  nothing is locked, the last game of the week counts. Weeks run Monday to
+  Sunday (`server/weeks.ts`). Value players accordingly: a week is a few
+  chances at one good game, so games per week and game-to-game spread matter,
+  not weekly totals.
+- 12 teams, points scoring with threshold bonuses (see the league's
+  `scoringSettings`); technical and flagrant fouls are scored by Sleeper but
+  absent from box scores.
+- Sleeper's app shows season averages inflated by scoring season totals
+  (`sleeperDisplayedAverage` in `server/scoring.ts`). Analysis always uses the
+  true per-game numbers; the Sleeper figure is shown only for comparison.
+
 ## Rules for this repo
 
 - The browser never calls Sleeper or any stats API directly. All outside calls
@@ -24,6 +39,8 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   confirming.
 - Wherever the UI names a player, render it with `PlayerName`
   (`src/components/PlayerName.tsx`) so the name opens the player's details.
+- Fantasy points display with two decimals (`formatPoints`), box-score
+  averages with one (`formatAverage`). Keep full precision until display.
 - UI copy: sentence case, plain language. Visual tokens live at the top of
   `src/styles.css`.
 

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { LeagueSnapshot, PlayerDetail, PlayerRef, StatsReport } from "../../shared/types.ts";
 import { getPlayerDetail } from "../api.ts";
-import { formatAverage, formatGameDate } from "../format.ts";
+import { formatAverage, formatGameDate, formatPoints } from "../format.ts";
 import { PositionChip } from "./PositionChip.tsx";
 
 interface Props {
@@ -103,11 +103,11 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
             <dl className="figures">
               <div>
                 <dt>Fantasy avg</dt>
-                <dd>{formatAverage(season.fantasyAvg)}</dd>
+                <dd>{formatPoints(season.fantasyAvg)}</dd>
               </div>
               <div>
                 <dt>{recentLabel}</dt>
-                <dd>{season.recentAvg != null ? formatAverage(season.recentAvg) : "–"}</dd>
+                <dd>{season.recentAvg != null ? formatPoints(season.recentAvg) : "–"}</dd>
               </div>
               <div>
                 <dt>Games</dt>
@@ -118,6 +118,14 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
                 <dd>{formatAverage(season.minutes)}</dd>
               </div>
             </dl>
+
+            {formatPoints(season.sleeperAvg) !== formatPoints(season.fantasyAvg) && (
+              <p className="quiet panel-note">
+                Sleeper's app shows {formatPoints(season.sleeperAvg)} as this player's average. Sleeper counts
+                each scoring bonus once against season totals, so its number differs from the average of the
+                games below.
+              </p>
+            )}
 
             <h3 className="panel-heading">Game log</h3>
             <div className="table-scroll">
@@ -150,7 +158,7 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
                       <td className="num">{game.stats.stl}</td>
                       <td className="num">{game.stats.blk}</td>
                       <td className="num">{game.stats.tov}</td>
-                      <td className="num strong">{formatAverage(game.fantasyPoints)}</td>
+                      <td className="num strong">{formatPoints(game.fantasyPoints)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -166,7 +174,7 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
                     <td className="num">{formatAverage(season.averages.stl)}</td>
                     <td className="num">{formatAverage(season.averages.blk)}</td>
                     <td className="num">{formatAverage(season.averages.tov)}</td>
-                    <td className="num strong">{formatAverage(season.fantasyAvg)}</td>
+                    <td className="num strong">{formatPoints(season.fantasyAvg)}</td>
                   </tr>
                 </tfoot>
               </table>

@@ -49,8 +49,9 @@ npm run check:stats -- <your_league_id>
 npm run check:stats -- <your_league_id> --player "James Harden"   # adds a game log
 ```
 
-The check also compares the scores Sleeper credited to each starter with the
-game scores this app computes, which shows whether the scoring rules agree.
+The check also compares the scores Sleeper credited to each starter with this
+app's scores for that player's games in the same week, and for each rostered
+player without stats it lists similar names in the stats source.
 
 If the dashboard does not load your league, run the connectivity check and
 look at what it prints:
@@ -97,9 +98,33 @@ The backend turns Sleeper's raw responses into the shapes in
 - Box scores do not include technical or flagrant fouls, so leagues that
   score those will see slightly higher numbers than Sleeper for a few players.
   The app says so when it applies.
-- Two assumptions have not been confirmed against Sleeper yet: scoring
-  bonuses stack (a 50-point game earns the 40+ and the 50+ bonus), and a
-  triple-double also earns the double-double bonus.
+- Checked against the owner's league: of 416 scores Sleeper credited to
+  starters, 382 equal this app's game score to the cent. Most of the rest are
+  technical fouls or a stat the two data sources recorded differently.
+- Still assumed, because no checked game has shown it either way: a 50-point
+  game earns both the 40+ and 50+ bonus, and a triple-double also earns the
+  double-double bonus.
+
+### Why averages differ from the Sleeper app
+
+The season average in Sleeper's app is not the mean of a player's game
+scores. Sleeper scores the season totals, so every threshold bonus (40+
+points, 50+ points, 20+ rebounds, 15+ assists) is added once as soon as the
+season total passes it. In this league that is up to +30 points spread over
+the games played: about +2.3 per game after 13 games, shrinking as the
+season goes on.
+
+This app shows the true per-game mean, because that is what a locked game is
+worth. The player panel also shows the number Sleeper displays
+(`sleeperDisplayedAverage` in `server/scoring.ts`), so the two can be compared.
+This was worked out from the numbers, not from Sleeper documentation.
+
+### Lock-in scoring
+
+This is a lock-in league: each starter counts one game per week. After a
+player's game, the manager can lock that score in before the player's next
+game; if nothing is locked, the last game of the week counts. Fantasy weeks
+run Monday to Sunday (`server/weeks.ts`).
 
 ## Commands
 

@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { LeagueSnapshot, PlayerDetail, PlayerRef, StatsReport } from "../../shared/types.ts";
 import { ignoredSettings } from "../scoring.ts";
-import { matchPlayers } from "./match.ts";
+import { matchPlayers, sameLastName } from "./match.ts";
 import { PLAYER_ID_OVERRIDES } from "./overrides.ts";
 import type { GameLine, StatsProvider } from "./provider.ts";
 import { counts, playerLog, RECENT_WINDOW, summarize } from "./summary.ts";
@@ -124,6 +124,11 @@ export class StatsService {
         snapshot.league.seasonStartDate,
       ),
     };
+  }
+
+  /** Stats-source players sharing a last name with `name`, for the check script. */
+  async similarPlayers(season: string, name: string) {
+    return sameLastName(name, [...(await this.load(season)).lines.values()]);
   }
 
   /** What is stored for a season, for the check script. */

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import type { LeagueSnapshot, PlayerStats, StatsReport } from "../../shared/types.ts";
-import { formatAverage } from "../format.ts";
+import { formatAverage, formatPoints } from "../format.ts";
 import { PlayerName } from "./PlayerName.tsx";
 import { PositionChip } from "./PositionChip.tsx";
 
@@ -175,7 +175,9 @@ export function Players({ snapshot, stats }: { snapshot: LeagueSnapshot; stats: 
                         ? player.games
                         : column.key === "recent" && player.recentAvg == null
                           ? "–"
-                          : formatAverage(column.value(player))}
+                          : column.key === "avg" || column.key === "recent"
+                            ? formatPoints(column.value(player))
+                            : formatAverage(column.value(player))}
                     </td>
                   ))}
                 </tr>

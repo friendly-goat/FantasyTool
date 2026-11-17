@@ -1,5 +1,5 @@
 import type { PlayerGame, PlayerRef, PlayerStats, StatLine } from "../../shared/types.ts";
-import { fantasyPoints } from "../scoring.ts";
+import { fantasyPoints, sleeperDisplayedAverage } from "../scoring.ts";
 import type { GameLine } from "./provider.ts";
 
 /** Number of most recent games behind each player's "recent" average. */
@@ -51,6 +51,7 @@ function summarizePlayer(
     games: games.length,
     minutes: mean(games.map((game) => game.minutes)),
     fantasyAvg: mean(fantasy),
+    sleeperAvg: sleeperDisplayedAverage(games.map((game) => game.stats), scoring),
     recentAvg: recent.length > 0 ? mean(recent) : null,
     recentGames: recent.length,
     averages,
