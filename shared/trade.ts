@@ -51,6 +51,10 @@ export interface TradeSide {
   toReserve: ModelPlayer[];
   /** Players already on the roster who, after the trade, are dropped when a player on IR is back. */
   leaving: { player: ModelPlayer; when: ModelPlayer }[];
+  /** Players received who could go on IR, but every IR slot is taken (by `reserve`), so they use a bench spot. */
+  noReserve: ModelPlayer[];
+  /** Who is on IR after the trade. */
+  reserve: ModelPlayer[];
   /** The rosters the projection plays before and after (stand-ins by their stand-in IDs). */
   beforeIds: string[];
   afterIds: string[];
@@ -90,8 +94,17 @@ export interface TradeResult {
   valueBalance: number;
 }
 
-/** A player's own weekly value above a typical free agent. Never below zero. */
+/**
+ * A player's own weekly value above a typical free agent. Never below zero.
+ * An injured player counts only in the weeks he plays: while he is out, an
+ * IR slot and a pickup cover his spot, so the zeros are not held against him
+ * here (the team effect still counts them).
+ */
 export function playerValue(model: StrengthModel, player: ModelPlayer): number {
+  const playing = 1 - player.outShare;
+  if (player.outShare > 0) {
+    return playing > 0 ? Math.max(0, player.expected / playing - model.replacementWeekly) * playing : 0;
+  }
   return Math.max(0, player.expected - model.replacementWeekly);
 }
 
@@ -143,6 +156,7 @@ function side(
   const adds = pickups.map((add) => add.player.id);
   const toReserve = filled.reserve.filter((player) => !baseline.reserve.includes(player));
   const leaving = filled.leaving.filter(({ player }) => !baseline.leaving.some((entry) => entry.player === player));
+  const noReserve = filled.reserve.length > 0 ? players(model, gets).filter((player) => player.irEligible && !filled.reserve.includes(player)) : [];
 
   const projectedBefore = projectedWeekly(model, baseline.ids);
   const projectedAfter = projectedWeekly(model, filled.ids);
@@ -167,6 +181,8 @@ function side(
     pickups,
     toReserve,
     leaving,
+    noReserve,
+    reserve: filled.reserve,
     beforeIds: baseline.ids,
     afterIds: filled.ids,
     strengthBefore,
@@ -313,6 +329,12 @@ export function tradePhases(model: StrengthModel, side: TradeSide): TradePhases 
   };
 }
 
+/** Why a received injured player takes a bench spot: the IR slots are full. */
+export function noReserveNote(player: ModelPlayer, reserve: ModelPlayer[]): string {
+  const names = reserve.map((entry) => entry.name).join(" and ");
+  return `Your IR is taken by ${names}, so ${player.name} uses a bench spot while out and no waiver pickup covers him.`;
+}
+
 /** One line on a waiver pickup a trade leads to. */
 export function pickupNote(pickup: Pickup): string {
   return pickup.forInjured
@@ -359,6 +381,7 @@ export function tradeStory(
   }
   for (const pickup of a.pickups) notes.push(pickupNote(pickup));
   for (const { player, when } of a.leaving) notes.push(`${player.name} is dropped when ${when.name} is back from IR.`);
+  for (const player of a.noReserve) notes.push(noReserveNote(player, a.reserve));
 
   if (profiles) {
     for (const reason of reasonsFor(model, snapshot, result, profiles.mine, profiles.theirs, situation)) {
@@ -423,7 +446,7 @@ const OPEN_SCREEN_WEEKS = 16;
 //                       A manager senses this through his own needs: a thin
 //                       position filled, an injury covered. A gain counts
 //                       three quarters, a loss one and a half times (a loss
-//                       is felt more). Limited to ±1.25.
+//                       is felt more). Up to +1.25, down to -2.0.
 //   Pressure:           long absences, a losing record, a tough matchup this
 //                       week. Up to +0.6, never negative.
 //
@@ -439,7 +462,9 @@ const SEEN_LIMITS = [-2, 0.8] as const;
 const TEAM_SCALE = 2.5; // 2.5 points a week is worth 1.0, before the weights below
 const TEAM_GAIN_WEIGHT = 0.75;
 const TEAM_LOSS_WEIGHT = 1.5;
-const TEAM_LIMIT = 1.25;
+// A trade that clearly costs their team can pull the chance down further
+// than a gain can lift it, as with what they see on averages.
+const TEAM_LIMITS = [-2, 1.25] as const;
 const PRESSURE_WEIGHT = 0.6;
 /**
  * What a manager sees of an injured player: his average, scaled down by the
@@ -473,7 +498,7 @@ export function chanceParts(theirWeeklyGain: number, receivedAverage: number, se
   const ratio = sentAverage > 0 ? Math.max(0.01, receivedAverage) / (sentAverage * OWN_PLAYER_PREMIUM) : 2;
   const seen = clamp(Math.log(ratio) * SEEN_SCALE, SEEN_LIMITS[0], SEEN_LIMITS[1]);
   const felt = theirWeeklyGain * (theirWeeklyGain >= 0 ? TEAM_GAIN_WEIGHT : TEAM_LOSS_WEIGHT);
-  const team = clamp(felt / TEAM_SCALE, -TEAM_LIMIT, TEAM_LIMIT);
+  const team = clamp(felt / TEAM_SCALE, TEAM_LIMITS[0], TEAM_LIMITS[1]);
   const pressure = PRESSURE_WEIGHT * clamp(urgency, 0, 1);
   const total = RELUCTANCE + seen + team + pressure;
   const chance = logistic(total);
@@ -678,15 +703,18 @@ export function findTrades(
         if (!targeted && get.expected < 0.85 * give.expected) continue;
         consider([give], get);
       }
-      // Two of the user's players for a named target.
-      if (options.getPlayerId) {
-        const pool = players(model, mine).filter((player) => player.games > 0 && player.expected < get.expected);
+      // Two of the user's players for a named target, or for an injured
+      // player (whose weekly value counts the weeks he is out, so his level
+      // once back is what a package has to match).
+      if (options.getPlayerId || options.getInjured) {
+        const level = get.outShare > 0 ? get.expected / Math.max(0.2, 1 - get.outShare) : get.expected;
+        const pool = players(model, mine).filter((player) => player.games > 0 && player.expected < level);
         for (let i = 0; i < pool.length; i++) {
           for (let j = i + 1; j < pool.length; j++) {
             const pair = [pool[i]!, pool[j]!];
             if (options.givePlayerId && !pair.some((player) => player.id === options.givePlayerId)) continue;
             const combined = pair[0]!.expected + pair[1]!.expected;
-            if (combined < 0.9 * get.expected || combined > 1.8 * get.expected) continue;
+            if (combined < 0.9 * level || combined > 1.8 * level) continue;
             consider(pair, get);
           }
         }

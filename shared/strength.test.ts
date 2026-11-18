@@ -375,7 +375,7 @@ describe("team strength and trades (against the mock league)", async () => {
     expect(down / up).toBeCloseTo(2);
     // Every part keeps a fixed limit, so no chance runs away.
     expect(chanceFrom(100, 1000, 1, 1)).toBeCloseTo(1 / (1 + Math.exp(-(-0.3 + 0.8 + 1.25 + 0.6))));
-    expect(chanceFrom(-100, 1, 1000, 0)).toBeCloseTo(1 / (1 + Math.exp(-(-0.3 - 2 - 1.25))));
+    expect(chanceFrom(-100, 1, 1000, 0)).toBeCloseTo(1 / (1 + Math.exp(-(-0.3 - 2 - 2))));
     const even = evaluateTrade(model, snapshot, { teamA: strengths[0]!.rosterId, teamB: strengths[1]!.rosterId, aGives: [], bGives: [] });
     expect(even.valueBalance).toBe(50);
   });

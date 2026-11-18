@@ -58,6 +58,7 @@ export function topMoves(
       kind: "trade",
       notes: Object.fromEntries([
         ...idea.result.a.toReserve.map((player) => [player.id, "Goes on IR while out"]),
+        ...idea.result.a.noReserve.map((player) => [player.id, "IR full: uses a bench spot while out"]),
         ...idea.result.a.pickups.map(({ player, forInjured }) => [
           player.id,
           forInjured ? `Waiver pickup until ${forInjured.name} is back` : "Waiver pickup",

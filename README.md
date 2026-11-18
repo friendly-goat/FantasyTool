@@ -154,7 +154,7 @@ happens to its projected weekly score.
 | Reluctance to trade at all | chance they accept | fixed: with the premium below, an even trade comes out at about a third |
 | Own-player premium (managers overvalue their own players) | what they see on averages | fixed: their players count 8% higher (`OWN_PLAYER_PREMIUM`) |
 | What they see on averages (players they would drop subtracted) | chance they accept | +0.8 to -2.0 on the log-odds scale |
-| What the trade does to their team (a gain counts 0.75, a loss 1.5) | chance they accept | ±1.25 on the log-odds scale |
+| What the trade does to their team (a gain counts 0.75, a loss 1.5) | chance they accept | +1.25 to -2.0 on the log-odds scale |
 | Pressure on the other team (absences, record, this week's matchup) | chance they accept | 0 to +0.6 on the log-odds scale |
 
 ### Projections
@@ -298,7 +298,14 @@ and ranking use the whole rest of the season. Managers weighing a trade see
 an injured player's average scaled down by the share of weeks he will miss
 (`seenAverage`, capped), so they part with him more readily. The finder's
 "trade for an injured player" looks only at players out at least about two
-weeks who are due back this season.
+weeks who are due back this season, one for one or two of yours for one of
+theirs (packages are matched to his level once he is back).
+
+An injured player's player value counts only the weeks he plays (his value
+above a free agent once back, times the share of weeks he plays): while he is
+out, an IR slot and a pickup cover his spot. The team effect still counts the
+zeros. If your IR slots are full, a received injured player uses a bench spot
+while out, and the trade card says who holds the IR slot.
 
 ### Top moves (My team)
 

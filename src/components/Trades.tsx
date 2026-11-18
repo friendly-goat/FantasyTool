@@ -182,7 +182,11 @@ function MoveList({ side, model }: { side: TradeSide; model: StrengthModel }) {
         ...side.gets.map((player) => ({
           player,
           joins: true,
-          note: side.toReserve.includes(player) ? "Goes on IR while out" : undefined,
+          note: side.toReserve.includes(player)
+            ? "Goes on IR while out"
+            : side.noReserve.includes(player)
+              ? "IR full: uses a bench spot while out"
+              : undefined,
           value: value(player),
         })),
         ...side.pickups.map((pickup) => ({
@@ -811,7 +815,8 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
           An injured player counts from the injury report's return date: nothing while he is out, his usual level
           once back. Dates further away are taken a little later and less exactly, and a "re-evaluated" date is the
           earliest he could return, not when he will. The card splits the trade into the weeks he is out and the
-          weeks after; the grade covers both. Managers see an injured player's average scaled down by the share of
+          weeks after; the grade covers both. His player value counts only the weeks he plays, since an IR slot and a
+          pickup cover him while he is out. Managers see an injured player's average scaled down by the share of
           the season he will miss, a little more for the games in front of them, which makes them more willing to
           trade him.
         </p>

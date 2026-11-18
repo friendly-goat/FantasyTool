@@ -6,7 +6,17 @@ import { StatsService } from "../server/stats/service.ts";
 import { rosterPlayers } from "./analysis.ts";
 import { teamSituations } from "./insight.ts";
 import { buildModel, fillRoster, leagueStrength, type ModelPlayer, projectedWeekly } from "./strength.ts";
-import { acceptance, evaluateTrade, findTrades, isInjuredTarget, seenAverage, tradePhases } from "./trade.ts";
+import {
+  acceptance,
+  chanceFrom,
+  evaluateTrade,
+  findTrades,
+  isInjuredTarget,
+  playerValue,
+  POSSIBLE,
+  seenAverage,
+  tradePhases,
+} from "./trade.ts";
 
 describe("injuries, IR and waiver pickups (against the mock league)", async () => {
   const raw = (await fetchFromMock("/players/nba")) as Record<string, unknown>;
@@ -123,6 +133,34 @@ describe("injuries, IR and waiver pickups (against the mock league)", async () =
     }
     expect(found).toBeGreaterThan(0);
   }, 30_000);
+
+  it("counts an injured player's value only in the weeks he plays", () => {
+    const injured = named(/six weeks/);
+    const playing = 1 - injured.outShare;
+    expect(playerValue(model, injured)).toBeCloseTo(
+      Math.max(0, injured.expected / playing - model.replacementWeekly) * playing,
+    );
+    expect(playerValue(model, injured)).toBeGreaterThanOrEqual(Math.max(0, injured.expected - model.replacementWeekly));
+    expect(playerValue(model, named(/for the season/))).toBe(0);
+  });
+
+  it("says when a received injured player cannot go on IR because it is full", () => {
+    const injured = named(/six weeks/);
+    // A team whose own IR holds a player out longer (out for the season).
+    const season = named(/for the season/);
+    const buyer = teamOf(season);
+    if (buyer.rosterId === teamOf(injured).rosterId) return;
+    const give = ids(buyer.rosterId).map((id) => model.players.get(id)!).find((p) => !p.back && p.games > 0)!;
+    const result = evaluateTrade(model, snapshot, { teamA: buyer.rosterId, teamB: teamOf(injured).rosterId, aGives: [give.id], bGives: [injured.id] });
+    expect(result.a.reserve.map((p) => p.id)).toContain(season.id);
+    expect(result.a.noReserve.map((p) => p.id)).toContain(injured.id);
+    expect(result.a.pickups.some((pickup) => pickup.forInjured?.id === injured.id)).toBe(false);
+  });
+
+  it("keeps a trade that clearly costs the other team unlikely, however good it looks on averages", () => {
+    // Seen at its best (+0.8) and no pressure: a loss of 7 a week still leaves it a long shot.
+    expect(chanceFrom(-7, 40, 20, 0)).toBeLessThan(POSSIBLE);
+  });
 
   it("keeps projections repeatable", async () => {
     const team = ids(strengths[2]!.rosterId);
