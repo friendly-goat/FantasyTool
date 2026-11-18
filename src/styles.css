@@ -3162,12 +3162,14 @@ th[aria-sort] .sort-button {
   margin: 0 0 0.75rem;
 }
 
+/* The board only ever moves sideways inside its frame; the page scrolls
+   down through the rounds, so it is hard to get lost in it. */
 .draft-scroll {
   /* Positioned, so hidden labels inside the cards stay within the scrolling
      frame instead of widening the page on a phone. */
   position: relative;
-  overflow: auto;
-  max-height: min(80vh, 62rem);
+  overflow-x: auto;
+  overflow-y: hidden;
   padding: 0 0.5rem 0.5rem;
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -3186,30 +3188,23 @@ th[aria-sort] .sort-button {
   gap: 0.4rem;
 }
 
-/* On wide screens the board grows past the page column, so a 12-team board
-   fits without scrolling sideways. */
+/* On wide screens the board grows past the page column and its columns
+   share the width, so every team fits with no sideways movement at all, and
+   the team names stay at the top of the screen while the page scrolls. */
 @media (min-width: 1100px) {
   .draft-scroll {
     --board-width: min(calc(100vw - 4rem), 100rem);
     width: var(--board-width);
     margin-left: calc(50% - var(--board-width) / 2);
+    overflow: visible;
   }
-}
 
-@media (max-width: 720px) {
   .draft-grid {
-    --draft-col: 6.5rem;
-  }
-
-  .draft-card-body {
-    padding: 0.4rem 0.4rem 0.55rem;
+    grid-template-columns: repeat(var(--draft-teams, 12), minmax(0, 1fr));
   }
 }
 
 .draft-head {
-  position: sticky;
-  top: 0;
-  z-index: 2;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -3227,6 +3222,14 @@ th[aria-sort] .sort-button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+@media (min-width: 1100px) {
+  .draft-head {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+  }
 }
 
 .draft-head-mine {
@@ -3409,6 +3412,119 @@ th[aria-sort] .sort-button {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
+}
+
+/* On a phone the board runs edge to edge with compact cards, in the spirit
+   of Sleeper's: every round fits down the page, and a sideways swipe moves
+   between teams, stopping on a column. Each card is the pick and its marks,
+   first name and team, last name, then the position band. */
+@media (max-width: 720px) {
+  .draft-scroll {
+    margin-inline: -0.9rem;
+    padding: 0 0.6rem 0.6rem;
+    border-inline: 0;
+    border-radius: 0;
+    scroll-snap-type: x proximity;
+    scroll-padding-inline: 0.6rem;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .draft-grid {
+    --draft-col: 5.4rem;
+    grid-template-columns: repeat(var(--draft-teams, 12), var(--draft-col));
+    gap: 0.3rem;
+  }
+
+  .draft-head {
+    gap: 0.15rem;
+    padding: 0.5rem 0.1rem 0.4rem;
+    font-size: 0.6875rem;
+    scroll-snap-align: start;
+  }
+
+  .draft-head .avatar {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+
+  .draft-head .mine {
+    font-size: 0.625rem;
+  }
+
+  .draft-card {
+    height: 4.75rem;
+  }
+
+  .draft-card-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "top top"
+      "first team"
+      "last last";
+    align-content: start;
+    gap: 0 0.2rem;
+    line-height: 1.2;
+    padding: 0.3rem 0.35rem 0.25rem;
+  }
+
+  .draft-name,
+  .draft-card-meta {
+    display: contents;
+  }
+
+  .draft-card-top {
+    grid-area: top;
+    min-height: 0.9rem;
+  }
+
+  .draft-pick {
+    font-size: 0.6875rem;
+  }
+
+  .draft-card .trend-icon,
+  .draft-card .injury-icon {
+    width: 0.9rem;
+    height: 0.9rem;
+  }
+
+  .name-first {
+    grid-area: first;
+    overflow: hidden;
+    font-size: 0.6875rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .draft-card-meta .team-tag {
+    grid-area: team;
+    gap: 0.15rem;
+    color: var(--muted);
+    font-size: 0.625rem;
+  }
+
+  .draft-card-meta .team-logo {
+    width: 0.75rem;
+    height: 0.75rem;
+  }
+
+  .name-last {
+    grid-area: last;
+    font-size: 0.8125rem;
+  }
+
+  /* Keeper and traded-pick notes wait for wider screens and player details. */
+  .draft-card .draft-note {
+    display: none;
+  }
+
+  .draft-bands {
+    flex-basis: 1.1rem;
+  }
+
+  .draft-band {
+    font-size: 0.5625rem;
+  }
 }
 
 /* ---- Sign-in ---- */

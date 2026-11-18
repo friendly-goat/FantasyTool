@@ -613,6 +613,14 @@ positions in their colors, split evenly when he has two or three. The backend
 loads the draft with three requests (`/league/:id/drafts`, `/draft/:id`,
 `/draft/:id/picks`), cached like the league.
 
+The board only moves sideways inside its frame; the page itself scrolls down
+through the rounds. On a wide screen (1100px and up) the columns share the
+width, so all twelve teams fit with no sideways movement and the team names
+stay at the top while you scroll. On a phone the board runs edge to edge with
+compact cards (pick, first name and team, last name, position band), so every
+round fits down the page and a swipe moves between teams, stopping on a
+column.
+
 A green rising mark means a player is worth at least a round earlier than he
 went; a red falling mark, at least a round later. Every drafted player is
 ranked by his weekly value now (what he locks in an average week at his
