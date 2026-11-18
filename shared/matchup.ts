@@ -166,6 +166,23 @@ export function settledPoints(statuses: (SlotStatus | null)[], points: (number |
   return statuses.reduce((sum, status, index) => sum + (status && isFixed(status.state) ? (points[index] ?? 0) : 0), 0);
 }
 
+/** How long after tip-off a game still counts as being played, if its status has not caught up. */
+const GAME_WINDOW_MS = 3.5 * 60 * 60_000;
+
+/**
+ * Whether NBA games are being played right now: one is in progress, or one
+ * has tipped off within the last three and a half hours and is not final.
+ * Used to refresh league data more often during games.
+ */
+export function gamesLive(games: NbaGame[], now: number): boolean {
+  return games.some((game) => {
+    if (game.state === "in_progress") return true;
+    if (game.state !== "scheduled" || !game.startTime) return false;
+    const tip = Date.parse(game.startTime);
+    return now >= tip && now - tip <= GAME_WINDOW_MS;
+  });
+}
+
 /** A manager's word on a starter's current score: locked or not. */
 export interface LockMark {
   locked: boolean;

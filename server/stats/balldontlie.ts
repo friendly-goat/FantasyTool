@@ -1,8 +1,10 @@
 import type { GameLine, ScheduledGame, StatsProvider } from "./provider.ts";
 
 // balldontlie (https://docs.balldontlie.io). Game stats need the ALL-STAR
-// plan, which allows 60 requests per minute. Requests here are spaced to
-// stay under that.
+// plan, which allows 60 requests per minute. Every request goes through one
+// queue that spaces them at least REQUEST_SPACING_MS apart (about 54 a
+// minute), whatever asked for it. Requests someone is waiting on (the
+// schedule) go ahead of background downloads (box scores).
 
 const BASE_URL = "https://api.balldontlie.io/nba/v1";
 const REQUEST_SPACING_MS = 1100;
@@ -165,13 +167,44 @@ export function toGameLine(row: RawRow): GameLine | null {
   };
 }
 
+/** One request at a time, spaced apart, with a fast lane for requests someone is waiting on. */
+export function createRequestQueue(spacingMs: number, now = () => Date.now()) {
+  const lanes = { urgent: [] as (() => void)[], background: [] as (() => void)[] };
+  let lastAt = -Infinity;
+  let running = false;
+
+  async function pump() {
+    if (running) return;
+    running = true;
+    while (lanes.urgent.length || lanes.background.length) {
+      const wait = lastAt + spacingMs - now();
+      if (wait > 0) await sleep(wait);
+      const next = lanes.urgent.shift() ?? lanes.background.shift();
+      lastAt = now();
+      next?.();
+    }
+    running = false;
+  }
+
+  /** Resolves when this request may be sent. */
+  return function turn(urgent: boolean): Promise<void> {
+    return new Promise((resolve) => {
+      (urgent ? lanes.urgent : lanes.background).push(resolve);
+      void pump();
+    });
+  };
+}
+
 export function createBalldontlie(
   apiKey: string,
   fetchImpl: typeof fetch = fetch,
   spacingMs: number = REQUEST_SPACING_MS,
 ): StatsProvider {
-  async function getPage<T = RawRow>(url: string): Promise<RawPage<T>> {
+  const turn = createRequestQueue(spacingMs);
+
+  async function getPage<T = RawRow>(url: string, urgent = false): Promise<RawPage<T>> {
     for (let attempt = 0; ; attempt++) {
+      await turn(urgent);
       let response: Response;
       try {
         response = await fetchImpl(url, {
@@ -183,7 +216,7 @@ export function createBalldontlie(
       }
       if (response.ok) return (await response.json()) as RawPage<T>;
       if (response.status === 429 && attempt < MAX_RETRIES) {
-        await sleep(Math.max(spacingMs, 1) * 15); // Rate limited: back off, then retry.
+        await sleep(Math.max(spacingMs, 1) * 15); // Rate limited: back off, then retry (through the queue).
         continue;
       }
       if (response.status === 401 || response.status === 403) {
@@ -215,7 +248,6 @@ export function createBalldontlie(
 
         cursor = body.meta?.next_cursor ?? null;
         if (cursor == null || (body.data ?? []).length === 0) break;
-        await sleep(spacingMs);
       }
       return lines;
     },
@@ -231,14 +263,13 @@ export function createBalldontlie(
           end_date: addDays(endDate, 1),
         });
         if (cursor != null) params.set("cursor", String(cursor));
-        const body = await getPage<RawGame>(`${BASE_URL}/games?${params}`);
+        const body = await getPage<RawGame>(`${BASE_URL}/games?${params}`, true);
         for (const raw of body.data ?? []) {
           const game = toScheduledGame(raw);
           if (game && game.date >= startDate && game.date <= endDate) games.push(game);
         }
         cursor = body.meta?.next_cursor ?? null;
         if (cursor == null || (body.data ?? []).length === 0) break;
-        await sleep(spacingMs);
       }
       return games;
     },

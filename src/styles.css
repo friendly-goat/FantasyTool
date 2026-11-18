@@ -2942,3 +2942,24 @@ th[aria-sort] .sort-button {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
+
+/* ---- Live games indicator ---- */
+
+.live-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  background: var(--loss-soft);
+  color: var(--loss);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.live-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: currentColor;
+}

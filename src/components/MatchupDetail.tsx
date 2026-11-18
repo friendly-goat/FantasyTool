@@ -818,8 +818,7 @@ export function MatchupDetail({ snapshot, model, canMarkLocks, matchup, myRoster
           ))}
 
         <p className="quiet legend">
-          {week?.linesSyncedAt && `Box scores updated ${formatAgo(week.linesSyncedAt)}. `}Sleeper's scores update when you
-          press Refresh.
+          {week?.linesSyncedAt && `Box scores updated ${formatAgo(week.linesSyncedAt)}. `}Sleeper's scores update on their own: every couple of minutes while games are on.
         </p>
       </div>
     </section>

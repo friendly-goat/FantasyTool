@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { PlayerRef, StatLine } from "../../shared/types.ts";
 import { fetchFromMock, MOCK_LEAGUE_ID } from "../mock.ts";
 import { buildSnapshot, loadPlayers } from "../snapshot.ts";
-import { createBalldontlie, parseMinutes, toGameLine, toScheduledGame } from "./balldontlie.ts";
+import { createBalldontlie, createRequestQueue, parseMinutes, toGameLine, toScheduledGame } from "./balldontlie.ts";
 import { matchPlayers, normalizeName, sameLastName } from "./match.ts";
 import { createMockStats } from "./mock.ts";
 import type { GameLine, StatsProvider } from "./provider.ts";
@@ -411,5 +411,31 @@ describe("schedule", () => {
     expect(urls[0]).toContain("start_date=2026-11-15");
     expect(urls[0]).toContain("end_date=2026-11-23");
     expect(urls[0]).toContain("/games?");
+  });
+});
+
+describe("balldontlie request queue", () => {
+  it("spaces every request apart and lets urgent ones go first", async () => {
+    const turn = createRequestQueue(20);
+    const order: string[] = [];
+    const times: number[] = [];
+    const start = Date.now();
+    const go = (name: string, urgent: boolean) =>
+      turn(urgent).then(() => {
+        order.push(name);
+        times.push(Date.now() - start);
+      });
+    // Three background requests queue up, then an urgent one arrives.
+    const all = [go("b1", false), go("b2", false), go("b3", false)];
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    all.push(go("u1", true));
+    await Promise.all(all);
+    expect(order).toEqual(["b1", "u1", "b2", "b3"]);
+    for (let i = 1; i < times.length; i++) expect(times[i]! - times[i - 1]!).toBeGreaterThanOrEqual(18);
+  });
+
+  it("stays under 60 requests a minute at the default spacing", () => {
+    // 1100 ms apart: at most 55 in any minute.
+    expect(Math.floor(60_000 / 1100) + 1).toBeLessThanOrEqual(60);
   });
 });

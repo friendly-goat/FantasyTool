@@ -15,6 +15,7 @@ import {
 } from "./auth.ts";
 import { Cache } from "./cache.ts";
 import { MemoryStorage, storageFromEnv } from "./storage.ts";
+import { gamesLive } from "../shared/matchup.ts";
 import { createLogoSource } from "./logos.ts";
 import { fetchFromMock, MOCK_LEAGUE_ID } from "./mock.ts";
 import { fetchFromSleeper, SleeperError } from "./sleeper.ts";
@@ -38,12 +39,26 @@ try {
 const MINUTE = 60_000;
 const mock = process.argv.includes("--mock") || process.env.SLEEPER_MOCK === "1";
 const port = Number(process.env.PORT) || 8787;
-const leagueTtl = (Number(process.env.LEAGUE_CACHE_MINUTES) || 60) * MINUTE;
-const minRefreshGap = (Number(process.env.MIN_REFRESH_SECONDS) || 60) * 1000;
+// How often each kind of data is fetched again. Pages are always answered
+// from saved data; anything older than these is updated in the background,
+// so no request waits on Sleeper or balldontlie once something is saved.
+// "Live" means NBA games are being played (from the cached schedule).
+const minutes = (name: string, fallback: number) => (Number(process.env[name]) || fallback) * MINUTE;
+// Sleeper league data (about 8 requests): Sleeper asks to stay under 1000 a minute.
+const leagueTtl = minutes("LEAGUE_CACHE_MINUTES", 10);
+const liveLeagueTtl = minutes("LIVE_LEAGUE_MINUTES", 2);
 // Sleeper asks that the full player list be fetched at most once a day.
 const playersTtl = 24 * 60 * MINUTE;
-
+// The NBA schedule (one balldontlie request): scores and game states change on game nights.
+const scheduleTtl = minutes("SCHEDULE_CACHE_MINUTES", 30);
+const liveScheduleTtl = minutes("LIVE_SCHEDULE_MINUTES", 3);
+// Box scores while a matchup is open; balldontlie updates live stats about every 10 minutes.
+const weekStatsMs = minutes("WEEK_STATS_MINUTES", 30);
+const liveWeekStatsMs = minutes("LIVE_WEEK_STATS_MINUTES", 10);
+// Box scores otherwise.
 const statsTtl = (Number(process.env.STATS_CACHE_HOURS) || 6) * 60 * MINUTE;
+// A finished draft never changes.
+const finishedDraftTtl = 7 * 24 * 60 * MINUTE;
 
 const fetchJson = mock ? fetchFromMock : fetchFromSleeper;
 // Postgres when DATABASE_URL is set (Heroku), otherwise files in .cache/.
@@ -128,20 +143,44 @@ if (onlyLeague) {
 const markStorage = mock ? new MemoryStorage() : storage;
 
 function getPlayers() {
-  return cache.get("players-nba", playersTtl, () => loadPlayers(fetchJson));
+  return cache.get("players-nba", playersTtl, () => loadPlayers(fetchJson), { background: true });
 }
 
 // Bump the version when the snapshot shape changes, so that snapshots saved
 // by an older version of the app are rebuilt instead of reused.
 const leagueKey = (leagueId: string) => `league-v3-${leagueId}`;
+const scheduleKey = (weekStart: string) => `schedule-v1-${weekStart}`;
 
-function getSnapshot(leagueId: string, force: boolean) {
+/** This fantasy week's dates, from a snapshot, or null if Sleeper did not give the season start. */
+function weekOf(snapshot: LeagueSnapshot) {
+  const seasonStart = snapshot.league.seasonStartDate;
+  return seasonStart ? weekRange(seasonStart, snapshot.week) : null;
+}
+
+/** Whether NBA games are on now, judged from the saved snapshot and schedule (no outside calls). */
+async function isLive(leagueId: string): Promise<boolean> {
+  const saved = await cache.peek<LeagueSnapshot>(leagueKey(leagueId));
+  const week = saved ? weekOf(saved.value) : null;
+  if (!week) return false;
+  const schedule = await cache.peek<WeekData["games"]>(scheduleKey(week.start));
+  return gamesLive(schedule?.value ?? [], Date.now());
+}
+
+async function getSnapshot(leagueId: string) {
+  const ttl = (await isLive(leagueId)) ? liveLeagueTtl : leagueTtl;
   return cache.get(
     leagueKey(leagueId),
-    leagueTtl,
+    ttl,
     async () => buildSnapshot(leagueId, fetchJson, (await getPlayers()).value),
-    { force },
+    { background: true },
   );
+}
+
+/** This week's NBA schedule, kept fresher while games are on. */
+async function getSchedule(start: string, end: string, live: boolean) {
+  return cache.get(scheduleKey(start), live ? liveScheduleTtl : scheduleTtl, () => stats.schedule(start, end), {
+    background: true,
+  });
 }
 
 function sendError(res: express.Response, error: unknown): void {
@@ -178,15 +217,12 @@ app.get("/api/user/:username/leagues", async (req, res) => {
 app.get("/api/league/:leagueId", async (req, res) => {
   try {
     const leagueId = req.params.leagueId.trim();
-    const key = leagueKey(leagueId);
-
-    // "Refresh" bypasses the cache, but not more often than the minimum
-    // gap, so repeated clicks cannot hammer Sleeper.
-    const age = await cache.age(key);
-    const force = req.query.refresh === "1" && (age === null || age >= minRefreshGap);
-
-    const result = await getSnapshot(leagueId, force);
-    const snapshot: LeagueSnapshot = { ...result.value, stale: result.stale };
+    const result = await getSnapshot(leagueId);
+    const live = await isLive(leagueId);
+    // Keep the schedule loaded too: it is how the server knows when games are on.
+    const week = weekOf(result.value);
+    if (week && stats.hasSchedule()) void getSchedule(week.start, week.end, live).catch(() => {});
+    const snapshot: LeagueSnapshot = { ...result.value, stale: result.stale, refreshing: result.refreshing ?? false, live };
     res.json(snapshot);
   } catch (error) {
     sendError(res, error);
@@ -196,7 +232,7 @@ app.get("/api/league/:leagueId", async (req, res) => {
 app.get("/api/league/:leagueId/stats", async (req, res) => {
   try {
     const [snapshot, players] = await Promise.all([
-      getSnapshot(req.params.leagueId.trim(), false),
+      getSnapshot(req.params.leagueId.trim()),
       getPlayers(),
     ]);
     if (req.query.retry === "1") stats.retry(snapshot.value.league.season);
@@ -209,7 +245,7 @@ app.get("/api/league/:leagueId/stats", async (req, res) => {
 app.get("/api/league/:leagueId/players/:playerId", async (req, res) => {
   try {
     const [snapshot, players] = await Promise.all([
-      getSnapshot(req.params.leagueId.trim(), false),
+      getSnapshot(req.params.leagueId.trim()),
       getPlayers(),
     ]);
     const detail = await stats.playerDetail(snapshot.value, players.value, req.params.playerId);
@@ -223,22 +259,20 @@ app.get("/api/league/:leagueId/players/:playerId", async (req, res) => {
   }
 });
 
-// The NBA side of this fantasy week: the schedule (cached for a few minutes,
-// since game states change on game nights) and each rostered player's games.
-const scheduleTtl = (Number(process.env.SCHEDULE_CACHE_MINUTES) || 5) * MINUTE;
-const weekFreshMs = (Number(process.env.WEEK_STATS_MINUTES) || 15) * MINUTE;
+// The NBA side of this fantasy week: the schedule and each rostered player's games.
 
 app.get("/api/league/:leagueId/week", async (req, res) => {
   try {
     const leagueId = req.params.leagueId.trim();
-    const [snapshot, players] = await Promise.all([getSnapshot(leagueId, false), getPlayers()]);
-    const { league, week } = snapshot.value;
-    const seasonStart = league.seasonStartDate;
-    if (!seasonStart) {
+    const [snapshot, players] = await Promise.all([getSnapshot(leagueId), getPlayers()]);
+    const { week } = snapshot.value;
+    const range = weekOf(snapshot.value);
+    if (!range) {
       res.status(502).json({ error: "Sleeper did not report when the season started, so this week's dates are unknown." });
       return;
     }
-    const { start, end } = weekRange(seasonStart, week);
+    const { start, end } = range;
+    const live = await isLive(leagueId);
 
     let games: WeekData["games"] = [];
     let scheduleMessage: string | null = null;
@@ -246,12 +280,18 @@ app.get("/api/league/:leagueId/week", async (req, res) => {
       scheduleMessage = "No stats source is set up, so the NBA schedule is not available.";
     } else {
       try {
-        games = (await cache.get(`schedule-v1-${start}`, scheduleTtl, () => stats.schedule(start, end))).value;
+        games = (await getSchedule(start, end, live)).value;
       } catch (error) {
         scheduleMessage = error instanceof Error ? error.message : "The NBA schedule could not be loaded.";
       }
     }
-    const { lines, syncedAt } = await stats.weekLines(snapshot.value, players.value, start, end, weekFreshMs);
+    const { lines, syncedAt } = await stats.weekLines(
+      snapshot.value,
+      players.value,
+      start,
+      end,
+      live ? liveWeekStatsMs : weekStatsMs,
+    );
     const body: WeekData = {
       week,
       start,
@@ -273,7 +313,7 @@ app.get("/api/league/:leagueId/week", async (req, res) => {
 app.get("/api/league/:leagueId/locks", async (req, res) => {
   try {
     const leagueId = req.params.leagueId.trim();
-    const { week } = (await getSnapshot(leagueId, false)).value;
+    const { week } = (await getSnapshot(leagueId)).value;
     res.json({ week, marks: await markStorage.readLockMarks(leagueId, week) });
   } catch (error) {
     sendError(res, error);
@@ -290,7 +330,7 @@ app.put("/api/league/:leagueId/locks", requireRole(auth, "admin"), async (req, r
       res.status(400).json({ error: "Send rosterId, playerId and locked (true, false, or null to clear)." });
       return;
     }
-    const { week, matchups } = (await getSnapshot(leagueId, false)).value;
+    const { week, matchups } = (await getSnapshot(leagueId)).value;
     // The mark is tied to the score Sleeper shows now, taken from the server's
     // copy rather than the browser's.
     const starter = matchups
@@ -320,14 +360,20 @@ app.put("/api/league/:leagueId/locks", requireRole(auth, "admin"), async (req, r
   }
 });
 
-// The draft board. A finished draft never changes, but one still running
-// does, so it uses the same cache time as the league.
+// The draft board. A finished draft never changes, so it is checked weekly;
+// one still running is checked as often as the league.
 app.get("/api/league/:leagueId/draft", async (req, res) => {
   try {
     const leagueId = req.params.leagueId.trim();
-    const result = await cache.get(`draft-v1-${leagueId}`, leagueTtl, async () => ({
-      board: await loadDraftBoard(leagueId, fetchJson, (await getPlayers()).value),
-    }));
+    const key = `draft-v1-${leagueId}`;
+    const saved = await cache.peek<{ board: { status: string } | null }>(key);
+    const ttl = saved?.value.board?.status === "complete" ? finishedDraftTtl : leagueTtl;
+    const result = await cache.get(
+      key,
+      ttl,
+      async () => ({ board: await loadDraftBoard(leagueId, fetchJson, (await getPlayers()).value) }),
+      { background: true },
+    );
     res.json(result.value);
   } catch (error) {
     sendError(res, error);

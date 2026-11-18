@@ -81,6 +81,10 @@ export interface LeagueSnapshot {
   fetchedAt: string;
   /** True when Sleeper could not be reached and older data is shown. */
   stale: boolean;
+  /** True when saved data is shown while a newer copy is being fetched. */
+  refreshing?: boolean;
+  /** True while NBA games are being played (data refreshes more often). */
+  live?: boolean;
   league: {
     id: string;
     name: string;

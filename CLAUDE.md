@@ -40,8 +40,14 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   changes saved data (`requireRole(auth, "admin")`). Viewers never see controls
   that change data. Secrets live in Heroku config vars or `.env`, never in the
   repo.
-- Respect Sleeper's limits: full player list at most once a day, and keep a
-  league refresh to a handful of requests.
+- Respect every source's limits (README "Keeping data fresh"): Sleeper under
+  1,000 requests a minute and the player list at most once a day; balldontlie
+  60 a minute on ALL-STAR, so every request goes through the shared queue in
+  `server/stats/balldontlie.ts`. There is no Refresh button: the server keeps
+  data fresh by itself (shorter times while games are on, `gamesLive`), and
+  outside data is fetched with `cache.get(..., { background: true })` so no
+  page request waits on Sleeper or balldontlie once something is saved
+  (Heroku cuts requests off at 30 seconds).
 - Sleeper's NBA responses are not formally documented. Treat every raw field as
   optional (`server/sleeper.ts`) and convert to the strict shapes in
   `shared/types.ts` inside `server/snapshot.ts`.

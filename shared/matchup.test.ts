@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   forecastMatchup,
   foulDeductions,
+  gamesLive,
   gameChances,
   injuryKind,
   applyLockMark,
@@ -146,6 +147,22 @@ describe("injuries", () => {
     // One game left: a healthy player is worth waiting for (30), a doubtful one is not (0.6 x 30).
     expect(lockAdvice(29, 1, player).lock).toBe(false);
     expect(lockAdvice(29, 1, player, "day-to-day")).toMatchObject({ lock: true, waiting: 18 });
+  });
+});
+
+describe("gamesLive", () => {
+  const at = (iso: string) => Date.parse(iso);
+  it("is true while a game is on, by its status or by the clock", () => {
+    expect(gamesLive([game("2026-11-17", "in_progress")], at("2026-11-17T23:30:00Z"))).toBe(true);
+    // Tipped off an hour ago, status not updated yet.
+    expect(gamesLive([game("2026-11-17", "scheduled")], at("2026-11-18T00:00:00Z"))).toBe(true);
+  });
+
+  it("is false before tip-off, after the window, and for finished games", () => {
+    expect(gamesLive([game("2026-11-17", "scheduled")], at("2026-11-17T20:00:00Z"))).toBe(false);
+    expect(gamesLive([game("2026-11-17", "scheduled")], at("2026-11-18T03:00:00Z"))).toBe(false);
+    expect(gamesLive([game("2026-11-17", "final")], at("2026-11-17T23:30:00Z"))).toBe(false);
+    expect(gamesLive([], at("2026-11-17T23:30:00Z"))).toBe(false);
   });
 });
 

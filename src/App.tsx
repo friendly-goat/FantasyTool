@@ -34,6 +34,10 @@ import { formatAgo, formatDate } from "./format.ts";
 import { useTheme } from "./theme.ts";
 
 const VIEWS = ["My team", "Standings", "Strength", "Teams", "Players", "Matchups", "Trades", "Draft", "Activity"] as const;
+/** How often to ask the server for the league while the page is open. It decides whether Sleeper is asked. */
+const LEAGUE_POLL_MS = 2 * 60_000;
+/** How soon to ask again when the server answered with saved data while fetching newer data. */
+const REFRESHING_RECHECK_MS = 5_000;
 /** How often to ask the server for progress while stats are downloading. */
 const STATS_POLL_MS = 2500;
 const LAST_SEASON_POLL_MS = 20000;
@@ -44,7 +48,9 @@ export function App() {
   const [leagueId, setLeagueId] = useState<string | null>(null);
   const [snapshot, setSnapshot] = useState<LeagueSnapshot | null>(null);
   const [stats, setStats] = useState<StatsReport | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [live, setLive] = useState(false);
+  // Ticks every minute so "Updated 3 minutes ago" stays true.
+  const [, setClock] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<View>("My team");
   const [myRosterId, setMyRosterId] = useState<number | null>(null);
@@ -80,20 +86,52 @@ export function App() {
       );
   }, [signedIn]);
 
-  const load = useCallback(async (id: string, refresh: boolean) => {
-    setLoading(true);
-    setError(null);
+  const load = useCallback(async (id: string): Promise<LeagueSnapshot | null> => {
     try {
-      setSnapshot(await getLeague(id, refresh));
+      const next = await getLeague(id);
+      // Only newer data replaces the snapshot, so the team model is not rebuilt
+      // (and a trade search not reset) every time the page checks in.
+      setSnapshot((current) =>
+        current && current.league.id === next.league.id && current.fetchedAt === next.fetchedAt ? current : next,
+      );
+      setLive(next.live === true);
+      setError(null);
+      return next;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "The league could not be loaded.");
-    } finally {
-      setLoading(false);
+      return null;
     }
   }, []);
 
+  // The server keeps league data fresh by itself (more often while games are
+  // on). The page checks in every couple of minutes while it is visible, and
+  // again shortly after the server says a newer copy is on its way.
   useEffect(() => {
-    if (leagueId) void load(leagueId, false);
+    if (!leagueId) return;
+    let cancelled = false;
+    let recheck: number | undefined;
+    const run = async () => {
+      const next = await load(leagueId);
+      if (cancelled) return;
+      window.clearTimeout(recheck);
+      if (next?.refreshing) recheck = window.setTimeout(() => void run(), REFRESHING_RECHECK_MS);
+    };
+    void run();
+    const poll = window.setInterval(() => {
+      if (document.visibilityState === "visible") void run();
+    }, LEAGUE_POLL_MS);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void run();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    const clock = window.setInterval(() => setClock((tick) => tick + 1), 60_000);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(recheck);
+      window.clearInterval(poll);
+      window.clearInterval(clock);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [leagueId, load]);
 
   // Player stats load separately from the league, because the first
@@ -234,19 +272,17 @@ export function App() {
           )}
         </div>
         <div className="league-actions">
+          {live && (
+            <span className="live-pill" title="NBA games are on, so league data updates every couple of minutes">
+              <span className="live-dot" aria-hidden="true" />
+              Games on
+            </span>
+          )}
           {snapshot && (
-            <span className="quiet" title={formatDate(snapshot.fetchedAt)}>
+            <span className="quiet" title={`From Sleeper ${formatDate(snapshot.fetchedAt)}. Updates on its own.`}>
               Updated {formatAgo(snapshot.fetchedAt)}
             </span>
           )}
-          <button
-            type="button"
-            className="button"
-            disabled={loading}
-            onClick={() => void load(leagueId, true)}
-          >
-            {loading ? "Refreshing…" : "Refresh"}
-          </button>
           {canSwitch && (
             <button type="button" className="button button-plain" onClick={switchLeague}>
               Switch league

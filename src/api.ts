@@ -55,8 +55,9 @@ export function getConfig(): Promise<AppConfig> {
   return getJson("/api/config");
 }
 
-export function getLeague(leagueId: string, refresh = false): Promise<LeagueSnapshot> {
-  return getJson(`/api/league/${encodeURIComponent(leagueId)}${refresh ? "?refresh=1" : ""}`);
+/** The league, from the server's saved copy; the server keeps it fresh on its own. */
+export function getLeague(leagueId: string): Promise<LeagueSnapshot> {
+  return getJson(`/api/league/${encodeURIComponent(leagueId)}`);
 }
 
 export function getStats(leagueId: string, retry = false): Promise<StatsReport> {

@@ -18,7 +18,10 @@ interface Entry<T> {
 export interface CacheResult<T> {
   value: T;
   savedAt: number;
+  /** True when a refresh failed and an older value is served instead. */
   stale: boolean;
+  /** True when an older value is served while a refresh runs in the background. */
+  refreshing?: boolean;
 }
 
 export interface CacheOptions {
@@ -44,11 +47,22 @@ export class Cache {
     return entry ? this.now() - entry.savedAt : null;
   }
 
+  /** The saved value without loading anything, or null. */
+  async peek<T>(key: string): Promise<{ value: T; savedAt: number } | null> {
+    return (await this.read(key)) as Entry<T> | null;
+  }
+
+  /**
+   * The value for a key: the saved one while younger than its TTL, otherwise
+   * a fresh one from the loader. With `background`, an expired saved value is
+   * returned right away while the loader runs behind it, so a request never
+   * waits on the outside world once something is saved.
+   */
   async get<T>(
     key: string,
     ttlMs: number,
     loader: () => Promise<T>,
-    options: { force?: boolean } = {},
+    options: { force?: boolean; background?: boolean } = {},
   ): Promise<CacheResult<T>> {
     const existing = (await this.read(key)) as Entry<T> | null;
     if (existing && !options.force && this.now() - existing.savedAt < ttlMs) {
@@ -56,8 +70,15 @@ export class Cache {
     }
 
     const pending = this.inFlight.get(key) as Promise<CacheResult<T>> | undefined;
+    if (existing && options.background && !options.force) {
+      if (!pending) void this.refresh(key, loader, existing).catch(() => {});
+      return { value: existing.value, savedAt: existing.savedAt, stale: false, refreshing: true };
+    }
     if (pending) return pending;
+    return this.refresh(key, loader, existing);
+  }
 
+  private refresh<T>(key: string, loader: () => Promise<T>, existing: Entry<T> | null): Promise<CacheResult<T>> {
     const run = (async (): Promise<CacheResult<T>> => {
       try {
         const value = await loader();

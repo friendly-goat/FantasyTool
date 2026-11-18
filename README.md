@@ -63,22 +63,22 @@ npm run check:sleeper -- <your_league_id>
 
 ```
 Browser (React app, src/)
-   │  /api/league/:id          /api/league/:id/stats
+   │  /api/...   (checks in every 2 minutes while open)
    ▼
-Local backend (server/)  ──►  cache (.cache/*.json)
+Backend (server/)  ──►  storage (Postgres on Heroku, .cache/ locally)
    │                                │
-   │ league data: when older        │ game stats: new games only,
-   │ than an hour, or on Refresh    │ every six hours at most
+   │ league data: every 10 min,     │ box scores: new games only;
+   │ 2 min while games are on       │ schedule: 30 min, 3 min live
    ▼                                ▼
 Sleeper API                     balldontlie API
 ```
 
-- The browser never calls Sleeper. It asks the local backend, which answers
-  from its cache when it can.
-- League data is reused for 60 minutes. The **Refresh** button asks Sleeper
-  again, at most once per minute per league.
+- The browser never calls Sleeper or balldontlie. It asks the backend, which
+  answers from saved data and updates it in the background (see "Keeping data
+  fresh").
 - Sleeper's full player list is fetched once a day, as their docs ask.
-- One full refresh is about ten requests. Sleeper's limit is 1,000 per minute.
+- One league update is about eight requests. Sleeper's limit is 1,000 per
+  minute.
 - If Sleeper is unreachable, the last saved data is shown with a notice.
 
 The backend turns Sleeper's raw responses into the shapes in
@@ -262,6 +262,36 @@ player's game, the manager can lock that score in before the player's next
 game; if nothing is locked, the last game of the week counts. Fantasy weeks
 run Monday to Sunday (`server/weeks.ts`).
 
+## Keeping data fresh
+
+There is no Refresh button. The server keeps every source up to date on its
+own, within each service's rules, and pages are always answered from saved
+data: anything older than the times below is fetched again in the background
+while the saved copy is shown, and the page picks up the new copy a few
+seconds later. "Games on" means an NBA game is in progress (from the saved
+schedule); the header shows it.
+
+| Data | Source | Fetched again after | Why |
+| --- | --- | --- | --- |
+| League (rosters, matchups, transactions; about 8 requests) | Sleeper | 10 min, 2 min while games are on (`LEAGUE_CACHE_MINUTES`, `LIVE_LEAGUE_MINUTES`) | Sleeper asks to stay under 1,000 requests a minute; this is at most about 4 |
+| Player list | Sleeper | 24 hours | Sleeper asks for it at most once a day |
+| Draft | Sleeper | 7 days once finished, else as the league | A finished draft never changes |
+| NBA schedule (one request) | balldontlie | 30 min, 3 min while games are on (`SCHEDULE_CACHE_MINUTES`, `LIVE_SCHEDULE_MINUTES`) | Scores and game states change on game nights |
+| Box scores, while a matchup is open | balldontlie | 30 min, 10 min while games are on (`WEEK_STATS_MINUTES`, `LIVE_WEEK_STATS_MINUTES`) | balldontlie updates live stats about every 10 minutes |
+| Box scores otherwise | balldontlie | 6 hours (`STATS_CACHE_HOURS`) | Season numbers barely move within a day |
+| Last season's box scores | balldontlie | Never again | It is over |
+| Team logos | NBA | 30 days | They do not change |
+
+Every balldontlie request goes through one queue, at least 1.1 seconds apart
+(at most about 54 a minute; the ALL-STAR plan allows 60). Requests someone is
+waiting on (the schedule) go before background downloads (box scores). Each
+sync re-downloads only the last two days, to pick up stat corrections. The
+page itself checks in with the server every 2 minutes while it is visible, and
+when it comes back into view; the server decides whether anything outside is
+asked. No page request waits on an outside service once data is saved, which
+keeps every answer well inside Heroku's 30-second limit, including the first
+visit after an Eco dyno wakes.
+
 ## Storage
 
 Everything the server downloads (league snapshots, the player list, box
@@ -428,10 +458,8 @@ his box score line and his fantasy points; a game to come shows his projected
 points and, if he might miss it, his chance of playing.
 
 The NBA schedule comes from the stats source (`fetchSchedule` on the
-`StatsProvider`), cached for 5 minutes (`SCHEDULE_CACHE_MINUTES`). While a
-matchup is open, box scores are kept within 15 minutes
-(`WEEK_STATS_MINUTES`) and the view reloads every 3 minutes. Sleeper's scores
-update when you press Refresh.
+`StatsProvider`). How often it and the box scores update is in "Keeping data
+fresh" below. The matchup view reloads every 3 minutes while open.
 
 ## Draft board
 

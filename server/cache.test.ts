@@ -68,4 +68,43 @@ describe("Cache", () => {
     advance(250);
     expect(await cache.age("k")).toBe(250);
   });
+
+  it("serves an expired value right away and refreshes it behind, when asked to", async () => {
+    const { cache, advance } = setup();
+    let calls = 0;
+    let release: () => void = () => {};
+    const slow = () =>
+      new Promise<number>((resolve) => {
+        calls++;
+        release = () => resolve(calls);
+      });
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+    const first = cache.get("k", 1000, slow, { background: true });
+    await tick();
+    release();
+    expect((await first).value).toBe(1);
+    advance(2000);
+    // Expired: the old value comes back at once, marked as refreshing.
+    const second = await cache.get("k", 1000, slow, { background: true });
+    expect(second).toMatchObject({ value: 1, refreshing: true });
+    // A second request while the refresh runs does not start another one.
+    await cache.get("k", 1000, slow, { background: true });
+    await tick();
+    expect(calls).toBe(2);
+    release();
+    await tick();
+    expect((await cache.get("k", 1000, slow, { background: true })).value).toBe(2);
+  });
+
+  it("waits for the loader when nothing is saved yet, even in the background mode", async () => {
+    const { cache } = setup();
+    expect((await cache.get("k", 1000, async () => 7, { background: true })).value).toBe(7);
+  });
+
+  it("peeks without loading", async () => {
+    const { cache } = setup();
+    expect(await cache.peek("k")).toBeNull();
+    await cache.get("k", 1000, async () => 3);
+    expect((await cache.peek<number>("k"))?.value).toBe(3);
+  });
 });
