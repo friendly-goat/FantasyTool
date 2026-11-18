@@ -255,6 +255,12 @@ lists why it came up: a thin position it fills, depth it draws on, a sell-high
 or buy-low gap, and the other team's situation. The chance of acceptance is a
 reasoned estimate, not a measured probability.
 
+The Trades tab reads top to bottom: the search ("I want to") and its ideas,
+then the builder, then your best nine and position needs. Both builder rosters
+start closed; "Open in builder" loads an idea and opens both. When one team
+has fewer players (an empty bench or IR spot), its list is padded with empty
+slots so the two rosters line up row for row.
+
 ### Lock-in scoring
 
 This is a lock-in league: each starter counts one game per week. After a

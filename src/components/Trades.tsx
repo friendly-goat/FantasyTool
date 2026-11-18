@@ -49,28 +49,28 @@ function names(players: ModelPlayer[]) {
 }
 
 /** Whether the screen is wide enough to show both rosters open by default. */
-function wideScreen(): boolean {
-  try {
-    return window.matchMedia("(min-width: 721px)").matches;
-  } catch {
-    return true;
-  }
+/** A team's players for the builder, best first. */
+function pickerRoster(team: Team, model: StrengthModel): ModelPlayer[] {
+  return rosterPlayers(team)
+    .flatMap((player) => model.players.get(player.id) ?? [])
+    .sort((a, b) => b.expected - a.expected);
 }
 
-function RosterPicker({ team, model, chosen, onToggle, label }: {
+function RosterPicker({ team, model, chosen, onToggle, label, open, onOpenChange, rows }: {
   team: Team;
   model: StrengthModel;
   chosen: Set<string>;
   onToggle: (id: string) => void;
   label: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** Rows to show at least, so two rosters side by side line up; extra rows are empty slots. */
+  rows: number;
 }) {
-  // Open on wide screens; on a phone, closed so the trade finder is not far below.
-  const [open, setOpen] = useState(wideScreen);
-  const roster = rosterPlayers(team)
-    .flatMap((player) => model.players.get(player.id) ?? [])
-    .sort((a, b) => b.expected - a.expected);
+  const roster = pickerRoster(team, model);
+  const empty = Math.max(0, rows - roster.length);
   return (
-    <details className="card trade-roster" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
+    <details className="card trade-roster" open={open} onToggle={(event) => onOpenChange(event.currentTarget.open)}>
       <summary className="trade-roster-summary">
         <span className="my-card-title">{label}</span>
         <span className="quiet">
@@ -113,6 +113,27 @@ function RosterPicker({ team, model, chosen, onToggle, label }: {
                 <td className="num strong">{player.games > 0 ? formatPoints(player.expected) : "–"}</td>
                 <td className="num">{player.games > 0 ? formatPoints(player.average) : "–"}</td>
                 <td className="num quiet-cell">{player.games > 0 ? percent.format(player.availability) : "–"}</td>
+              </tr>
+            ))}
+            {/* Only to line up with the other roster; on a phone the two are stacked, so they go. */}
+            {Array.from({ length: empty }, (_, index) => (
+              <tr key={`empty-${index}`} className="roster-empty hide-narrow" aria-hidden="true">
+                <th scope="row">
+                  <span className="pick-row">
+                    <span className="pick pick-empty" />
+                    <span className="pcell">
+                      <span className="pcell-name">
+                        <span className="roster-empty-name">Empty slot</span>
+                      </span>
+                      <span className="pcell-meta roster-empty-meta">
+                        <PositionChip label="C" />
+                      </span>
+                    </span>
+                  </span>
+                </th>
+                <td className="num quiet-cell">–</td>
+                <td className="num quiet-cell">–</td>
+                <td className="num quiet-cell">–</td>
               </tr>
             ))}
           </tbody>
@@ -310,6 +331,8 @@ export function Trades({ snapshot, model, situations, myRosterId }: Props) {
   const [position, setPosition] = useState("SF");
   const [sendId, setSendId] = useState("");
   const [getId, setGetId] = useState("");
+  // Both sides start closed; opening an idea in the builder opens both.
+  const [openSides, setOpenSides] = useState({ a: false, b: false });
 
 
   const team = (rosterId: number) => snapshot.teams.find((candidate) => candidate.rosterId === rosterId);
@@ -397,11 +420,13 @@ export function Trades({ snapshot, model, situations, myRosterId }: Props) {
     setTeamB(idea.offer.teamB);
     setAGives(new Set(idea.offer.aGives));
     setBGives(new Set(idea.offer.bGives));
+    setOpenSides({ a: true, b: true });
     document.getElementById("trade-builder")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   const a = team(teamA);
   const b = team(teamB);
+  const rows = Math.max(a ? pickerRoster(a, model).length : 0, b ? pickerRoster(b, model).length : 0);
   const teamSelect = (which: "a" | "b", value: number, label: string) => (
     <label>
       {label}
@@ -418,133 +443,6 @@ export function Trades({ snapshot, model, situations, myRosterId }: Props) {
 
   return (
     <section aria-label="Trades">
-      <nav className="jump" aria-label="Trade tools">
-        <a className="button button-plain" href="#trade-builder">
-          Build a trade
-        </a>
-        <a className="button button-plain" href="#trade-finder">
-          Find a trade
-        </a>
-      </nav>
-      <h2 className="section-title" id="trade-builder">Build a trade</h2>
-      <div className="filters">
-        {teamSelect("a", teamA, "Team")}
-        {teamSelect("b", teamB, "Trading with")}
-        {(aGives.size > 0 || bGives.size > 0) && (
-          <button
-            type="button"
-            className="button button-plain"
-            onClick={() => {
-              setAGives(new Set());
-              setBGives(new Set());
-            }}
-          >
-            Clear trade
-          </button>
-        )}
-      </div>
-
-      {teamA === teamB ? (
-        <p className="notice notice-warn">Choose two different teams.</p>
-      ) : (
-        a &&
-        b && (
-          <>
-            {result ? (
-              <div className="trade-result" role="status">
-                <div className="card balance-card">
-                  <ValueBalance result={result} nameA={a.teamName} nameB={b.teamName} />
-                </div>
-                {chance && <p className="verdict">{verdict(result, chance.chance, a.teamName, b.teamName)}</p>}
-                <div className="my-cards">
-                  <SideResult side={result.a} team={a} scale={effectScale(result)} model={model} />
-                  <SideResult side={result.b} team={b} scale={effectScale(result)} model={model} />
-                </div>
-                {story && chance && (
-                  <div className="card story-card">
-                    <div>
-                      <h3 className="my-card-title">Why, from {a.teamName}'s side</h3>
-                      <StoryBlock story={story} />
-                    </div>
-                    <ChanceBlock chance={chance} name={b.teamName} />
-                  </div>
-                )}
-              </div>
-            ) : (
-              <p className="quiet trade-hint">Tick the players each team would send to see a grade for both managers.</p>
-            )}
-            <div className="trade-rosters">
-              <RosterPicker team={a} model={model} chosen={aGives} onToggle={toggle(aGives, setAGives)} label={`${a.teamName} sends`} />
-              <RosterPicker team={b} model={model} chosen={bGives} onToggle={toggle(bGives, setBGives)} label={`${b.teamName} sends`} />
-            </div>
-          </>
-        )
-      )}
-
-      <h2 className="section-title ideas-title" id="trade-finder">
-        Find a trade
-      </h2>
-      <div className="card my-shape">
-        <div className="my-shape-lineup">
-          <h3 className="my-card-title">Your best nine</h3>
-          <table className="players-table lineup-table">
-            <thead>
-              <tr>
-                <th scope="col">Slot</th>
-                <th scope="col">Player</th>
-                <th scope="col" className="num">Weekly value</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lineup.map(({ slot, player }, index) => (
-                <tr key={`${slot}-${index}`}>
-                  <td>
-                    <PositionChip label={slot} />
-                  </td>
-                  <td>{player ? <PlayerCell player={player} /> : <span className="quiet">Nobody eligible</span>}</td>
-                  <td className="num">{player ? formatPoints(player.expected) : "–"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <p className="quiet my-shape-note">
-            The starters your strength score is built on, placed in Sleeper's nine slots. Weekly value is what
-            a player locks on his own in an average week.
-          </p>
-        </div>
-        <div className="my-shape-positions">
-          <h3 className="my-card-title">By position</h3>
-          <table className="players-table position-table">
-            <thead>
-              <tr>
-                <th scope="col">Position</th>
-                <th scope="col" className="num">Need</th>
-                <th scope="col" className="num">Cover</th>
-              </tr>
-            </thead>
-            <tbody>
-              {profile.map((note) => (
-                <tr key={note.position}>
-                  <th scope="row">
-                    <span className="position-row">
-                      <PositionChip label={note.position} />
-                      {thinnest?.position === note.position && <span className="spot-tag spot-thin">Thinnest</span>}
-                      {deepest?.position === note.position && <span className="spot-tag spot-deep">Most depth</span>}
-                    </span>
-                  </th>
-                  <td className="num">{formatPoints(note.need)}</td>
-                  <td className="num">{formatPoints(note.cover)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <p className="quiet my-shape-note">
-            Need is the weekly points a typical starter would add in the slots reserved for that position. Cover
-            is how much of your best player there the rest of your roster would make up if he left.
-          </p>
-        </div>
-      </div>
-
       <div className="filters finder">
         <label>
           I want to
@@ -672,6 +570,143 @@ export function Trades({ snapshot, model, situations, myRosterId }: Props) {
           ))}
         </ul>
       )}
+
+      <h2 className="section-title ideas-title" id="trade-builder">Build a trade</h2>
+      <div className="filters">
+        {teamSelect("a", teamA, "Team")}
+        {teamSelect("b", teamB, "Trading with")}
+        {(aGives.size > 0 || bGives.size > 0) && (
+          <button
+            type="button"
+            className="button button-plain"
+            onClick={() => {
+              setAGives(new Set());
+              setBGives(new Set());
+            }}
+          >
+            Clear trade
+          </button>
+        )}
+      </div>
+
+      {teamA === teamB ? (
+        <p className="notice notice-warn">Choose two different teams.</p>
+      ) : (
+        a &&
+        b && (
+          <>
+            {result ? (
+              <div className="trade-result" role="status">
+                <div className="card balance-card">
+                  <ValueBalance result={result} nameA={a.teamName} nameB={b.teamName} />
+                </div>
+                {chance && <p className="verdict">{verdict(result, chance.chance, a.teamName, b.teamName)}</p>}
+                <div className="my-cards">
+                  <SideResult side={result.a} team={a} scale={effectScale(result)} model={model} />
+                  <SideResult side={result.b} team={b} scale={effectScale(result)} model={model} />
+                </div>
+                {story && chance && (
+                  <div className="card story-card">
+                    <div>
+                      <h3 className="my-card-title">Why, from {a.teamName}'s side</h3>
+                      <StoryBlock story={story} />
+                    </div>
+                    <ChanceBlock chance={chance} name={b.teamName} />
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="quiet trade-hint">Tick the players each team would send to see a grade for both managers.</p>
+            )}
+            <div className="trade-rosters">
+              <RosterPicker
+                team={a}
+                model={model}
+                chosen={aGives}
+                onToggle={toggle(aGives, setAGives)}
+                label={`${a.teamName} sends`}
+                open={openSides.a}
+                onOpenChange={(open) => setOpenSides((sides) => ({ ...sides, a: open }))}
+                rows={rows}
+              />
+              <RosterPicker
+                team={b}
+                model={model}
+                chosen={bGives}
+                onToggle={toggle(bGives, setBGives)}
+                label={`${b.teamName} sends`}
+                open={openSides.b}
+                onOpenChange={(open) => setOpenSides((sides) => ({ ...sides, b: open }))}
+                rows={rows}
+              />
+            </div>
+          </>
+        )
+      )}
+
+      <h2 className="section-title ideas-title" id="trade-finder">
+        Find a trade
+      </h2>
+      <div className="card my-shape">
+        <div className="my-shape-lineup">
+          <h3 className="my-card-title">Your best nine</h3>
+          <table className="players-table lineup-table">
+            <thead>
+              <tr>
+                <th scope="col">Slot</th>
+                <th scope="col">Player</th>
+                <th scope="col" className="num">Weekly value</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lineup.map(({ slot, player }, index) => (
+                <tr key={`${slot}-${index}`}>
+                  <td>
+                    <PositionChip label={slot} />
+                  </td>
+                  <td>{player ? <PlayerCell player={player} /> : <span className="quiet">Nobody eligible</span>}</td>
+                  <td className="num">{player ? formatPoints(player.expected) : "–"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="quiet my-shape-note">
+            The starters your strength score is built on, placed in Sleeper's nine slots. Weekly value is what
+            a player locks on his own in an average week.
+          </p>
+        </div>
+        <div className="my-shape-positions">
+          <h3 className="my-card-title">By position</h3>
+          <table className="players-table position-table">
+            <thead>
+              <tr>
+                <th scope="col">Position</th>
+                <th scope="col" className="num">Need</th>
+                <th scope="col" className="num">Cover</th>
+              </tr>
+            </thead>
+            <tbody>
+              {profile.map((note) => (
+                <tr key={note.position}>
+                  <th scope="row">
+                    <span className="position-row">
+                      <PositionChip label={note.position} />
+                      {thinnest?.position === note.position && <span className="spot-tag spot-thin">Thinnest</span>}
+                      {deepest?.position === note.position && <span className="spot-tag spot-deep">Most depth</span>}
+                    </span>
+                  </th>
+                  <td className="num">{formatPoints(note.need)}</td>
+                  <td className="num">{formatPoints(note.cover)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="quiet my-shape-note">
+            Need is the weekly points a typical starter would add in the slots reserved for that position. Cover
+            is how much of your best player there the rest of your roster would make up if he left.
+          </p>
+        </div>
+      </div>
 
       <div className="quiet legend explain">
         <p>

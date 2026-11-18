@@ -42,6 +42,8 @@
   --loss-soft: rgba(255, 122, 122, 0.14);
   --warn: #f6c453;
   --warn-soft: rgba(246, 196, 83, 0.16);
+  /* Dropdown chevron, drawn in --muted (an SVG in a URL cannot read variables). */
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1.5 1.75l4.5 4.5 4.5-4.5' fill='none' stroke='%239ba7be' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
 :root[data-theme="light"] {
@@ -63,6 +65,7 @@
   --loss-soft: rgba(194, 47, 47, 0.09);
   --warn: #7a5200;
   --warn-soft: rgba(214, 158, 20, 0.2);
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1.5 1.75l4.5 4.5 4.5-4.5' fill='none' stroke='%23586580' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
 * {
@@ -96,6 +99,18 @@ input,
 select {
   font: inherit;
   color: inherit;
+}
+
+/* Every dropdown draws its own chevron, with room on the right. */
+select:not([multiple]) {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 2.25rem;
+  background-image: var(--select-arrow);
+  background-repeat: no-repeat;
+  background-position: right 0.8rem center;
+  background-size: 0.75rem auto;
+  cursor: pointer;
 }
 
 :focus-visible {
@@ -671,10 +686,10 @@ code {
 }
 
 .filters select {
-  padding: 0.35rem 0.6rem;
+  padding: 0.35rem 2.25rem 0.35rem 0.6rem;
   border: 1px solid var(--field-line);
   border-radius: var(--radius-small);
-  background: var(--surface);
+  background-color: var(--surface);
   font-weight: 400;
 }
 
@@ -1714,6 +1729,24 @@ th[aria-sort] .sort-button {
 .pick {
   display: inline-flex;
   padding-top: 0.15rem;
+}
+
+.pick-empty {
+  width: 1.1rem;
+  flex: none;
+}
+
+/* Same line box as a player's name button, so the row is as tall. */
+.roster-empty-name {
+  display: block;
+  line-height: 1.5;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+/* Keeps an empty slot as tall as a player row; the chip itself is not shown. */
+.roster-empty-meta {
+  visibility: hidden;
 }
 
 .pick input {
