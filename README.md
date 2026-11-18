@@ -290,7 +290,9 @@ dropping the least valuable. When a player on IR is back, the least valuable
 active player (a pickup or not) plays only until then; nobody goes for a
 player out for the season. Rosters are filled the same way before and after
 a trade, so a trade is credited only with the spots it opens, and a pickup
-the team makes either way is not counted as the trade's.
+the team makes either way is not counted as the trade's. Trade cards and Top
+moves list these follow-up moves (IR, pickups, drops) under "Team
+management", apart from the players in the offer.
 
 Trades with an injured player show two numbers under the team effect: the
 weekly change while he is out and after he is back (`tradePhases`). The grade

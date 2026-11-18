@@ -1885,6 +1885,57 @@ th[aria-sort] .sort-button {
   color: var(--win);
 }
 
+/* Roster moves a team would make after a trade, set apart from the trade itself. */
+.team-moves {
+  margin: -0.25rem 0 1rem;
+  padding: 0.75rem 0.9rem 0.25rem;
+  border-radius: var(--radius-small);
+  background: var(--surface-raised);
+}
+
+.team-moves-title {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.team-moves-note {
+  margin: 0.15rem 0 0.5rem;
+}
+
+.team-moves .moves {
+  margin-bottom: 0;
+  border-top: 0;
+}
+
+.team-moves .move:last-child {
+  border-bottom: 0;
+}
+
+.team-moves-ir {
+  list-style: none;
+  margin: 0 0 0.5rem;
+  padding: 0;
+  font-size: 0.875rem;
+}
+
+.team-moves-ir li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.2rem 0;
+}
+
+.team-moves-ir-tag {
+  flex: none;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
 /* An injured player's trade, split at his return: the weeks he is out, then after. */
 .phases {
   display: grid;
@@ -1964,6 +2015,24 @@ th[aria-sort] .sort-button {
 .move-action {
   text-align: right;
   white-space: nowrap;
+}
+
+/* A trade's follow-up roster moves, on their own line under it. */
+.moves-table tr.has-management th,
+.moves-table tr.has-management td {
+  border-bottom: 0;
+  padding-bottom: 0.35rem;
+}
+
+.moves-table .move-management-row td {
+  padding-top: 0;
+  font-size: 0.8125rem;
+  color: var(--muted);
+  white-space: normal;
+}
+
+.move-management-title {
+  font-weight: 700;
 }
 
 /* Players joining (+) and leaving (−) a team in a trade. */
@@ -2768,6 +2837,20 @@ th[aria-sort] .sort-button {
 
   .moves-table tr:last-child {
     border-bottom: 0;
+  }
+
+  .moves-table tr.has-management {
+    border-bottom: 0;
+    padding-bottom: 0.25rem;
+  }
+
+  .moves-table tr.move-management-row {
+    display: block;
+    padding: 0 1rem 0.9rem;
+  }
+
+  .moves-table .move-management-row td {
+    display: block;
   }
 
   .moves-table th,

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import type { TeamSituation } from "../../shared/insight.ts";
 import { type Move, topMoves } from "../../shared/moves.ts";
 import type { StrengthModel, TeamStrength } from "../../shared/strength.ts";
@@ -66,10 +66,20 @@ function ordinal(n: number): string {
 }
 
 /** The user's own team: this week's matchup, a lineup check, the roster, and free agents worth adding. */
-export function MyTeam({ snapshot, stats, model, strengths, team, onChangeTeam, onOpenMatchup, situations, onOpenTrade }: Props) {
+export function MyTeam({
+  snapshot,
+  stats,
+  model,
+  strengths,
+  team,
+  onChangeTeam,
+  onOpenMatchup,
+  situations,
+  onOpenTrade,
+}: Props) {
   const players = stats?.players ?? {};
   const hasStats = Object.keys(players).length > 0;
-  
+
   const strength = strengths?.find((entry) => entry.rosterId === team.rosterId) ?? null;
   const moves = useTopMoves(model, snapshot, team.rosterId, situations);
   const teamName = (rosterId: number | null) =>
@@ -81,7 +91,8 @@ export function MyTeam({ snapshot, stats, model, strengths, team, onChangeTeam, 
   const mine = matchup?.sides.find((side) => side.rosterId === team.rosterId);
   const theirs = matchup?.sides.find((side) => side.rosterId !== team.rosterId);
   const opponent = theirs ? snapshot.teams.find((candidate) => candidate.rosterId === theirs.rosterId) : undefined;
-  const stillToScore = (side: typeof mine) => side?.starters.filter((entry) => entry.player && !entry.points).length ?? 0;
+  const stillToScore = (side: typeof mine) =>
+    side?.starters.filter((entry) => entry.player && !entry.points).length ?? 0;
 
   const rows: { slot: string; player: PlayerRef | null }[] = [
     ...team.starters,
@@ -136,13 +147,15 @@ export function MyTeam({ snapshot, stats, model, strengths, team, onChangeTeam, 
             <>
               <p className="my-score">
                 <span className="num">{strength.score}</span>
-                <span className="quiet">of 1000, {ordinal(strength.rank)} of {snapshot.teams.length}</span>
+                <span className="quiet">
+                  of 1000, {ordinal(strength.rank)} of {snapshot.teams.length}
+                </span>
               </p>
               <p>Projected to lock {formatPoints(strength.projected)} points in an average week.</p>
               <p className="quiet">
                 Your best nine alone would lock {formatPoints(strength.bestNine)}; the rest of your roster adds{" "}
-                {formatSigned(strength.benchAdds)} by rotating into open slots and covering missed games. This
-                assumes you set the best lineup each day, whatever your lineup in Sleeper shows right now.
+                {formatSigned(strength.benchAdds)} by rotating into open slots and covering missed games. This assumes
+                you set the best lineup each day, whatever your lineup in Sleeper shows right now.
               </p>
             </>
           ) : (
@@ -160,12 +173,24 @@ export function MyTeam({ snapshot, stats, model, strengths, team, onChangeTeam, 
               <th scope="col">Player</th>
               {hasStats && (
                 <>
-                  <th scope="col" className="num">Weekly value</th>
-                  <th scope="col" className="num">Fantasy avg</th>
-                  <th scope="col" className="num">Projected</th>
-                  <th scope="col" className="num">Last {stats?.recentWindow ?? 5}</th>
-                  <th scope="col" className="num">Best game</th>
-                  <th scope="col" className="num">Games</th>
+                  <th scope="col" className="num">
+                    Weekly value
+                  </th>
+                  <th scope="col" className="num">
+                    Fantasy avg
+                  </th>
+                  <th scope="col" className="num">
+                    Projected
+                  </th>
+                  <th scope="col" className="num">
+                    Last {stats?.recentWindow ?? 5}
+                  </th>
+                  <th scope="col" className="num">
+                    Best game
+                  </th>
+                  <th scope="col" className="num">
+                    Games
+                  </th>
                 </>
               )}
             </tr>
@@ -221,62 +246,86 @@ export function MyTeam({ snapshot, stats, model, strengths, team, onChangeTeam, 
                     <th scope="col">Move</th>
                     <th scope="col">You get</th>
                     <th scope="col">You give</th>
-                    <th scope="col" className="num">Your strength</th>
-                    <th scope="col" className="num">Chance</th>
+                    <th scope="col" className="num">
+                      Your strength
+                    </th>
+                    <th scope="col" className="num">
+                      Chance
+                    </th>
                     <th scope="col">
                       <span className="visually-hidden">Open</span>
                     </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {moves.map((move) => (
-                    <tr key={`${move.kind}-${move.gets.map((player) => player.id).join("+")}-${move.gives.map((player) => player.id).join("+")}`}>
-                      <th scope="row" className="move-kind">
-                        {move.kind === "trade" ? (
-                          <>
-                            <span className="move-tag move-tag-trade">Trade</span>
-                            <span className="quiet">with {teamName(move.partner)}</span>
-                          </>
-                        ) : (
-                          <>
-                            <span className="move-tag move-tag-pickup">Pickup</span>
-                            <span className="quiet">from waivers</span>
-                          </>
-                        )}
-                      </th>
-                      <td className="move-get" data-label="You get">
-                        <MovePlayers players={move.gets} notes={move.notes} />
-                      </td>
-                      <td className="move-give" data-label="You give">
-                        <MovePlayers players={move.gives} notes={move.notes} />
-                      </td>
-                      <td className="num move-change">
-                        <span className={`move-strength ${move.strengthChange > 0 ? "up" : move.strengthChange < 0 ? "down" : ""}`}>
-                          {formatWholeChange(move.strengthChange)}
-                        </span>
-                        <span className="quiet move-weekly">{formatSigned(move.weeklyChange)} a week</span>
-                      </td>
-                      <td className="num move-chance">
-                        {move.chance !== null && move.likelihood ? (
-                          <>
-                            {percent.format(move.chance)}{" "}
-                            <span className={`likelihood likelihood-${move.likelihood.replace(" ", "-")}`}>
-                              {move.likelihood}
+                  {moves.map((move) => {
+                    const key = `${move.kind}-${move.gets.map((player) => player.id).join("+")}-${move.gives.map((player) => player.id).join("+")}`;
+                    return (
+                      <Fragment key={key}>
+                        <tr className={move.management.length > 0 ? "has-management" : undefined}>
+                          <th scope="row" className="move-kind">
+                            {move.kind === "trade" ? (
+                              <>
+                                <span className="move-tag move-tag-trade">Trade</span>
+                                <span className="quiet">with {teamName(move.partner)}</span>
+                              </>
+                            ) : (
+                              <>
+                                <span className="move-tag move-tag-pickup">Pickup</span>
+                                <span className="quiet">from waivers</span>
+                              </>
+                            )}
+                          </th>
+                          <td className="move-get" data-label="You get">
+                            <MovePlayers players={move.gets} notes={move.notes} />
+                          </td>
+                          <td className="move-give" data-label="You give">
+                            <MovePlayers players={move.gives} notes={move.notes} />
+                          </td>
+
+                          <td className="num move-change">
+                            <span
+                              className={`move-strength ${move.strengthChange > 0 ? "up" : move.strengthChange < 0 ? "down" : ""}`}
+                            >
+                              {formatWholeChange(move.strengthChange)}
                             </span>
-                          </>
-                        ) : (
-                          <span className="quiet">Yours to make</span>
+                            <span className="quiet move-weekly">{formatSigned(move.weeklyChange)} a week</span>
+                          </td>
+                          <td className="num move-chance">
+                            {move.chance !== null && move.likelihood ? (
+                              <>
+                                {percent.format(move.chance)}{" "}
+                                <span className={`likelihood likelihood-${move.likelihood.replace(" ", "-")}`}>
+                                  {move.likelihood}
+                                </span>
+                              </>
+                            ) : (
+                              <span className="quiet">Yours to make</span>
+                            )}
+                          </td>
+                          <td className="move-action">
+                            {move.idea && (
+                              <button
+                                type="button"
+                                className="button button-plain"
+                                onClick={() => onOpenTrade(move.idea!.offer)}
+                              >
+                                Open in builder
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                        {move.management.length > 0 && (
+                          <tr className="move-management-row">
+                            <td colSpan={6}>
+                              <span className="move-management-title">Team management, not part of the trade:</span>{" "}
+                              {move.management.join("; ")}.
+                            </td>
+                          </tr>
                         )}
-                      </td>
-                      <td className="move-action">
-                        {move.idea && (
-                          <button type="button" className="button button-plain" onClick={() => onOpenTrade(move.idea!.offer)}>
-                            Open in builder
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                      </Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -288,11 +337,11 @@ export function MyTeam({ snapshot, stats, model, strengths, team, onChangeTeam, 
 
       {hasStats && (
         <p className="quiet legend">
-          Top moves are the trades from "see the best trades for my team" on the Trades tab (only those with at
-          least a fair chance of being accepted) and the best waiver pickups, ranked together by how much each
-          raises your team's strength over the rest of the season. A pickup drops the player your roster would
-          miss least. When no pickup makes the top five on merit, the best one takes the last place. Under each
-          strength change is the change in your projected weekly score behind it.
+          Top moves are the trades from "see the best trades for my team" on the Trades tab (only those with at least a
+          fair chance of being accepted) and the best waiver pickups, ranked together by how much each raises your
+          team's strength over the rest of the season. A pickup drops the player your roster would miss least. When no
+          pickup makes the top five on merit, the best one takes the last place. Under each strength change is the
+          change in your projected weekly score behind it.
         </p>
       )}
     </section>

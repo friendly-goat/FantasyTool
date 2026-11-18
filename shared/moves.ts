@@ -12,10 +12,12 @@ import type { LeagueSnapshot } from "./types.ts";
 
 export interface Move {
   kind: "trade" | "pickup";
-  /** Players coming in: for a trade, those received and any free agent picked up to refill the roster. */
+  /** Players coming in: for a trade, those received; for a pickup, the free agent. */
   gets: ModelPlayer[];
-  /** Players going out: for a trade, those sent and any dropped to make room; for a pickup, the drop. */
+  /** Players going out: for a trade, those sent; for a pickup, the drop. */
   gives: ModelPlayer[];
+  /** For a trade, the roster moves you would make after it (IR, waiver pickups, drops), one line each. Not part of the offer. */
+  management: string[];
   /** The other team in a trade; null for a pickup. */
   partner: number | null;
   /** Change in team strength (1 to 1000 scale). The ranking. */
@@ -27,7 +29,7 @@ export interface Move {
   likelihood: Likelihood | null;
   /** The trade idea, to open it in the builder. */
   idea: TradeIdea | null;
-  /** A short note for some players, by ID: a waiver pickup, a player going on IR. */
+  /** A short note for some players, by ID. */
   notes: Record<string, string>;
 }
 
@@ -56,16 +58,18 @@ export function topMoves(
     .ideas.filter((idea) => idea.likelihood !== "long shot")
     .map((idea) => ({
       kind: "trade",
-      notes: Object.fromEntries([
-        ...idea.result.a.toReserve.map((player) => [player.id, "Goes on IR while out"]),
-        ...idea.result.a.noReserve.map((player) => [player.id, "IR full: uses a bench spot while out"]),
-        ...idea.result.a.pickups.map(({ player, forInjured }) => [
-          player.id,
-          forInjured ? `Waiver pickup until ${forInjured.name} is back` : "Waiver pickup",
-        ]),
-      ]),
-      gets: [...idea.result.a.gets, ...idea.result.a.adds],
-      gives: [...idea.result.a.gives, ...idea.result.a.drops],
+      notes: {},
+      management: [
+        ...idea.result.a.toReserve.map((player) => `Put ${player.name} on IR`),
+        ...idea.result.a.noReserve.map((player) => `IR full: ${player.name} uses a bench spot while out`),
+        ...idea.result.a.pickups.map(({ player, forInjured }) =>
+          forInjured ? `Pick up ${player.name} until ${forInjured.name} is back` : `Pick up ${player.name}`,
+        ),
+        ...idea.result.a.drops.map((player) => `Drop ${player.name}`),
+        ...idea.result.a.leaving.map(({ player, when }) => `Drop ${player.name} when ${when.name} is back`),
+      ],
+      gets: idea.result.a.gets,
+      gives: idea.result.a.gives,
       partner: idea.offer.teamB,
       strengthChange: idea.result.a.strengthChange,
       weeklyChange: idea.result.a.teamChange,
@@ -96,6 +100,7 @@ export function topMoves(
       likelihood: null,
       idea: null,
       notes: {},
+      management: [],
     };
   });
 

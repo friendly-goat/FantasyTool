@@ -169,6 +169,7 @@ function EffectBar({ change, scale, label }: { change: number; scale: number; la
 }
 
 /** Players who join (green +) and leave (red −) one team in a trade, with each one's player value. */
+/** The players in the trade itself, joining and leaving. */
 function MoveList({ side, model }: { side: TradeSide; model: StrengthModel }) {
   const value = (player: ModelPlayer) => (
     <>
@@ -179,32 +180,63 @@ function MoveList({ side, model }: { side: TradeSide; model: StrengthModel }) {
   return (
     <PlayerMoves
       moves={[
-        ...side.gets.map((player) => ({
-          player,
-          joins: true,
-          note: side.toReserve.includes(player)
-            ? "Goes on IR while out"
-            : side.noReserve.includes(player)
-              ? "IR full: uses a bench spot while out"
-              : undefined,
-          value: value(player),
-        })),
-        ...side.pickups.map((pickup) => ({
-          player: pickup.player,
-          joins: true,
-          note: pickupLabel(pickup),
-          value: value(pickup.player),
-        })),
+        ...side.gets.map((player) => ({ player, joins: true, value: value(player) })),
         ...side.gives.map((player) => ({ player, joins: false, value: value(player) })),
-        ...side.drops.map((player) => ({ player, joins: false, note: "Dropped to make room", value: value(player) })),
-        ...side.leaving.map(({ player, when }) => ({
-          player,
-          joins: false,
-          note: `Dropped when ${when.name} is back`,
-          value: value(player),
-        })),
       ]}
     />
+  );
+}
+
+/**
+ * What the team would do after the trade, kept apart from it: IR moves,
+ * waiver pickups and drops. None of it is part of the offer.
+ */
+function TeamManagement({ side, model, teamName }: { side: TradeSide; model: StrengthModel; teamName: string }) {
+  const value = (player: ModelPlayer) => (
+    <>
+      {formatPoints(playerValue(model, player))}
+      <span className="quiet"> value</span>
+    </>
+  );
+  const reserve = [
+    ...side.toReserve.map((player) => `${player.name} goes on IR while he is out.`),
+    ...side.noReserve.map(
+      (player) =>
+        `IR is full (${side.reserve.map((entry) => entry.name).join(" and ")}), so ${player.name} uses a bench spot while out.`,
+    ),
+  ];
+  const moves = [
+    ...side.pickups.map((pickup) => ({
+      player: pickup.player,
+      joins: true,
+      note: pickupLabel(pickup),
+      value: value(pickup.player),
+    })),
+    ...side.drops.map((player) => ({ player, joins: false, note: "Dropped to make room", value: value(player) })),
+    ...side.leaving.map(({ player, when }) => ({
+      player,
+      joins: false,
+      note: `Dropped when ${when.name} is back`,
+      value: value(player),
+    })),
+  ];
+  if (reserve.length === 0 && moves.length === 0) return null;
+  return (
+    <section className="team-moves" aria-label={`Team management for ${teamName}`}>
+      <h4 className="team-moves-title">Team management</h4>
+      <p className="quiet team-moves-note">Not part of the trade: roster moves {teamName} would make after it.</p>
+      {reserve.length > 0 && (
+        <ul className="team-moves-ir">
+          {reserve.map((line) => (
+            <li key={line}>
+              <span className="team-moves-ir-tag">IR</span>
+              {line}
+            </li>
+          ))}
+        </ul>
+      )}
+      {moves.length > 0 && <PlayerMoves moves={moves} />}
+    </section>
   );
 }
 
@@ -226,6 +258,7 @@ function SideResult({ side, team, scale, model }: { side: TradeSide; team: Team 
       </p>
 
       <MoveList side={side} model={model} />
+      <TeamManagement side={side} model={model} teamName={team?.teamName ?? "This team"} />
 
       <div className="effect-block">
         <div className="effect-head">
