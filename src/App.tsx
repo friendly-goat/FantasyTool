@@ -27,6 +27,7 @@ import { PlayerPanel } from "./components/PlayerPanel.tsx";
 import { Players } from "./components/Players.tsx";
 import { StatsNotice } from "./components/StatsNotice.tsx";
 import { type RankingMode, Rankings } from "./components/Rankings.tsx";
+import { AccountMenu } from "./components/AccountMenu.tsx";
 import { MobileNav } from "./components/MobileNav.tsx";
 import { TeamChooser } from "./components/TeamChooser.tsx";
 import { Teams } from "./components/Teams.tsx";
@@ -90,9 +91,7 @@ export function App() {
         setConfig(loaded);
         setLeagueId(loaded.defaultLeagueId ?? loadSavedLeagueId());
       })
-      .catch(() =>
-        setError("The local server is not answering. Start it with npm run dev and reload."),
-      );
+      .catch(() => setError("The local server is not answering. Start it with npm run dev and reload."));
   }, [signedIn]);
 
   const load = useCallback(async (id: string): Promise<LeagueSnapshot | null> => {
@@ -174,7 +173,11 @@ export function App() {
     if (!loadedLeagueId || !stats) return;
     // Last season downloads after this one; check on it less often.
     const wait =
-      stats.status === "syncing" ? STATS_POLL_MS : stats.status === "ready" && stats.lastSeason === "loading" ? LAST_SEASON_POLL_MS : 0;
+      stats.status === "syncing"
+        ? STATS_POLL_MS
+        : stats.status === "ready" && stats.lastSeason === "loading"
+          ? LAST_SEASON_POLL_MS
+          : 0;
     if (!wait) return;
     const timer = setTimeout(() => void loadStats(loadedLeagueId), wait);
     return () => clearTimeout(timer);
@@ -200,14 +203,12 @@ export function App() {
   // when the league or the stats change.
   const statsPlayers = stats?.players;
   const model = useMemo(
-    () => (snapshot && stats && statsPlayers && Object.keys(statsPlayers).length > 0 ? buildModel(snapshot, stats) : null),
+    () =>
+      snapshot && stats && statsPlayers && Object.keys(statsPlayers).length > 0 ? buildModel(snapshot, stats) : null,
     // Rebuilt only when the league or the player data change, not on progress updates.
     [snapshot, statsPlayers],
   );
-  const strengths = useMemo(
-    () => (snapshot && model ? leagueStrength(snapshot, model) : null),
-    [snapshot, model],
-  );
+  const strengths = useMemo(() => (snapshot && model ? leagueStrength(snapshot, model) : null), [snapshot, model]);
 
   const situations = useMemo(
     () => (snapshot && model && strengths ? teamSituations(snapshot, model, strengths) : null),
@@ -249,13 +250,16 @@ export function App() {
     setView("Teams");
   }
 
-
   if (session && !signedIn) {
     return <SignIn onSignedIn={(role) => setSession({ authRequired: true, role })} />;
   }
 
   if (!config) {
-    return <main className="page">{error ? <p className="notice notice-error">{error}</p> : <p className="quiet">Loading…</p>}</main>;
+    return (
+      <main className="page">
+        {error ? <p className="notice notice-error">{error}</p> : <p className="quiet">Loading…</p>}
+      </main>
+    );
   }
 
   if (!leagueId) {
@@ -275,8 +279,8 @@ export function App() {
   const signOutNow = () => {
     void signOut().then(() => setSession({ authRequired: true, role: null }));
   };
-  // The phone's More sheet carries the header's buttons too.
-  const phoneSettings = [
+  // Settings: in the account menu on a wide screen, the More sheet on a phone.
+  const settingsItems = [
     { label: theme === "dark" ? "Light mode" : "Dark mode", onSelect: toggleTheme },
     ...(canSwitch ? [{ label: "Switch league", onSelect: switchLeague }] : []),
     ...(myTeam ? [{ label: "Change my team", onSelect: () => setChoosingTeam(true) }] : []),
@@ -285,180 +289,179 @@ export function App() {
       : []),
   ];
 
+  const showNav = Boolean(snapshot && myTeam && !choosingTeam);
+  const accountNote = session?.authRequired
+    ? `${myTeam?.managerName ?? "Signed in"}, ${session.role === "admin" ? "admin" : "viewer"}`
+    : undefined;
+
   return (
-    <main className="page">
-      <header className="league-header">
-        <div>
-          <h1 className="league-name">Fantasy Tool</h1>
-          {snapshot && (
-            <p className="quiet">
-              {snapshot.league.season} season, week {snapshot.week}
-            </p>
+    <>
+      <header className="app-bar">
+        <div className="app-bar-inner">
+          <div className="brand">
+            <h1 className="brand-name">Fantasy Tool</h1>
+            {snapshot && (
+              <p className="quiet brand-sub">
+                {snapshot.league.season} season, week {snapshot.week}
+              </p>
+            )}
+          </div>
+          {showNav && (
+            <nav className="app-nav" aria-label="League views">
+              {VIEWS.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  className="app-nav-item"
+                  aria-current={view === name ? "page" : undefined}
+                  onClick={(event) => {
+                    event.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+                    selectView(name);
+                  }}
+                >
+                  {name}
+                </button>
+              ))}
+            </nav>
           )}
-        </div>
-        <div className="league-actions">
-          {live && (
-            <span className="live-pill" title="NBA games are on, so league data updates every couple of minutes">
-              <span className="live-dot" aria-hidden="true" />
-              Games on
-            </span>
-          )}
-          {snapshot && (
-            <span className="quiet updated" title={`From Sleeper ${formatDate(snapshot.fetchedAt)}. Updates on its own.`}>
-              Updated {formatAgo(snapshot.fetchedAt)}
-            </span>
-          )}
-          {/* On a phone these move into the More sheet (MobileNav). */}
-          {canSwitch && (
-            <button type="button" className="button button-plain header-button" onClick={switchLeague}>
-              Switch league
-            </button>
-          )}
-          <button type="button" className="button button-plain header-button" onClick={toggleTheme}>
-            {theme === "dark" ? "Light mode" : "Dark mode"}
-          </button>
-          {session?.authRequired && (
-            <button
-              type="button"
-              className="button button-plain header-button"
-              title={session.role === "admin" ? "Signed in as admin" : "Signed in as a viewer"}
-              onClick={signOutNow}
-            >
-              Sign out{session.role === "admin" ? " (admin)" : ""}
-            </button>
-          )}
+          <div className="app-bar-status">
+            {live && (
+              <span className="live-pill" title="NBA games are on, so league data updates every couple of minutes">
+                <span className="live-dot" aria-hidden="true" />
+                Games on
+              </span>
+            )}
+            {snapshot && (
+              <span
+                className="quiet updated"
+                title={`From Sleeper ${formatDate(snapshot.fetchedAt)}. Updates on its own.`}
+              >
+                Updated {formatAgo(snapshot.fetchedAt)}
+              </span>
+            )}
+          </div>
+          {/* On a phone these settings sit in the More sheet (MobileNav) instead. */}
+          <AccountMenu team={showNav ? myTeam : undefined} note={accountNote} items={settingsItems} />
         </div>
       </header>
 
-      {config.mock && (
-        <p className="notice">
-          This is sample data. Stop the server and run <code>npm run dev</code> to load your league.
-        </p>
-      )}
-      {snapshot?.stale && (
-        <p className="notice notice-warn">
-          Sleeper could not be reached. Showing data from {formatDate(snapshot.fetchedAt)}.
-        </p>
-      )}
-      {error && (
-        <p className="notice notice-error" role="alert">
-          {error}
-          {canSwitch && !snapshot && " Check the league ID, or switch to another league."}
-        </p>
-      )}
+      <main className="page">
+        {config.mock && (
+          <p className="notice">
+            This is sample data. Stop the server and run <code>npm run dev</code> to load your league.
+          </p>
+        )}
+        {snapshot?.stale && (
+          <p className="notice notice-warn">
+            Sleeper could not be reached. Showing data from {formatDate(snapshot.fetchedAt)}.
+          </p>
+        )}
+        {error && (
+          <p className="notice notice-error" role="alert">
+            {error}
+            {canSwitch && !snapshot && " Check the league ID, or switch to another league."}
+          </p>
+        )}
 
-      {snapshot && (myRosterId === null || choosingTeam) && (
-        <TeamChooser snapshot={snapshot} onChoose={chooseTeam} />
-      )}
+        {snapshot && (myRosterId === null || choosingTeam) && <TeamChooser snapshot={snapshot} onChoose={chooseTeam} />}
 
-      {snapshot && myTeam && !choosingTeam && (
-        <OpenPlayerContext.Provider value={setOpenPlayer}>
-          <nav className="tabs" aria-label="League views">
-            {VIEWS.map((name) => (
-              <button
-                key={name}
-                type="button"
-                className="tab"
-                aria-current={view === name ? "page" : undefined}
-                onClick={(event) => {
-                  event.currentTarget.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
-                  selectView(name);
-                }}
-              >
-                {name}
-              </button>
-            ))}
-          </nav>
-          <MobileNav
-            primary={PHONE_TABS}
-            featured="Trades"
-            more={PHONE_MORE}
-            view={view}
-            onSelect={(name) => {
-              selectView(name);
-              window.scrollTo({ top: 0 });
-            }}
-            settings={phoneSettings}
-            open={moreOpen}
-            onOpenChange={setMoreOpen}
-          />
+        {snapshot && myTeam && !choosingTeam && (
+          <OpenPlayerContext.Provider value={setOpenPlayer}>
+            <MobileNav
+              primary={PHONE_TABS}
+              featured="Trades"
+              more={PHONE_MORE}
+              view={view}
+              onSelect={(name) => {
+                selectView(name);
+                window.scrollTo({ top: 0 });
+              }}
+              settings={settingsItems}
+              open={moreOpen}
+              onOpenChange={setMoreOpen}
+            />
 
-          {(view === "My team" || view === "Teams" || view === "Players" || (view === "Rankings" && rankingMode === "strength") || view === "Trades") &&
-            stats &&
-            (stats.status !== "ready" || view === "My team" || view === "Teams" || view === "Players") && (
-            <StatsNotice stats={stats} onRetry={() => void loadStats(snapshot.league.id, true)} />
-          )}
+            {(view === "My team" ||
+              view === "Teams" ||
+              view === "Players" ||
+              (view === "Rankings" && rankingMode === "strength") ||
+              view === "Trades") &&
+              stats &&
+              (stats.status !== "ready" || view === "My team" || view === "Teams" || view === "Players") && (
+                <StatsNotice stats={stats} onRetry={() => void loadStats(snapshot.league.id, true)} />
+              )}
 
-          {view === "My team" && (
-            <MyTeam
-              snapshot={snapshot}
-              stats={stats}
-              model={model}
-              strengths={strengths}
-              team={myTeam}
-              onChangeTeam={() => setChoosingTeam(true)}
-              situations={situations}
-              onOpenTrade={openTrade}
-            />
-          )}
-          {view === "Rankings" && (
-            <Rankings
-              mode={rankingMode}
-              onModeChange={setRankingMode}
-              snapshot={snapshot}
-              strengths={strengths}
-              myRosterId={myRosterId}
-              onOpenTeam={openTeam}
-            />
-          )}
-          {/* Kept mounted while hidden, so a trade in progress survives switching tabs. */}
-          <div hidden={view !== "Trades"}>
-            <Trades
-              key={myTeam.rosterId}
-              snapshot={snapshot}
-              model={model}
-              situations={situations}
-              myRosterId={myTeam.rosterId}
-              incoming={builderOffer}
-            />
-          </div>
-          {view === "Teams" && (
-            <Teams
-              snapshot={snapshot}
-              stats={stats}
-              myRosterId={myRosterId}
-              selectedRosterId={selectedRosterId}
-              onSelect={setSelectedRosterId}
-            />
-          )}
-          {view === "Players" && <Players snapshot={snapshot} stats={stats} />}
-          {view === "Matchups" && (
-            <Matchups
-              snapshot={snapshot}
-              model={model}
-              canMarkLocks={session?.role === "admin" || session?.authRequired === false}
-              myRosterId={myRosterId}
-              openMatchupId={openMatchupId}
-              onOpenMatchup={setOpenMatchupId}
-              onOpenTeam={openTeam}
-            />
-          )}
-          {view === "Draft" && (
-            <Draft leagueId={snapshot.league.id} snapshot={snapshot} model={model} myRosterId={myTeam.rosterId} />
-          )}
-          {view === "Activity" && <Activity snapshot={snapshot} />}
+            {view === "My team" && (
+              <MyTeam
+                snapshot={snapshot}
+                stats={stats}
+                model={model}
+                strengths={strengths}
+                team={myTeam}
+                onChangeTeam={() => setChoosingTeam(true)}
+                situations={situations}
+                onOpenTrade={openTrade}
+              />
+            )}
+            {view === "Rankings" && (
+              <Rankings
+                mode={rankingMode}
+                onModeChange={setRankingMode}
+                snapshot={snapshot}
+                strengths={strengths}
+                myRosterId={myRosterId}
+                onOpenTeam={openTeam}
+              />
+            )}
+            {/* Kept mounted while hidden, so a trade in progress survives switching tabs. */}
+            <div hidden={view !== "Trades"}>
+              <Trades
+                key={myTeam.rosterId}
+                snapshot={snapshot}
+                model={model}
+                situations={situations}
+                myRosterId={myTeam.rosterId}
+                incoming={builderOffer}
+              />
+            </div>
+            {view === "Teams" && (
+              <Teams
+                snapshot={snapshot}
+                stats={stats}
+                myRosterId={myRosterId}
+                selectedRosterId={selectedRosterId}
+                onSelect={setSelectedRosterId}
+              />
+            )}
+            {view === "Players" && <Players snapshot={snapshot} stats={stats} />}
+            {view === "Matchups" && (
+              <Matchups
+                snapshot={snapshot}
+                model={model}
+                canMarkLocks={session?.role === "admin" || session?.authRequired === false}
+                myRosterId={myRosterId}
+                openMatchupId={openMatchupId}
+                onOpenMatchup={setOpenMatchupId}
+                onOpenTeam={openTeam}
+              />
+            )}
+            {view === "Draft" && (
+              <Draft leagueId={snapshot.league.id} snapshot={snapshot} model={model} myRosterId={myTeam.rosterId} />
+            )}
+            {view === "Activity" && <Activity snapshot={snapshot} />}
 
-          {openPlayer && (
-            <PlayerPanel
-              key={openPlayer.id}
-              snapshot={snapshot}
-              stats={stats}
-              player={openPlayer}
-              onClose={() => setOpenPlayer(null)}
-            />
-          )}
-        </OpenPlayerContext.Provider>
-      )}
-    </main>
+            {openPlayer && (
+              <PlayerPanel
+                key={openPlayer.id}
+                snapshot={snapshot}
+                stats={stats}
+                player={openPlayer}
+                onClose={() => setOpenPlayer(null)}
+              />
+            )}
+          </OpenPlayerContext.Provider>
+        )}
+      </main>
+    </>
   );
 }

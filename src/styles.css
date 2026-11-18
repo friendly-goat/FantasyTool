@@ -20,6 +20,7 @@
   --font: "Archivo Variable", "Helvetica Neue", Arial, sans-serif;
   --radius: 14px;
   --radius-small: 8px;
+  --app-bar-height: 3.75rem;
 }
 
 :root,
@@ -131,7 +132,7 @@ code {
 .page {
   max-width: 70rem;
   margin: 0 auto;
-  padding: 2rem 1.25rem 4rem;
+  padding: 1.75rem 1.25rem 4rem;
 }
 
 .quiet {
@@ -150,29 +151,226 @@ code {
   border-radius: var(--radius);
 }
 
-/* ---- Header ---- */
+/* ---- App bar ----
+   One slim bar across the top that stays put while the page scrolls: the
+   app's name and week, the views as text tabs with an accent underline for
+   the open one, the update time, and a menu behind the team avatar for the
+   settings. Its content lines up with the page column. */
 
-.league-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
+.app-bar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  -webkit-backdrop-filter: saturate(180%) blur(16px);
+  backdrop-filter: saturate(180%) blur(16px);
 }
 
-.league-name {
-  font-size: 1.875rem;
-  font-weight: 800;
+.app-bar-inner {
+  display: flex;
+  align-items: center;
+  gap: 1.75rem;
+  max-width: 70rem;
+  height: var(--app-bar-height);
+  margin: 0 auto;
+  padding: 0 1.25rem;
+}
+
+.brand {
+  flex: none;
+  display: flex;
+  flex-direction: column;
   line-height: 1.15;
-  letter-spacing: -0.01em;
 }
 
-.league-actions {
+.brand-name {
+  font-size: 1.125rem;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+}
+
+.brand-sub {
+  font-size: 0.75rem;
+}
+
+.app-nav {
   display: flex;
-  flex-wrap: wrap;
+  flex: 0 1 auto;
+  align-self: stretch;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.app-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.app-nav-item {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex: none;
+  align-items: center;
+  padding: 0 0.7rem;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* A soft pill on hover, and the accent underline on the open view. */
+.app-nav-item::before {
+  content: "";
+  position: absolute;
+  inset: 0.85rem 0.15rem;
+  z-index: -1;
+  border-radius: var(--radius-small);
+  transition: background-color 120ms ease;
+}
+
+.app-nav-item::after {
+  content: "";
+  position: absolute;
+  right: 0.7rem;
+  bottom: -1px;
+  left: 0.7rem;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+}
+
+.app-nav-item:hover {
+  color: var(--text);
+}
+
+.app-nav-item:not([aria-current="page"]):hover::before {
+  background: var(--surface-raised);
+}
+
+.app-nav-item[aria-current="page"] {
+  color: var(--text);
+}
+
+.app-nav-item[aria-current="page"]::after {
+  background: var(--accent);
+}
+
+.app-nav-item:focus-visible {
+  outline: none;
+}
+
+.app-nav-item:focus-visible::before {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.app-bar-status {
+  display: flex;
+  flex: none;
   align-items: center;
   gap: 0.6rem;
+  margin-left: auto;
+}
+
+.app-bar-status .updated {
+  white-space: nowrap;
+}
+
+@media (max-width: 1180px) {
+  .app-bar-inner {
+    gap: 1rem;
+  }
+
+  .app-bar-status .updated {
+    display: none;
+  }
+}
+
+/* Settings menu behind the team avatar. */
+.account {
+  position: relative;
+  flex: none;
+}
+
+.account-button {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.55rem 0.2rem 0.2rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.account-button:hover,
+.account-button[aria-expanded="true"] {
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+.account-chevron {
+  width: 0.7rem;
+  height: 0.5rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.account-menu {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  z-index: 40;
+  width: 16rem;
+  padding: 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 12px 32px rgba(8, 12, 22, 0.35);
+}
+
+.account-head {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.55rem 0.6rem 0.7rem;
+  margin-bottom: 0.3rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.account-head > div {
+  min-width: 0;
+}
+
+.account-team {
+  overflow: hidden;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-item {
+  display: block;
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  border: 0;
+  border-radius: var(--radius-small);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.account-item:hover,
+.account-item:focus-visible {
+  background: var(--surface-raised);
+  outline: none;
 }
 
 .button {
@@ -226,41 +424,6 @@ code {
 .notice-error {
   background: var(--loss-soft);
   border-left-color: var(--loss);
-}
-
-/* ---- Tabs ---- */
-
-.tabs {
-  display: inline-flex;
-  max-width: 100%;
-  gap: 0.25rem;
-  padding: 0.25rem;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  margin-bottom: 1.5rem;
-  overflow-x: auto;
-}
-
-.tab {
-  background: none;
-  border: 0;
-  border-radius: 999px;
-  padding: 0.4rem 1rem;
-  font-weight: 600;
-  color: var(--muted);
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.tab:hover {
-  color: var(--text);
-}
-
-.tab[aria-current="page"] {
-  background: var(--accent);
-  color: var(--accent-ink);
-  font-weight: 700;
 }
 
 /* ---- Avatars and chips ---- */
@@ -1444,11 +1607,12 @@ th[aria-sort] .sort-button {
   background: var(--surface);
 }
 
+/* Section headings inside a view, the same size as the Trades headings. */
 .panel-heading {
-  font-size: 0.8125rem;
+  font-size: 1.0625rem;
   font-weight: 700;
-  color: var(--muted);
-  margin: 1.5rem 0 0.25rem;
+  color: var(--text);
+  margin: 1.75rem 0 0.6rem;
 }
 
 /* ---- Player details panel ---- */
@@ -2962,15 +3126,6 @@ th[aria-sort] .sort-button {
     display: none;
   }
 
-  .tabs {
-    display: flex;
-    scrollbar-width: none;
-  }
-
-  .tabs::-webkit-scrollbar {
-    display: none;
-  }
-
   .standings,
   .strength-table,
   .my-roster {
@@ -3132,10 +3287,6 @@ th[aria-sort] .sort-button {
     width: 100%;
   }
 
-  .league-name {
-    font-size: 1.5rem;
-  }
-
   .teams {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -3227,7 +3378,7 @@ th[aria-sort] .sort-button {
 @media (min-width: 1100px) {
   .draft-head {
     position: sticky;
-    top: 0;
+    top: var(--app-bar-height);
     z-index: 2;
   }
 }
@@ -3280,8 +3431,12 @@ th[aria-sort] .sort-button {
   transition: background-color 120ms ease;
 }
 
-.draft-card:hover .draft-card-body {
-  background: var(--accent-soft);
+/* Only with a mouse: on a touch screen a hover tint lingers on whatever
+   card a scroll started on. */
+@media (hover: hover) and (pointer: fine) {
+  .draft-card:hover .draft-card-body {
+    background: var(--accent-soft);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -3630,49 +3785,71 @@ th[aria-sort] .sort-button {
 @media (max-width: 720px) {
   .page {
     --tab-bar-height: 3.6rem;
-    padding: calc(0.75rem + env(safe-area-inset-top)) max(0.9rem, env(safe-area-inset-right))
-      calc(var(--tab-bar-height) + 2rem + env(safe-area-inset-bottom)) max(0.9rem, env(safe-area-inset-left));
+    padding: 1rem max(0.9rem, env(safe-area-inset-right)) calc(var(--tab-bar-height) + 2rem + env(safe-area-inset-bottom))
+      max(0.9rem, env(safe-area-inset-left));
   }
 
-  /* Header: league name on one line, week and update time beneath it. */
-  .league-header {
-    flex-wrap: nowrap;
+  /* The bar becomes a plain header that scrolls away: the app's name and
+     week, with the update time on the right. Navigation is the tab bar at
+     the bottom and the settings are under More. */
+  .app-bar {
+    position: static;
+    border-bottom: 0;
+    background: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .app-bar-inner {
     align-items: flex-start;
     gap: 0.75rem;
-    margin-bottom: 1rem;
+    height: auto;
+    padding: calc(0.75rem + env(safe-area-inset-top)) max(0.9rem, env(safe-area-inset-right)) 0
+      max(0.9rem, env(safe-area-inset-left));
   }
 
-  .league-header > div:first-child {
+  .brand {
     min-width: 0;
   }
 
-  .league-name {
+  .brand-name {
     font-size: 1.375rem;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
 
-  .league-header .quiet {
-    margin: 0.15rem 0 0;
+  .brand-sub {
+    margin-top: 0.15rem;
+    font-size: 0.8125rem;
   }
 
-  .league-actions {
-    flex: none;
+  .app-nav,
+  .account {
+    display: none;
+  }
+
+  .app-bar-status {
     flex-direction: column;
     align-items: flex-end;
     gap: 0.3rem;
     padding-top: 0.3rem;
   }
 
-  .league-actions .updated {
+  .app-bar-status .updated {
+    display: inline;
     font-size: 0.75rem;
-    white-space: nowrap;
   }
 
-  .header-button,
-  nav.tabs {
-    display: none;
+  /* Opened from the home screen, the page scrolls under the status bar;
+     a frosted strip keeps the time and battery readable. */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0 0 auto 0;
+    z-index: 45;
+    height: env(safe-area-inset-top);
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+    -webkit-backdrop-filter: saturate(180%) blur(16px);
+    backdrop-filter: saturate(180%) blur(16px);
+    pointer-events: none;
   }
 
   /* Section headings read as headings, not captions. */

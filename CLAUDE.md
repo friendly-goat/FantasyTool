@@ -132,8 +132,12 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   720px query, others scroll inside `.table-scroll`. On a phone (720px and
   narrower) navigation is the bottom tab bar in `MobileNav.tsx` (`PHONE_TABS`
   in `src/App.tsx`, the rest and the settings in its More sheet); header
-  buttons carry `header-button` and are hidden there, so any new header
-  control needs a More row too. Dialogs open as bottom sheets on phones.
+  settings (theme, change team, switch league, sign out) are one list,
+  `settingsItems` in `src/App.tsx`, shown in the desktop app bar's menu behind
+  the team avatar (`AccountMenu.tsx`) and in the phone's More sheet. On wider
+  screens navigation is the sticky app bar (`.app-bar`, height
+  `--app-bar-height`; anything sticky below it uses that offset). Hover
+  effects that would linger on touch go inside `@media (hover: hover)`. Dialogs open as bottom sheets on phones.
   Respect `env(safe-area-inset-*)` for anything fixed to an edge.
 - Fantasy points display with two decimals (`formatPoints`), box-score
   averages with one (`formatAverage`). Keep full precision until display.
