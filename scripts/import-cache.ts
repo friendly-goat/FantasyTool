@@ -29,6 +29,11 @@ async function main() {
     let lines = 0;
     for (const name of names) {
       const key = name.slice(0, -".json".length);
+      if (key.startsWith("stats-") && !key.startsWith("stats-v2-")) {
+        console.log(`  ${key}: skipped (an older format the app no longer reads)`);
+        continue;
+      }
+      if (key.startsWith("locks-")) continue; // Lock marks are not a cache; they stay where they were made.
       if (key.startsWith("stats-")) {
         const saved = await files.readLines(key);
         if (saved.lines.length === 0) continue;

@@ -4,7 +4,7 @@ import express from "express";
 import type { AppConfig, LeagueSnapshot, WeekData } from "../shared/types.ts";
 import { nbaTeam } from "../shared/nbaTeams.ts";
 import { Cache } from "./cache.ts";
-import { storageFromEnv } from "./storage.ts";
+import { MemoryStorage, storageFromEnv } from "./storage.ts";
 import { createLogoSource } from "./logos.ts";
 import { fetchFromMock, MOCK_LEAGUE_ID } from "./mock.ts";
 import { fetchFromSleeper, SleeperError } from "./sleeper.ts";
@@ -57,6 +57,11 @@ const stats = new StatsService(statsProvider, { storage: mock ? null : storage, 
 const getLogo = createLogoSource(new Cache({ storage }));
 
 const app = express();
+app.use(express.json({ limit: "10kb" }));
+
+// Lock marks are your own corrections, so they are kept even in mock mode
+// (in memory there, so sample data never mixes with your league's).
+const markStorage = mock ? new MemoryStorage() : storage;
 
 function getPlayers() {
   return cache.get("players-nba", playersTtl, () => loadPlayers(fetchJson));
@@ -190,6 +195,58 @@ app.get("/api/league/:leagueId/week", async (req, res) => {
       linesSyncedAt: syncedAt,
     };
     res.json(body);
+  } catch (error) {
+    sendError(res, error);
+  }
+});
+
+// Lock marks: a manager's word on whether a starter's current score is
+// locked, for the current week. Sleeper does not share locks.
+app.get("/api/league/:leagueId/locks", async (req, res) => {
+  try {
+    const leagueId = req.params.leagueId.trim();
+    const { week } = (await getSnapshot(leagueId, false)).value;
+    res.json({ week, marks: await markStorage.readLockMarks(leagueId, week) });
+  } catch (error) {
+    sendError(res, error);
+  }
+});
+
+app.put("/api/league/:leagueId/locks", async (req, res) => {
+  try {
+    const leagueId = req.params.leagueId.trim();
+    const body = (req.body ?? {}) as { rosterId?: unknown; playerId?: unknown; locked?: unknown };
+    const rosterId = Number(body.rosterId);
+    const playerId = typeof body.playerId === "string" ? body.playerId : "";
+    if (!Number.isInteger(rosterId) || !playerId || (body.locked !== null && typeof body.locked !== "boolean")) {
+      res.status(400).json({ error: "Send rosterId, playerId and locked (true, false, or null to clear)." });
+      return;
+    }
+    const { week, matchups } = (await getSnapshot(leagueId, false)).value;
+    // The mark is tied to the score Sleeper shows now, taken from the server's
+    // copy rather than the browser's.
+    const starter = matchups
+      .flatMap((matchup) => matchup.sides)
+      .find((side) => side.rosterId === rosterId)
+      ?.starters.find((entry) => entry.player?.id === playerId);
+    if (!starter) {
+      res.status(404).json({ error: "That player is not one of this team's starters this week." });
+      return;
+    }
+    if (body.locked === null) {
+      await markStorage.deleteLockMark(leagueId, week, rosterId, playerId);
+    } else {
+      await markStorage.writeLockMark({
+        leagueId,
+        week,
+        rosterId,
+        playerId,
+        locked: body.locked as boolean,
+        points: starter.points ?? 0,
+        markedAt: Date.now(),
+      });
+    }
+    res.json({ week, marks: await markStorage.readLockMarks(leagueId, week) });
   } catch (error) {
     sendError(res, error);
   }

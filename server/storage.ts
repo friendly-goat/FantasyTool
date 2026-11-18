@@ -22,8 +22,24 @@ export interface StoredEntry {
   value: unknown;
 }
 
+/** A manager's word on whether a starter's current score is locked; see shared/matchup.ts. */
+export interface StoredLockMark {
+  leagueId: string;
+  week: number;
+  rosterId: number;
+  playerId: string;
+  locked: boolean;
+  /** Sleeper's score when the mark was made; the mark applies only while the score is unchanged. */
+  points: number;
+  markedAt: number;
+}
+
 export interface Storage {
   readonly kind: "postgres" | "files" | "memory";
+  /** Every lock mark for a league's week. */
+  readLockMarks(leagueId: string, week: number): Promise<StoredLockMark[]>;
+  writeLockMark(mark: StoredLockMark): Promise<void>;
+  deleteLockMark(leagueId: string, week: number, rosterId: number, playerId: string): Promise<void>;
   readEntry(key: string): Promise<StoredEntry | null>;
   writeEntry(key: string, entry: StoredEntry): Promise<void>;
   /** Every saved line for a dataset, and when it was last brought up to date. */
@@ -33,10 +49,28 @@ export interface Storage {
   close(): Promise<void>;
 }
 
+const markKey = (rosterId: number, playerId: string) => `${rosterId}:${playerId}`;
+
 /** Keeps everything in memory: nothing survives a restart. */
 export class MemoryStorage implements Storage {
   readonly kind = "memory";
   private entries = new Map<string, StoredEntry>();
+  private marks = new Map<string, Map<string, StoredLockMark>>();
+
+  async readLockMarks(leagueId: string, week: number) {
+    return [...(this.marks.get(`${leagueId}:${week}`)?.values() ?? [])];
+  }
+
+  async writeLockMark(mark: StoredLockMark) {
+    const key = `${mark.leagueId}:${mark.week}`;
+    const week = this.marks.get(key) ?? new Map<string, StoredLockMark>();
+    week.set(markKey(mark.rosterId, mark.playerId), mark);
+    this.marks.set(key, week);
+  }
+
+  async deleteLockMark(leagueId: string, week: number, rosterId: number, playerId: string) {
+    this.marks.get(`${leagueId}:${week}`)?.delete(markKey(rosterId, playerId));
+  }
   private datasets = new Map<string, { syncedAt: number | null; lines: Map<string, GameLine> }>();
 
   async readEntry(key: string) {
@@ -71,6 +105,40 @@ export class FileStorage implements Storage {
   private loaded = new Map<string, Map<string, GameLine>>();
 
   constructor(private dir: string) {}
+
+  private marksFile(leagueId: string, week: number) {
+    return path.join(this.dir, `locks-${safeName(leagueId)}-week-${week}.json`);
+  }
+
+  async readLockMarks(leagueId: string, week: number): Promise<StoredLockMark[]> {
+    try {
+      const saved = JSON.parse(await readFile(this.marksFile(leagueId, week), "utf8")) as StoredLockMark[];
+      return Array.isArray(saved) ? saved : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private async saveMarks(leagueId: string, week: number, marks: StoredLockMark[]) {
+    await mkdir(this.dir, { recursive: true });
+    await writeFile(this.marksFile(leagueId, week), JSON.stringify(marks));
+  }
+
+  async writeLockMark(mark: StoredLockMark) {
+    const marks = (await this.readLockMarks(mark.leagueId, mark.week)).filter(
+      (other) => markKey(other.rosterId, other.playerId) !== markKey(mark.rosterId, mark.playerId),
+    );
+    await this.saveMarks(mark.leagueId, mark.week, [...marks, mark]);
+  }
+
+  async deleteLockMark(leagueId: string, week: number, rosterId: number, playerId: string) {
+    const marks = await this.readLockMarks(leagueId, week);
+    await this.saveMarks(
+      leagueId,
+      week,
+      marks.filter((mark) => markKey(mark.rosterId, mark.playerId) !== markKey(rosterId, playerId)),
+    );
+  }
 
   async readEntry(key: string) {
     try {
@@ -134,6 +202,16 @@ const SCHEMA = `
     key text not null,
     data jsonb not null,
     primary key (dataset, key)
+  );
+  create table if not exists lock_marks (
+    league_id text not null,
+    week integer not null,
+    roster_id integer not null,
+    player_id text not null,
+    locked boolean not null,
+    points double precision not null,
+    marked_at bigint not null,
+    primary key (league_id, week, roster_id, player_id)
   );
 `;
 
@@ -204,6 +282,48 @@ export class PostgresStorage implements Storage {
     } finally {
       client.release();
     }
+  }
+
+  async readLockMarks(leagueId: string, week: number): Promise<StoredLockMark[]> {
+    await this.ready;
+    const result = await this.pool.query<{
+      roster_id: number;
+      player_id: string;
+      locked: boolean;
+      points: number;
+      marked_at: string;
+    }>(
+      "select roster_id, player_id, locked, points, marked_at from lock_marks where league_id = $1 and week = $2",
+      [leagueId, week],
+    );
+    return result.rows.map((row) => ({
+      leagueId,
+      week,
+      rosterId: row.roster_id,
+      playerId: row.player_id,
+      locked: row.locked,
+      points: Number(row.points),
+      markedAt: Number(row.marked_at),
+    }));
+  }
+
+  async writeLockMark(mark: StoredLockMark) {
+    await this.ready;
+    await this.pool.query(
+      `insert into lock_marks (league_id, week, roster_id, player_id, locked, points, marked_at)
+       values ($1, $2, $3, $4, $5, $6, $7)
+       on conflict (league_id, week, roster_id, player_id)
+       do update set locked = excluded.locked, points = excluded.points, marked_at = excluded.marked_at`,
+      [mark.leagueId, mark.week, mark.rosterId, mark.playerId, mark.locked, mark.points, mark.markedAt],
+    );
+  }
+
+  async deleteLockMark(leagueId: string, week: number, rosterId: number, playerId: string) {
+    await this.ready;
+    await this.pool.query(
+      "delete from lock_marks where league_id = $1 and week = $2 and roster_id = $3 and player_id = $4",
+      [leagueId, week, rosterId, playerId],
+    );
   }
 
   async close() {

@@ -1,6 +1,7 @@
 import type {
   AppConfig,
   DraftBoard,
+  LockMarks,
   WeekData,
   LeagueSnapshot,
   PlayerDetail,
@@ -37,6 +38,27 @@ export function getPlayerDetail(leagueId: string, playerId: string): Promise<Pla
 
 export function getWeek(leagueId: string): Promise<WeekData> {
   return getJson(`/api/league/${encodeURIComponent(leagueId)}/week`);
+}
+
+export function getLockMarks(leagueId: string): Promise<LockMarks> {
+  return getJson(`/api/league/${encodeURIComponent(leagueId)}/locks`);
+}
+
+/** Marks a starter's current score as locked (true) or not (false), or clears the mark (null). */
+export async function setLockMark(
+  leagueId: string,
+  rosterId: number,
+  playerId: string,
+  locked: boolean | null,
+): Promise<LockMarks> {
+  const response = await fetch(`/api/league/${encodeURIComponent(leagueId)}/locks`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ rosterId, playerId, locked }),
+  });
+  const body = (await response.json().catch(() => null)) as (LockMarks & { error?: string }) | null;
+  if (!response.ok || !body) throw new Error(body?.error ?? `Saving the mark failed (${response.status}).`);
+  return body;
 }
 
 export function getDraft(leagueId: string): Promise<{ board: DraftBoard | null }> {

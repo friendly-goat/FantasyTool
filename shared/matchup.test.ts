@@ -4,6 +4,8 @@ import {
   foulDeductions,
   gameChances,
   injuryKind,
+  applyLockMark,
+  canMark,
   lockAdvice,
   probablyLocked,
   settledPoints,
@@ -144,6 +146,49 @@ describe("injuries", () => {
     // One game left: a healthy player is worth waiting for (30), a doubtful one is not (0.6 x 30).
     expect(lockAdvice(29, 1, player).lock).toBe(false);
     expect(lockAdvice(29, 1, player, "day-to-day")).toMatchObject({ lock: true, waiting: 18 });
+  });
+});
+
+describe("lock marks", () => {
+  const week = (states: NbaGame["state"][], points: (number | null)[]) =>
+    states.map((state, index) => {
+      const date = `2026-11-${16 + index}`;
+      return { game: game(date, state), opponent: "CHI", home: true, line: points[index] != null ? line(date, points[index]!) : null };
+    });
+  const open = slotStatus(45.6, week(["final", "scheduled"], [45.6, null]), true, deductions);
+
+  it("turns an open score into a locked one when marked locked", () => {
+    expect(open.state).toBe("open");
+    const result = applyLockMark(open, 45.6, { locked: true, points: 45.6 });
+    expect(result.status.state).toBe("locked");
+    expect(result.status.counted).toBe(0);
+    expect(result.marked).toBe(true);
+  });
+
+  it("keeps an open score open when marked not locked", () => {
+    expect(applyLockMark(open, 45.6, { locked: false, points: 45.6 })).toMatchObject({ marked: true, status: { state: "open" } });
+  });
+
+  it("ignores a mark once the score has changed: he played again, so it was not locked", () => {
+    expect(applyLockMark(open, 30.2, { locked: true, points: 45.6 })).toMatchObject({
+      marked: false,
+      stale: true,
+      status: { state: "open" },
+    });
+  });
+
+  it("lets the data win where it can tell", () => {
+    const locked = slotStatus(40, week(["final", "final", "scheduled"], [40, 25, null]), true, deductions);
+    expect(applyLockMark(locked, 40, { locked: false, points: 40 })).toMatchObject({ marked: false, status: { state: "locked" } });
+    expect(applyLockMark(open, 45.6, undefined)).toMatchObject({ marked: false, stale: false });
+  });
+
+  it("offers marking only for a latest-game score the data cannot settle", () => {
+    expect(canMark("open", 45.6)).toBe(true);
+    expect(canMark("unclear", 12)).toBe(true);
+    expect(canMark("open", 0)).toBe(false);
+    expect(canMark("locked", 45.6)).toBe(false);
+    expect(canMark("waiting", 0)).toBe(false);
   });
 });
 

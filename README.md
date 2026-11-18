@@ -271,8 +271,9 @@ interface (`server/storage.ts`):
 - **Postgres** when `DATABASE_URL` is set. Heroku sets it, and its disk is
   wiped on every restart, so this is how the hosted app keeps its data. Tables
   are created automatically: `cache_entries` (key, saved time, JSON value),
-  `game_lines` (one row per player per game) and `stat_datasets` (when each
-  season was last synced). A sync writes only the games it downloaded.
+  `game_lines` (one row per player per game), `stat_datasets` (when each
+  season was last synced) and `lock_marks` (your lock corrections, below). A
+  sync writes only the games it downloaded.
 - **Files in `.cache/`** otherwise, as before.
 - **Memory only** in mock mode and tests.
 
@@ -319,6 +320,16 @@ and the NBA schedule (`shared/matchup.ts`):
 | Yet to play | No games yet this week. |
 | Checking | The score matches none of his box scores yet (they may still be loading). |
 | Probably locked | Other team only: a "can lock" score that beats what waiting is expected to bring, so a manager would usually have locked it. It becomes certain when his next game starts. |
+
+**Marking locks.** Sleeper never says which scores are locked, so any
+starter whose score is his latest game can be marked from his card: "Mark
+locked" (or "It is locked" / "Not locked" on a probable lock). Marks are
+saved through the storage layer for the league and week, so anyone using the
+app sees them, and they feed the statuses, totals, lock advice and win chance.
+A mark is tied to the score it was made on: if the player's Sleeper score
+changes, he played again, so that score was not locked and the mark stops
+applying. Scores the data settles by itself (an earlier game, a final game)
+ignore marks.
 
 Box scores lack technical and flagrant fouls, so a score a few foul
 deductions (from the league's `tf` and `ff` settings) below a game still

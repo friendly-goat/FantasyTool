@@ -144,6 +144,21 @@ export interface WeekData {
   linesSyncedAt: string | null;
 }
 
+/** A manager's word on whether a starter's current score is locked. */
+export interface LockMarkInfo {
+  rosterId: number;
+  playerId: string;
+  locked: boolean;
+  /** Sleeper's score when the mark was made. */
+  points: number;
+  markedAt: number;
+}
+
+export interface LockMarks {
+  week: number;
+  marks: LockMarkInfo[];
+}
+
 /** One pick on the draft board. */
 export interface DraftSelection {
   /** Overall pick number, from 1. */

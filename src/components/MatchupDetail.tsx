@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  applyLockMark,
+  canMark,
   forecastMatchup,
   foulDeductions,
   gameChances,
@@ -17,8 +19,16 @@ import {
   type TeamGame,
 } from "../../shared/matchup.ts";
 import type { StrengthModel } from "../../shared/strength.ts";
-import type { LeagueSnapshot, Matchup, MatchupSide, MatchupSlot, Team, WeekData } from "../../shared/types.ts";
-import { getWeek } from "../api.ts";
+import type {
+  LeagueSnapshot,
+  LockMarkInfo,
+  Matchup,
+  MatchupSide,
+  MatchupSlot,
+  Team,
+  WeekData,
+} from "../../shared/types.ts";
+import { getLockMarks, getWeek, setLockMark } from "../api.ts";
 import {
   formatAgo,
   formatPoints,
@@ -45,13 +55,14 @@ interface Props {
 const WEEK_REFRESH_MS = 3 * 60_000;
 const percent = new Intl.NumberFormat("en-US", { style: "percent", maximumFractionDigits: 0 });
 
-/** The NBA schedule and box scores for the week, refreshed every few minutes while open. */
+/** The NBA schedule, box scores and lock marks for the week, refreshed every few minutes while open. */
 function useWeek(leagueId: string) {
   const [week, setWeek] = useState<WeekData | null>(null);
+  const [marks, setMarks] = useState<LockMarkInfo[]>([]);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
-    const load = () =>
+    const load = () => {
       getWeek(leagueId)
         .then((data) => {
           if (cancelled) return;
@@ -59,14 +70,29 @@ function useWeek(leagueId: string) {
           setError(null);
         })
         .catch((reason: unknown) => !cancelled && setError(reason instanceof Error ? reason.message : String(reason)));
-    void load();
+      // Marks are best effort: the view works without them.
+      getLockMarks(leagueId)
+        .then((data) => !cancelled && setMarks(data.marks))
+        .catch(() => {});
+    };
+    load();
     const timer = window.setInterval(load, WEEK_REFRESH_MS);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
     };
   }, [leagueId]);
-  return { week, error };
+  return { week, marks, setMarks, error };
+}
+
+/** How a mark stands on one starter, for the card. */
+interface MarkView {
+  /** What the mark says, when it applies. */
+  applied: "locked" | "unlocked" | null;
+  /** A mark was made on an earlier score and no longer applies. */
+  stale: boolean;
+  /** Whether this starter can be marked at all. */
+  allowed: boolean;
 }
 
 const STATE_LABEL: Record<SlotStatus["state"], string> = {
@@ -88,6 +114,8 @@ const STATE_NOTE: Record<SlotStatus["state"], string> = {
   done: "He has no games left this week and nothing counted.",
   unclear: "Sleeper's score matches none of his box scores yet; they may still be loading.",
 };
+
+const MARKED_NOTE = "You marked this score as locked. Sleeper does not share locks, so the app keeps your word for it.";
 
 const PROBABLE_NOTE =
   "Sleeper does not share locks. This is his latest game and it beats what waiting is expected to bring, so a manager would usually lock it. It becomes certain once his next game starts.";
@@ -247,9 +275,14 @@ function PlayerCard({
   availability,
   advice,
   probable,
+  mark,
+  onMark,
   side,
   bench,
 }: {
+  mark: MarkView | null;
+  /** Saves a mark: true locked, false not locked, null clears it. */
+  onMark: ((locked: boolean | null) => Promise<void>) | null;
   /** His usual chance of playing a game, for the game panel. */
   availability: number | null;
   entry: MatchupSlot | undefined;
@@ -265,6 +298,8 @@ function PlayerCard({
   bench: boolean;
 }) {
   const [picked, setPicked] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [markError, setMarkError] = useState<string | null>(null);
   if (!entry?.player) {
     return (
       <div className={`mx-card mx-${side} mx-empty`}>
@@ -279,6 +314,18 @@ function PlayerCard({
   const benchPoints = bench ? games.reduce<number | null>((best, game) => (game.line ? Math.max(best ?? 0, game.line.points) : best), null) : null;
   const shown = bench ? benchPoints : entry.points;
   const injury = injuryKind(entry.player.injuryStatus);
+  const save = async (locked: boolean | null) => {
+    if (!onMark) return;
+    setSaving(true);
+    setMarkError(null);
+    try {
+      await onMark(locked);
+    } catch (reason) {
+      setMarkError(reason instanceof Error ? reason.message : "Could not save the mark.");
+    } finally {
+      setSaving(false);
+    }
+  };
   // A settled score needs no projection: it is the final number.
   const settled = !bench && status !== null && (isFixed(status.state) || probable);
   return (
@@ -286,7 +333,10 @@ function PlayerCard({
       <PlayerCell player={entry.player} />
       {!bench && status && (
         <div className="mx-status-row">
-          <span className="mx-status" title={probable ? PROBABLE_NOTE : STATE_NOTE[status.state]}>
+          <span
+            className="mx-status"
+            title={mark?.applied === "locked" ? MARKED_NOTE : probable ? PROBABLE_NOTE : STATE_NOTE[status.state]}
+          >
             <StatusIcon state={probable ? "locked" : status.state} />
             {probable ? "Probably locked" : STATE_LABEL[status.state]}
           </span>
@@ -366,6 +416,36 @@ function PlayerCard({
             />
           )}
         </>
+      )}
+      {!bench && mark && onMark && (mark.allowed || mark.applied || mark.stale) && (
+        <div className="mx-mark">
+          {mark.applied ? (
+            <>
+              <span>Marked {mark.applied === "locked" ? "locked" : "not locked"}</span>
+              <button type="button" className="mx-mark-button" disabled={saving} onClick={() => void save(null)}>
+                Undo
+              </button>
+            </>
+          ) : mark.stale ? (
+            <span className="quiet" title="He played again, so the score you marked was not locked.">
+              Score changed since your mark
+            </span>
+          ) : probable ? (
+            <>
+              <button type="button" className="mx-mark-button" disabled={saving} onClick={() => void save(true)}>
+                It is locked
+              </button>
+              <button type="button" className="mx-mark-button" disabled={saving} onClick={() => void save(false)}>
+                Not locked
+              </button>
+            </>
+          ) : (
+            <button type="button" className="mx-mark-button" disabled={saving} onClick={() => void save(true)}>
+              Mark locked
+            </button>
+          )}
+          {markError && <span className="mx-mark-error">{markError}</span>}
+        </div>
       )}
       {advice && (
         <p className={`mx-advice ${advice.lock ? "mx-advice-lock" : "mx-advice-wait"}`}>
@@ -448,7 +528,9 @@ function TeamHead({
 
 /** Both lineups of one matchup, slot by slot, with where every starter stands this week. */
 export function MatchupDetail({ snapshot, model, matchup, myRosterId, onBack, onOpenTeam }: Props) {
-  const { week, error } = useWeek(snapshot.league.id);
+  const { week, marks, setMarks, error } = useWeek(snapshot.league.id);
+  const markFor = (rosterId: number, playerId: string | undefined) =>
+    playerId ? marks.find((mark) => mark.rosterId === rosterId && mark.playerId === playerId) : undefined;
   // Your team on the left, as on Sleeper.
   const sides = [...matchup.sides].sort((a, b) => Number(b.rosterId === myRosterId) - Number(a.rosterId === myRosterId));
   const [left, right] = sides;
@@ -465,11 +547,21 @@ export function MatchupDetail({ snapshot, model, matchup, myRosterId, onBack, on
     return slotStatus(bench ? 0 : (entry.points ?? 0), games, scheduleKnown, deductions);
   };
 
-  const starterStatus = useMemo(
-    () => sides.map((side) => side.starters.map((entry) => statusOf(entry, false))),
+  // Each starter's status as the data shows it, then with any mark applied.
+  const marked = useMemo(
+    () =>
+      sides.map((side) =>
+        side.starters.map((entry) => {
+          const raw = statusOf(entry, false);
+          if (!raw) return null;
+          const applied = applyLockMark(raw, entry.points ?? 0, markFor(side.rosterId, entry.player?.id));
+          return { raw, ...applied };
+        }),
+      ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [week, matchup, deductions, scheduleKnown],
+    [week, matchup, deductions, scheduleKnown, marks],
   );
+  const starterStatus = marked.map((side) => side.map((entry) => entry?.status ?? null));
 
   // Your own locks you know; for the other team, mark scores a manager would
   // usually have locked.
@@ -477,6 +569,7 @@ export function MatchupDetail({ snapshot, model, matchup, myRosterId, onBack, on
     side.starters.map((entry, i) => {
       const status = starterStatus[s]?.[i];
       if (side.rosterId === myRosterId || !status || !model || !entry.player) return false;
+      if (marked[s]?.[i]?.marked) return false; // Your word beats the guess.
       return probablyLocked(
         status.state,
         entry.points ?? 0,
@@ -524,6 +617,27 @@ export function MatchupDetail({ snapshot, model, matchup, myRosterId, onBack, on
     sides[s]?.starters.reduce((sum, entry, i) => sum + (probable[s]?.[i] ? (entry.points ?? 0) : 0), 0) ?? 0;
   const settledTotal = (s: number) =>
     week ? settledPoints(starterStatus[s] ?? [], sides[s]?.starters.map((entry) => entry.points) ?? []) : null;
+
+  const markViewOf = (s: number, index: number, entry: MatchupSlot | undefined): MarkView | null => {
+    const info = marked[s]?.[index];
+    const side = sides[s];
+    if (!info || !side || !entry?.player) return null;
+    const mark = markFor(side.rosterId, entry.player.id);
+    return {
+      applied: info.marked && mark ? (mark.locked ? "locked" : "unlocked") : null,
+      stale: info.stale,
+      allowed: canMark(info.raw.state, entry.points ?? 0),
+    };
+  };
+  const onMarkFor = (s: number, entry: MatchupSlot | undefined) => {
+    const side = sides[s];
+    if (!side || !entry?.player) return null;
+    const playerId = entry.player.id;
+    return async (locked: boolean | null) => {
+      const result = await setLockMark(snapshot.league.id, side.rosterId, playerId, locked);
+      setMarks(result.marks);
+    };
+  };
 
   const perGameOf = (entry: MatchupSlot | undefined) =>
     entry?.player && model ? (model.players.get(entry.player.id)?.projected ?? null) : null;
@@ -610,7 +724,8 @@ export function MatchupDetail({ snapshot, model, matchup, myRosterId, onBack, on
               <dd>
                 For the other team: latest-game scores that beat what waiting is expected to bring, so a manager would
                 usually have locked them. It becomes certain when the player's next game starts: if the score stays, it
-                was locked. Your own locks you know, so your side never shows this.
+                was locked. Your own locks you know, so your side never shows this. Either way, "It is locked" or "Not
+                locked" on a card saves your word for it; a mark stops applying if the player's score changes.
               </dd>
             </div>
             <div>
@@ -673,6 +788,8 @@ export function MatchupDetail({ snapshot, model, matchup, myRosterId, onBack, on
                         availability={availabilityOf(row.left)}
                         advice={group.bench ? null : adviceFor(0, row.left, leftStatus)}
                         probable={!group.bench && (probable[0]?.[row.index] ?? false)}
+                        mark={group.bench ? null : markViewOf(0, row.index, row.left)}
+                        onMark={group.bench ? null : onMarkFor(0, row.left)}
                         side="left"
                         bench={group.bench}
                       />
@@ -687,6 +804,8 @@ export function MatchupDetail({ snapshot, model, matchup, myRosterId, onBack, on
                         availability={availabilityOf(row.right)}
                         advice={group.bench ? null : adviceFor(1, row.right, rightStatus)}
                         probable={!group.bench && (probable[1]?.[row.index] ?? false)}
+                        mark={group.bench ? null : markViewOf(1, row.index, row.right)}
+                        onMark={group.bench ? null : onMarkFor(1, row.right)}
                         side="right"
                         bench={group.bench}
                       />

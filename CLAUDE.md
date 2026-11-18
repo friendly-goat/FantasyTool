@@ -87,8 +87,9 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
 - Sleeper's matchup data never says which scores are locked; an unlocked
   starter shows his latest game. Lock state, lock advice and win chances are
   worked out in `shared/matchup.ts` from box scores and the NBA schedule
-  (`StatsProvider.fetchSchedule`). They are display only: never feed them into
-  strength, grades or trade ideas.
+  (`StatsProvider.fetchSchedule`), plus lock marks the managers save
+  (`applyLockMark`; a mark holds only while the score it was made on stands).
+  They are display only: never feed them into strength, grades or trade ideas.
 - The Draft tab's rising and falling marks (`shared/draft.ts`) are a display
   label only: rank by weekly value now against pick order, one round either
   way. Never feed them into strength, grades or trade ideas.

@@ -1355,6 +1355,51 @@ th[aria-sort] .sort-button {
   font-size: 0.6875rem;
 }
 
+/* Your word on a lock: a quiet row of small buttons. */
+.mx-mark {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  font-size: 0.75rem;
+}
+
+.mx-right .mx-mark {
+  justify-content: flex-end;
+}
+
+.mx-mark-button {
+  padding: 0.15rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mx-mark-button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.mx-mark-button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.mx-mark-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.mx-mark-error {
+  flex-basis: 100%;
+  color: var(--loss);
+}
+
 .mx-advice {
   margin: 0;
   padding: 0.4rem 0.55rem;

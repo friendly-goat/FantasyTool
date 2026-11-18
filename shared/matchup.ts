@@ -166,6 +166,41 @@ export function settledPoints(statuses: (SlotStatus | null)[], points: (number |
   return statuses.reduce((sum, status, index) => sum + (status && isFixed(status.state) ? (points[index] ?? 0) : 0), 0);
 }
 
+/** A manager's word on a starter's current score: locked or not. */
+export interface LockMark {
+  locked: boolean;
+  /** Sleeper's score when the mark was made. */
+  points: number;
+}
+
+export interface MarkedStatus {
+  status: SlotStatus;
+  /** The mark changed or confirmed what the data shows. */
+  marked: boolean;
+  /** A mark was made, but the score has changed since, so it no longer applies. */
+  stale: boolean;
+}
+
+/**
+ * Applies a manager's mark where the data cannot tell. A mark holds only while
+ * Sleeper's score is the one it was made on: if the score has moved, the
+ * player played again, so the old score was not locked and the mark is
+ * ignored. Scores the data already settles (an earlier game, a final game)
+ * ignore marks too.
+ */
+export function applyLockMark(status: SlotStatus, sleeperPoints: number, mark: LockMark | undefined): MarkedStatus {
+  if (!mark) return { status, marked: false, stale: false };
+  if (Math.abs(mark.points - sleeperPoints) >= EXACT) return { status, marked: false, stale: true };
+  if (isFixed(status.state) || status.state === "waiting") return { status, marked: false, stale: false };
+  if (mark.locked) return { status: { ...status, state: "locked" }, marked: true, stale: false };
+  return { status, marked: true, stale: false };
+}
+
+/** Whether a manager can mark this starter: his score is his latest game and the data cannot settle it. */
+export function canMark(state: SlotState, sleeperPoints: number): boolean {
+  return (state === "open" || state === "unclear") && sleeperPoints > 0;
+}
+
 /** Whether a starter's score is settled for the week. */
 export function isFixed(state: SlotState): boolean {
   return state === "locked" || state === "final" || state === "done";

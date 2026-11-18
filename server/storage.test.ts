@@ -37,7 +37,7 @@ if (testUrl) {
       // Start from empty tables each time.
       const pool = (storage as unknown as { pool: { query: (sql: string) => Promise<unknown> } }).pool;
       await storage.readEntry("warm-up");
-      await pool.query("truncate cache_entries, stat_datasets, game_lines");
+      await pool.query("truncate cache_entries, stat_datasets, game_lines, lock_marks");
       return storage;
     },
   });
@@ -83,6 +83,25 @@ for (const backend of backends) {
       const many = Array.from({ length: 1234 }, (_, index) => line(`g${index}:p1`, index));
       await storage.writeLines("stats-big", 1, many);
       expect((await storage.readLines("stats-big")).lines).toHaveLength(1234);
+    });
+
+    it("keeps lock marks per league and week, replacing and removing them", async () => {
+      const storage = await make();
+      const mark = { leagueId: "L1", week: 5, rosterId: 3, playerId: "p9", locked: true, points: 45.6, markedAt: 10 };
+      await storage.writeLockMark(mark);
+      await storage.writeLockMark({ ...mark, playerId: "p10", locked: false, points: 0 });
+      await storage.writeLockMark({ ...mark, week: 6 });
+      expect((await storage.readLockMarks("L1", 5)).map((m) => [m.playerId, m.locked, m.points]).sort()).toEqual([
+        ["p10", false, 0],
+        ["p9", true, 45.6],
+      ]);
+      // A second mark for the same player replaces the first.
+      await storage.writeLockMark({ ...mark, locked: false, markedAt: 20 });
+      expect((await storage.readLockMarks("L1", 5)).find((m) => m.playerId === "p9")).toMatchObject({ locked: false, markedAt: 20 });
+      await storage.deleteLockMark("L1", 5, 3, "p9");
+      expect((await storage.readLockMarks("L1", 5)).map((m) => m.playerId)).toEqual(["p10"]);
+      expect(await storage.readLockMarks("L2", 5)).toEqual([]);
+      expect(await storage.readLockMarks("L1", 6)).toHaveLength(1);
     });
 
     it("backs the cache across restarts", async () => {
