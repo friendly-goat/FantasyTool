@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { teamSituations } from "../shared/insight.ts";
 import { buildModel, leagueStrength } from "../shared/strength.ts";
 import type { TradeOffer } from "../shared/trade.ts";
@@ -28,15 +28,17 @@ import { Players } from "./components/Players.tsx";
 import { StatsNotice } from "./components/StatsNotice.tsx";
 import { type RankingMode, Rankings } from "./components/Rankings.tsx";
 import { AccountMenu } from "./components/AccountMenu.tsx";
-import { MobileNav } from "./components/MobileNav.tsx";
+import { MobileNav, ViewIcon } from "./components/MobileNav.tsx";
 import { TeamChooser } from "./components/TeamChooser.tsx";
 import { Teams } from "./components/Teams.tsx";
 import { Trades } from "./components/Trades.tsx";
 import { formatAgo, formatDate } from "./format.ts";
 import { useTheme } from "./theme.ts";
 
+// My team and Trades are the heart of the app and lead the desktop bar, set apart.
 // Matchups sits last for now: Sleeper's own matchup screen is better until ours catches up.
-const VIEWS = ["My team", "Rankings", "Trades", "Draft", "Teams", "Players", "Activity", "Matchups"] as const;
+const VIEWS = ["My team", "Trades", "Rankings", "Draft", "Teams", "Players", "Activity", "Matchups"] as const;
+const CORE_VIEWS: readonly View[] = ["My team", "Trades"];
 /** How often to ask the server for the league while the page is open. It decides whether Sleeper is asked. */
 const LEAGUE_POLL_MS = 2 * 60_000;
 /** How soon to ask again when the server answered with saved data while fetching newer data. */
@@ -308,20 +310,30 @@ export function App() {
           </div>
           {showNav && (
             <nav className="app-nav" aria-label="League views">
-              {VIEWS.map((name) => (
-                <button
-                  key={name}
-                  type="button"
-                  className="app-nav-item"
-                  aria-current={view === name ? "page" : undefined}
-                  onClick={(event) => {
-                    event.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
-                    selectView(name);
-                  }}
-                >
-                  {name}
-                </button>
-              ))}
+              {VIEWS.map((name, index) => {
+                const core = CORE_VIEWS.includes(name);
+                const previous = index > 0 ? VIEWS[index - 1] : undefined;
+                return (
+                  <Fragment key={name}>
+                    {previous && core !== CORE_VIEWS.includes(previous) && (
+                      <span className="app-nav-divider" aria-hidden="true" />
+                    )}
+                    <button
+                      type="button"
+                      className={core ? "app-nav-item app-nav-core" : "app-nav-item"}
+                      data-view={name}
+                      aria-current={view === name ? "page" : undefined}
+                      onClick={(event) => {
+                        event.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+                        selectView(name);
+                      }}
+                    >
+                      {core && <ViewIcon name={name} size={18} />}
+                      {name}
+                    </button>
+                  </Fragment>
+                );
+              })}
             </nav>
           )}
           <div className="app-bar-status">

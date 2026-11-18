@@ -42,7 +42,8 @@ const ICONS: Record<string, ReactNode> = {
   ),
 };
 
-function Icon({ name, size = 26 }: { name: string; size?: number }) {
+/** The line icon for a view, shared by the phone tab bar and the desktop bar. */
+export function ViewIcon({ name, size = 26 }: { name: string; size?: number }) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -109,10 +110,10 @@ export function MobileNav<View extends string>({
           >
             {name === featured ? (
               <span className="tab-bar-badge">
-                <Icon name={name} size={22} />
+                <ViewIcon name={name} size={22} />
               </span>
             ) : (
-              <Icon name={name} />
+              <ViewIcon name={name} />
             )}
             <span className="tab-bar-label">{name}</span>
           </button>
@@ -125,7 +126,7 @@ export function MobileNav<View extends string>({
           aria-expanded={open}
           onClick={() => onOpenChange(!open)}
         >
-          <Icon name="More" />
+          <ViewIcon name="More" />
           {/* The view open from More takes the label, so you can see where you are. */}
           <span className="tab-bar-label">{inMore ? view : "More"}</span>
         </button>

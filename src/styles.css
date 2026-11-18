@@ -267,6 +267,32 @@ code {
   outline-offset: -1px;
 }
 
+/* My team and Trades, the heart of the app, lead the bar: full-strength
+   text with their icons (Trades' in the accent), then a divider before the
+   rest. */
+.app-nav-core {
+  gap: 0.4rem;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.app-nav-core svg {
+  flex: none;
+}
+
+.app-nav-core[data-view="Trades"] svg {
+  color: var(--accent);
+}
+
+.app-nav-divider {
+  flex: none;
+  align-self: center;
+  width: 1px;
+  height: 1.25rem;
+  margin: 0 0.6rem;
+  background: var(--line);
+}
+
 .app-bar-status {
   display: flex;
   flex: none;

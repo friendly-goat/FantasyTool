@@ -639,7 +639,8 @@ injured player shows a falling mark.
 Positions always appear as colored chips (PG pink, SG orange, G coral, SF
 green, PF blue, F teal, C purple, UTIL periwinkle), with the colors set once at
 the top of `src/styles.css`. On a computer a slim bar stays across the top: the app's name and week, the
-views as tabs, the update time, and a menu behind your team's avatar for
+views as tabs (My team and Trades first, with icons, set apart from the
+rest), the update time, and a menu behind your team's avatar for
 light or dark mode, changing your team, switching league and signing out.
 On a phone the app works like an iPhone app: a tab bar along the bottom (My
 team, Rankings, Trades set apart in the middle, Draft, and More for the rest
