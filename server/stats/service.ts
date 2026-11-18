@@ -1,7 +1,6 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import path from "node:path";
 import type { LeagueSnapshot, NbaGame, PlayerDetail, PlayerRef, StatsReport, WeekLine } from "../../shared/types.ts";
 import { fantasyPoints, ignoredSettings } from "../scoring.ts";
+import type { Storage } from "../storage.ts";
 import { matchPlayers, sameLastName } from "./match.ts";
 import { PLAYER_ID_OVERRIDES } from "./overrides.ts";
 import type { GameLine, StatsProvider } from "./provider.ts";
@@ -27,7 +26,8 @@ interface SeasonData {
 }
 
 export interface StatsServiceOptions {
-  dir?: string | null;
+  /** Where downloaded box scores are kept; null keeps them in memory only. */
+  storage?: Storage | null;
   staleMs?: number;
   now?: () => number;
 }
@@ -44,7 +44,7 @@ function daysBefore(date: string, days: number): string {
 
 export class StatsService {
   private seasons = new Map<string, SeasonData>();
-  private dir: string | null;
+  private storage: Storage | null;
   private staleMs: number;
   private now: () => number;
 
@@ -52,7 +52,7 @@ export class StatsService {
     private provider: StatsProvider | null,
     options: StatsServiceOptions = {},
   ) {
-    this.dir = options.dir === undefined ? ".cache" : options.dir;
+    this.storage = options.storage ?? null;
     this.staleMs = options.staleMs ?? 6 * 60 * 60 * 1000;
     this.now = options.now ?? Date.now;
   }
@@ -265,7 +265,7 @@ export class StatsService {
       });
       for (const line of fresh) data.lines.set(line.key, line);
       data.syncedAt = this.now();
-      await this.save(season, data);
+      await this.save(season, data.syncedAt, fresh);
     } catch (error) {
       data.error = error instanceof Error ? error.message : "The stats download failed.";
       data.failedAt = this.now();
@@ -279,10 +279,10 @@ export class StatsService {
     if (data) data.failedAt = 0;
   }
 
-  private file(season: string): string | null {
-    if (!this.dir || !this.provider) return null;
-    // "v2": lines now carry opponent details, so older files are not reused.
-    return path.join(this.dir, `stats-v2-${this.provider.name}-${season.replace(/\W/g, "_")}.json`);
+  /** The stored dataset for a season; "v2": lines carry opponent details, so older ones are not reused. */
+  private dataset(season: string): string | null {
+    if (!this.storage || !this.provider) return null;
+    return `stats-v2-${this.provider.name}-${season.replace(/\W/g, "_")}`;
   }
 
   private async load(season: string): Promise<SeasonData> {
@@ -297,31 +297,29 @@ export class StatsService {
       failedAt: 0,
       inFlight: null,
     };
-    const file = this.file(season);
-    if (file) {
+    // Registered before reading, so two requests at once share one read.
+    this.seasons.set(season, data);
+    const dataset = this.dataset(season);
+    if (dataset) {
       try {
-        const saved = JSON.parse(await readFile(file, "utf8")) as {
-          syncedAt?: number;
-          lines?: GameLine[];
-        };
-        for (const line of saved.lines ?? []) data.lines.set(line.key, line);
-        data.syncedAt = typeof saved.syncedAt === "number" ? saved.syncedAt : null;
-      } catch {
-        // No saved stats yet.
+        const saved = await this.storage!.readLines(dataset);
+        for (const line of saved.lines) data.lines.set(line.key, line);
+        data.syncedAt = saved.syncedAt;
+      } catch (error) {
+        console.warn(`[stats] could not read saved stats for ${season}`, error instanceof Error ? error.message : error);
       }
     }
-    this.seasons.set(season, data);
     return data;
   }
 
-  private async save(season: string, data: SeasonData): Promise<void> {
-    const file = this.file(season);
-    if (!file) return;
+  /** Saves the lines a sync downloaded (new or corrected), not the whole season again. */
+  private async save(season: string, syncedAt: number, lines: GameLine[]): Promise<void> {
+    const dataset = this.dataset(season);
+    if (!dataset) return;
     try {
-      await mkdir(path.dirname(file), { recursive: true });
-      await writeFile(file, JSON.stringify({ syncedAt: data.syncedAt, lines: [...data.lines.values()] }));
+      await this.storage!.writeLines(dataset, syncedAt, lines);
     } catch (error) {
-      console.warn(`[stats] could not write ${file}`, error);
+      console.warn(`[stats] could not save stats for ${season}`, error instanceof Error ? error.message : error);
     }
   }
 }

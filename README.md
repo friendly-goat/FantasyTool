@@ -262,6 +262,25 @@ player's game, the manager can lock that score in before the player's next
 game; if nothing is locked, the last game of the week counts. Fantasy weeks
 run Monday to Sunday (`server/weeks.ts`).
 
+## Storage
+
+Everything the server downloads (league snapshots, the player list, box
+scores, schedules, logos) is kept between restarts through one storage
+interface (`server/storage.ts`):
+
+- **Postgres** when `DATABASE_URL` is set. Heroku sets it, and its disk is
+  wiped on every restart, so this is how the hosted app keeps its data. Tables
+  are created automatically: `cache_entries` (key, saved time, JSON value),
+  `game_lines` (one row per player per game) and `stat_datasets` (when each
+  season was last synced). A sync writes only the games it downloaded.
+- **Files in `.cache/`** otherwise, as before.
+- **Memory only** in mock mode and tests.
+
+`npm run db:import` copies an existing `.cache/` into the database at
+`DATABASE_URL`, so a new database starts full instead of downloading the
+season again. Storage tests also run against Postgres when
+`TEST_DATABASE_URL` is set.
+
 ## Commands
 
 | Command | What it does |
@@ -275,6 +294,7 @@ run Monday to Sunday (`server/weeks.ts`).
 | `npm run check:sleeper -- <league_id> --raw-matchup` | Also prints one team's raw matchup entry, to see every field Sleeper sends |
 | `npm run check:sleeper -- <league_id> --raw-rosters` | Also lists every roster, league and transaction field, to look for anything that records a lock |
 | `npm run check:stats -- <league_id> --schedule` | Prints this week's NBA schedule from the stats source |
+| `npm run db:import` | Copies `.cache/` into the database at `DATABASE_URL` |
 | `npm run check:logos` | Downloads every team logo and writes a preview page |
 | `npm start` | Builds the React app and serves everything from :8787 |
 

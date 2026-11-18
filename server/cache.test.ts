@@ -3,7 +3,7 @@ import { Cache } from "./cache.ts";
 
 function setup() {
   let time = 1_000_000;
-  const cache = new Cache({ dir: null, now: () => time });
+  const cache = new Cache({ storage: null, now: () => time });
   return { cache, advance: (ms: number) => (time += ms) };
 }
 

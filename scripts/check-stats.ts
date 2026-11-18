@@ -17,6 +17,7 @@ import { createBalldontlie } from "../server/stats/balldontlie.ts";
 import { createMockStats } from "../server/stats/mock.ts";
 import { weekRange } from "../server/weeks.ts";
 import { StatsService } from "../server/stats/service.ts";
+import { storageFromEnv } from "../server/storage.ts";
 
 try {
   process.loadEnvFile(".env");
@@ -36,6 +37,9 @@ const leagueId = mock
   : args.find((arg, index) => !arg.startsWith("--") && index !== playerFlag + 1) ||
     process.env.SLEEPER_LEAGUE_ID;
 const apiKey = process.env.BALLDONTLIE_API_KEY?.trim();
+// The same storage the app uses (Postgres if DATABASE_URL is set), so this
+// check fills the app's saved stats too.
+const storage = mock ? null : storageFromEnv();
 
 async function main() {
   if (!apiKey && !mock) throw new Error("BALLDONTLIE_API_KEY is not set. Add it to .env.");
@@ -81,7 +85,7 @@ async function main() {
           onPage(pages);
         }),
     },
-    { dir: mock ? null : ".cache" },
+    { storage },
   );
   await service.sync(snapshot.league.season);
   process.stdout.write("\n");
@@ -237,7 +241,9 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error("\nCheck failed:", error instanceof Error ? error.message : error);
-  process.exit(1);
-});
+main()
+  .catch((error) => {
+    console.error("\nCheck failed:", error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  })
+  .finally(() => storage?.close());

@@ -37,7 +37,7 @@ describe("logos", () => {
 
   it("downloads each logo once and waits before retrying a failure", async () => {
     let time = 0;
-    const cache = new Cache({ dir: null, now: () => time });
+    const cache = new Cache({ storage: null, now: () => time });
     let calls = 0;
     let online = false;
     const getLogo = createLogoSource(

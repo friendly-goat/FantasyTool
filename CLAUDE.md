@@ -31,6 +31,10 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
 
 - The browser never calls Sleeper or any stats API directly. All outside calls
   go through `server/`, behind the cache in `server/cache.ts`.
+- Anything kept between restarts goes through `server/storage.ts` (Postgres
+  when `DATABASE_URL` is set, as on Heroku whose disk is wiped on restart;
+  files in `.cache/` otherwise; memory in mock mode and tests). Never write
+  files directly for saved data.
 - Respect Sleeper's limits: full player list at most once a day, and keep a
   league refresh to a handful of requests.
 - Sleeper's NBA responses are not formally documented. Treat every raw field as

@@ -98,7 +98,7 @@ describe("team strength and trades (against the mock league)", async () => {
   const rawPlayers = (await fetchFromMock("/players/nba")) as Record<string, unknown>;
   const players = await loadPlayers(fetchFromMock);
   const snapshot = await buildSnapshot(MOCK_LEAGUE_ID, fetchFromMock, players);
-  const service = new StatsService(createMockStats(rawPlayers), { dir: null });
+  const service = new StatsService(createMockStats(rawPlayers), { storage: null });
   await service.sync("2026");
   const report = await service.report(snapshot, players);
   const model = buildModel(snapshot, report);

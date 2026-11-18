@@ -4,6 +4,7 @@ import express from "express";
 import type { AppConfig, LeagueSnapshot, WeekData } from "../shared/types.ts";
 import { nbaTeam } from "../shared/nbaTeams.ts";
 import { Cache } from "./cache.ts";
+import { storageFromEnv } from "./storage.ts";
 import { createLogoSource } from "./logos.ts";
 import { fetchFromMock, MOCK_LEAGUE_ID } from "./mock.ts";
 import { fetchFromSleeper, SleeperError } from "./sleeper.ts";
@@ -35,7 +36,11 @@ const playersTtl = 24 * 60 * MINUTE;
 const statsTtl = (Number(process.env.STATS_CACHE_HOURS) || 6) * 60 * MINUTE;
 
 const fetchJson = mock ? fetchFromMock : fetchFromSleeper;
-const cache = new Cache({ dir: mock ? null : ".cache" });
+// Postgres when DATABASE_URL is set (Heroku), otherwise files in .cache/.
+const storage = storageFromEnv();
+console.log(`[server] storage: ${storage.kind === "postgres" ? "Postgres (DATABASE_URL)" : "files in .cache/"}`);
+// Mock data is never stored, so it cannot mix with your league's.
+const cache = new Cache({ storage: mock ? null : storage });
 
 // Player stats come from balldontlie when a key is set. Without one the
 // rest of the app still works; stats are simply not shown.
@@ -45,11 +50,11 @@ const statsProvider: StatsProvider | null = mock
   : statsKey
     ? createBalldontlie(statsKey)
     : null;
-const stats = new StatsService(statsProvider, { dir: mock ? null : ".cache", staleMs: statsTtl });
+const stats = new StatsService(statsProvider, { storage: mock ? null : storage, staleMs: statsTtl });
 
 // Team logos are real images even in mock mode, so they always use the
 // disk cache.
-const getLogo = createLogoSource(new Cache());
+const getLogo = createLogoSource(new Cache({ storage }));
 
 const app = express();
 

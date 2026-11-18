@@ -1,8 +1,8 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import path from "node:path";
+import type { Storage } from "./storage.ts";
 
-// A small cache that keeps values in memory and on disk (.cache/*.json),
-// so restarting the server does not trigger a fresh round of API calls.
+// A small cache that keeps values in memory and in storage (files in .cache/
+// locally, Postgres on Heroku), so restarting the server does not trigger a
+// fresh round of API calls.
 //
 // Rules:
 // - A value younger than its TTL is returned without calling the loader.
@@ -22,18 +22,19 @@ export interface CacheResult<T> {
 }
 
 export interface CacheOptions {
-  dir?: string | null;
+  /** Where values are kept between restarts; null keeps them in memory only. */
+  storage?: Storage | null;
   now?: () => number;
 }
 
 export class Cache {
   private memory = new Map<string, Entry<unknown>>();
   private inFlight = new Map<string, Promise<CacheResult<unknown>>>();
-  private dir: string | null;
+  private storage: Storage | null;
   private now: () => number;
 
   constructor(options: CacheOptions = {}) {
-    this.dir = options.dir === undefined ? ".cache" : options.dir;
+    this.storage = options.storage ?? null;
     this.now = options.now ?? Date.now;
   }
 
@@ -78,35 +79,28 @@ export class Cache {
     return run;
   }
 
-  private file(key: string): string | null {
-    if (!this.dir) return null;
-    return path.join(this.dir, `${key.replace(/[^a-zA-Z0-9_-]/g, "_")}.json`);
-  }
-
   private async read(key: string): Promise<Entry<unknown> | null> {
     const inMemory = this.memory.get(key);
     if (inMemory) return inMemory;
-    const file = this.file(key);
-    if (!file) return null;
+    if (!this.storage) return null;
     try {
-      const entry = JSON.parse(await readFile(file, "utf8")) as Entry<unknown>;
-      if (typeof entry?.savedAt !== "number") return null;
+      const entry = (await this.storage.readEntry(key)) as Entry<unknown> | null;
+      if (!entry) return null;
       this.memory.set(key, entry);
       return entry;
-    } catch {
-      return null; // Missing or unreadable file: treat as not cached.
+    } catch (error) {
+      console.warn(`[cache] could not read ${key}`, error instanceof Error ? error.message : error);
+      return null;
     }
   }
 
   private async write(key: string, entry: Entry<unknown>): Promise<void> {
     this.memory.set(key, entry);
-    const file = this.file(key);
-    if (!file) return;
+    if (!this.storage) return;
     try {
-      await mkdir(path.dirname(file), { recursive: true });
-      await writeFile(file, JSON.stringify(entry));
+      await this.storage.writeEntry(key, entry);
     } catch (error) {
-      console.warn(`[cache] could not write ${file}`, error);
+      console.warn(`[cache] could not save ${key}`, error instanceof Error ? error.message : error);
     }
   }
 }

@@ -292,14 +292,14 @@ describe("StatsService", async () => {
   const snapshot = await buildSnapshot(MOCK_LEAGUE_ID, fetchFromMock, players);
 
   it("reports that stats are off when there is no provider", async () => {
-    const service = new StatsService(null, { dir: null });
+    const service = new StatsService(null, { storage: null });
     const report = await service.report(snapshot, players);
     expect(report.status).toBe("unconfigured");
     expect(report.players).toEqual({});
   });
 
   it("starts a download on first use, then serves stats for rostered players", async () => {
-    const service = new StatsService(createMockStats(rawPlayers), { dir: null });
+    const service = new StatsService(createMockStats(rawPlayers), { storage: null });
     expect((await service.report(snapshot, players)).status).toBe("syncing");
 
     await service.sync("2026"); // waits for the download already running
@@ -317,7 +317,7 @@ describe("StatsService", async () => {
   });
 
   it("ignores preseason games and serves a player's game log", async () => {
-    const service = new StatsService(createMockStats(rawPlayers), { dir: null });
+    const service = new StatsService(createMockStats(rawPlayers), { storage: null });
     await service.sync("2026");
 
     const overview = await service.overview("2026", snapshot.league.seasonStartDate);
@@ -349,7 +349,7 @@ describe("StatsService", async () => {
         return [gameLine({ key: `k-${date}`, date, pts: 10 })];
       },
     };
-    const service = new StatsService(provider, { dir: null });
+    const service = new StatsService(provider, { storage: null });
     await service.sync("2026");
     await service.sync("2026");
     expect(requests).toEqual([null, "2026-10-30"]); // two days before the latest game
@@ -365,7 +365,7 @@ describe("StatsService", async () => {
         throw new Error("boom");
       },
     };
-    const service = new StatsService(provider, { dir: null });
+    const service = new StatsService(provider, { storage: null });
     await service.sync("2026");
     const report = await service.report(snapshot, players);
     expect(report).toMatchObject({ status: "error", message: "boom", players: {} });
