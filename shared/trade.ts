@@ -590,6 +590,16 @@ function reasonsFor(
   return reasons.slice(0, 5);
 }
 
+/**
+ * Two offers with the same key are versions of one idea: the same partner,
+ * the same players received, and the same main piece sent (your most
+ * valuable player in the offer).
+ */
+export function similarityKey(offer: TradeOffer, result: TradeResult): string {
+  const main = result.a.gives.reduce<ModelPlayer | null>((best, player) => (!best || player.expected > best.expected ? player : best), null);
+  return `${offer.teamB}|${[...offer.bGives].sort().join("+")}|${main?.id ?? ""}`;
+}
+
 export interface FinderResult {
   ideas: TradeIdea[];
   /**
@@ -767,6 +777,20 @@ export function findTrades(
       (a, b) =>
         order.indexOf(a.likelihood) - order.indexOf(b.likelihood) ||
         rank(gain(b.result.a), b.chance) - rank(gain(a.result.a), a.chance),
+    )
+    // No near-copies: offers to the same team, for the same players, built
+    // around the same main piece (your most valuable player sent) are one
+    // idea; only the best version stays. Swapping the filler is not a new idea.
+    .filter(
+      (() => {
+        const seen = new Set<string>();
+        return ({ offer, result }: { offer: TradeOffer; result: TradeResult }) => {
+          const key = similarityKey(offer, result);
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        };
+      })(),
     )
     // Variety: no single player may appear in more than two ideas (a named player excepted).
     .filter(

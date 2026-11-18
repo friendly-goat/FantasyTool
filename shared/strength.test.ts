@@ -310,7 +310,9 @@ describe("team strength and trades (against the mock league)", async () => {
     const result = findTrades(model, snapshot, poorest, situations, { getPlayerId: star.id });
     if (result.outlook === "long-shot") expect(result.ideas.length).toBeLessThanOrEqual(3);
     if (result.outlook === "possible") expect(result.ideas.length).toBeLessThanOrEqual(5);
-    for (const idea of result.ideas) expect(idea.likelihood === "likely").toBe(result.outlook === "likely");
+    // Likely ideas lead when there are any (a short list is filled out with possible ones); otherwise none is likely.
+    if (result.outlook === "likely") expect(result.ideas[0]!.likelihood).toBe("likely");
+    else for (const idea of result.ideas) expect(idea.likelihood).not.toBe("likely");
   });
 
   it("lists the best nine slot by slot, each player legal for his slot and used once", () => {

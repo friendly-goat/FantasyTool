@@ -253,7 +253,9 @@ part (say, the trade clearly hurts their team) pulls it down however fair the
 trade looks; the builder shows how many points each part adds or takes away,
 and its one-line verdict uses the same chance. Likely ideas come first; possible ones fill out a short list or
 are shown when nothing is likely; long shots appear only when there is
-nothing better, at most three, with a plain note saying so. Naming a player
+nothing better, at most three, with a plain note saying so. Versions of one offer
+(the same team, the same players back and the same main piece sent, with
+only the filler changed) count as one idea: only the best version is shown. Naming a player
 allows offers that cost you up to a point a week. You can search for the best trades overall, a player at a
 position, offers for one of your players, or offers for a named player on
 another team (two-for-one packages are tried for a named target). Each idea

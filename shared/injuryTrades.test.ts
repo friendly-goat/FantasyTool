@@ -15,6 +15,7 @@ import {
   playerValue,
   POSSIBLE,
   seenAverage,
+  similarityKey,
   tradePhases,
 } from "./trade.ts";
 
@@ -161,6 +162,17 @@ describe("injuries, IR and waiver pickups (against the mock league)", async () =
     // Seen at its best (+0.8) and no pressure: a loss of 7 a week still leaves it a long shot.
     expect(chanceFrom(-7, 40, 20, 0)).toBeLessThan(POSSIBLE);
   });
+
+  it("never lists two versions of the same offer (same team, same players back, same main piece)", () => {
+    for (const { rosterId } of strengths.slice(0, 5)) {
+      for (const options of [{}, { getInjured: true }]) {
+        const keys = findTrades(model, snapshot, rosterId, situations, options).ideas.map((idea) =>
+          similarityKey(idea.offer, idea.result),
+        );
+        expect(new Set(keys).size).toBe(keys.length);
+      }
+    }
+  }, 30_000);
 
   it("keeps projections repeatable", async () => {
     const team = ids(strengths[2]!.rosterId);
