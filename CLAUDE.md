@@ -120,4 +120,8 @@ feature branches, no pull requests. Before every push:
 npm run typecheck && npm test && npm run build
 ```
 
-Then push to `main` and tell the owner to run `git pull` to get the change.
+Then push to `main` and tell the owner to run `git pull` to get the change,
+and `git push heroku main` to deploy it to the hosted app
+(https://fantasytool-alex-e9d67f6a7a25.herokuapp.com/, Heroku app
+`fantasytool-alex`, Eco dyno, Postgres Essential-0). Deploy instructions
+are in the README ("Deploying to Heroku").
