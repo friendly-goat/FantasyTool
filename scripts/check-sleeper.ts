@@ -7,6 +7,10 @@
 //                                        -> also prints one team's raw matchup
 //                                           entry for this week, field by field,
 //                                           to see what Sleeper reports
+//   npm run check:sleeper -- <league_id> --raw-rosters
+//                                        -> also lists every field in the rosters
+//                                           and this week's transactions, to look
+//                                           for anything that records a lock
 //
 // It makes at most a dozen requests.
 
@@ -21,6 +25,7 @@ try {
 
 const args = process.argv.slice(2);
 const rawMatchup = args.includes("--raw-matchup");
+const rawRosters = args.includes("--raw-rosters");
 const leagueId = args.find((arg) => !arg.startsWith("--")) || process.env.SLEEPER_LEAGUE_ID;
 
 async function main() {
@@ -57,6 +62,33 @@ async function main() {
     console.log(`\nRaw matchup fields Sleeper sent for week ${snapshot.week}:`, [...fields].sort().join(", "));
     console.log("First team's entry, as Sleeper sent it:");
     console.dir(entries[0], { depth: null });
+  }
+
+  if (rawRosters) {
+    const rosters = (await fetchFromSleeper(`/league/${leagueId}/rosters`)) as Record<string, unknown>[];
+    const keys = (key: string) =>
+      [...new Set(rosters.flatMap((roster) => Object.keys((roster?.[key] as Record<string, unknown>) ?? {})))].sort();
+    console.log("\nRoster fields:", [...new Set(rosters.flatMap((roster) => Object.keys(roster ?? {})))].sort().join(", "));
+    console.log("Roster settings fields:", keys("settings").join(", "));
+    console.log("Roster metadata fields:", keys("metadata").join(", ") || "(none)");
+    const lockish = rosters.flatMap((roster) =>
+      Object.entries((roster?.metadata as Record<string, unknown>) ?? {})
+        .filter(([key]) => /lock/i.test(key))
+        .map(([key, value]) => ({ roster: roster.roster_id, key, value })),
+    );
+    console.log(lockish.length ? "Metadata that mentions locks:" : "No roster metadata mentions locks.");
+    if (lockish.length) console.table(lockish);
+
+    const league = (await fetchFromSleeper(`/league/${leagueId}`)) as Record<string, unknown>;
+    const leagueSettings = Object.keys((league?.settings as Record<string, unknown>) ?? {}).sort();
+    console.log("\nLeague settings fields:", leagueSettings.join(", "));
+    console.log("League metadata:", league?.metadata ?? "(none)");
+
+    const transactions = (await fetchFromSleeper(`/league/${leagueId}/transactions/${snapshot.week}`)) as Record<string, unknown>[];
+    const types = new Map<string, number>();
+    for (const item of transactions ?? []) types.set(String(item?.type), (types.get(String(item?.type)) ?? 0) + 1);
+    console.log(`\nTransactions in week ${snapshot.week}:`, Object.fromEntries(types));
+    console.log("Transaction fields:", [...new Set((transactions ?? []).flatMap((item) => Object.keys(item ?? {})))].sort().join(", "));
   }
 }
 

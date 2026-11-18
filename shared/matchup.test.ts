@@ -5,6 +5,7 @@ import {
   gameChances,
   injuryKind,
   lockAdvice,
+  probablyLocked,
   settledPoints,
   slotStatus,
   stillToPlay,
@@ -134,6 +135,22 @@ describe("injuries", () => {
     // One game left: a healthy player is worth waiting for (30), a doubtful one is not (0.6 x 30).
     expect(lockAdvice(29, 1, player).lock).toBe(false);
     expect(lockAdvice(29, 1, player, "day-to-day")).toMatchObject({ lock: true, waiting: 18 });
+  });
+});
+
+describe("probablyLocked", () => {
+  const player = { waitValue: [0, 30, 36, 40, 43], availability: 1 };
+
+  it("expects a manager to have locked a score worth more than waiting", () => {
+    expect(probablyLocked("open", 45.6, 2, player)).toBe(true);
+    expect(probablyLocked("open", 28.8, 2, player)).toBe(false);
+  });
+
+  it("only applies to open scores with games left and known players", () => {
+    expect(probablyLocked("locked", 45.6, 2, player)).toBe(false);
+    expect(probablyLocked("open", 45.6, 0, player)).toBe(false);
+    expect(probablyLocked("open", 45.6, 2, null)).toBe(false);
+    expect(probablyLocked("waiting", 0, 2, player)).toBe(false);
   });
 });
 

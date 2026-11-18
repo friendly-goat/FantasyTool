@@ -273,6 +273,7 @@ run Monday to Sunday (`server/weeks.ts`).
 | `npm run check:sleeper` | Confirms Sleeper answers for NBA from your machine |
 | `npm run check:stats` | Confirms the stats key works and shows player matching |
 | `npm run check:sleeper -- <league_id> --raw-matchup` | Also prints one team's raw matchup entry, to see every field Sleeper sends |
+| `npm run check:sleeper -- <league_id> --raw-rosters` | Also lists every roster, league and transaction field, to look for anything that records a lock |
 | `npm run check:stats -- <league_id> --schedule` | Prints this week's NBA schedule from the stats source |
 | `npm run check:logos` | Downloads every team logo and writes a preview page |
 | `npm start` | Builds the React app and serves everything from :8787 |
@@ -297,6 +298,7 @@ and the NBA schedule (`shared/matchup.ts`):
 | Live | His game is being played. |
 | Yet to play | No games yet this week. |
 | Checking | The score matches none of his box scores yet (they may still be loading). |
+| Probably locked | Other team only: a "can lock" score that beats what waiting is expected to bring, so a manager would usually have locked it. It becomes certain when his next game starts. |
 
 Box scores lack technical and flagrant fouls, so a score a few foul
 deductions (from the league's `tf` and `ff` settings) below a game still

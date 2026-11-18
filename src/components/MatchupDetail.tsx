@@ -5,6 +5,7 @@ import {
   injuryKind,
   isFixed,
   lockAdvice,
+  probablyLocked,
   settledPoints,
   slotStatus,
   stillToPlay,
@@ -79,6 +80,9 @@ const STATE_NOTE: Record<SlotStatus["state"], string> = {
   unclear: "Sleeper's score matches none of his box scores yet; they may still be loading.",
 };
 
+const PROBABLE_NOTE =
+  "Sleeper does not share locks. This is his latest game and it beats what waiting is expected to bring, so a manager would usually lock it. It becomes certain once his next game starts.";
+
 function StatusIcon({ state }: { state: SlotStatus["state"] }) {
   // Closed lock for settled scores, open lock for one that can still be
   // locked, a dot for a live game, a clock while waiting.
@@ -112,7 +116,7 @@ function GameChip({ entry, counted }: { entry: TeamGame; counted: boolean }) {
   const { game, opponent, home, line } = entry;
   const played = game.state !== "scheduled";
   const label = `${home ? "vs" : "at"} ${opponent ?? "?"}, ${formatWeekday(game.date)}${
-    played ? `: ${line ? `${formatPoints(line.points)} points` : "did not play"}` : ""
+    line ? `: ${formatPoints(line.points)} points` : game.state === "in_progress" ? ": playing now" : played ? ": did not play" : ""
   }${counted ? ", the game that counts" : ""}`;
   return (
     <li
@@ -126,7 +130,7 @@ function GameChip({ entry, counted }: { entry: TeamGame; counted: boolean }) {
         {!home && <span className="mx-game-at">@</span>}
       </span>
       <span className="mx-game-value">
-        {played ? (line ? formatPoints(line.points) : "DNP") : formatWeekday(game.date)}
+        {line ? formatPoints(line.points) : game.state === "in_progress" ? "Live" : played ? "DNP" : formatWeekday(game.date)}
       </span>
       <span className="visually-hidden">{label}</span>
     </li>
@@ -139,10 +143,13 @@ function PlayerCard({
   projection,
   perGame,
   advice,
+  probable,
   side,
   bench,
 }: {
   entry: MatchupSlot | undefined;
+  /** The other manager has probably locked this score (Sleeper does not say). */
+  probable: boolean;
   status: SlotStatus | null;
   /** Expected final score for the slot. */
   projection: number | null;
@@ -165,15 +172,15 @@ function PlayerCard({
   const shown = bench ? benchPoints : entry.points;
   const injury = injuryKind(entry.player.injuryStatus);
   // A settled score needs no projection: it is the final number.
-  const settled = !bench && status !== null && isFixed(status.state);
+  const settled = !bench && status !== null && (isFixed(status.state) || probable);
   return (
-    <div className={`mx-card mx-${side}${status && !bench ? ` mx-${status.state}` : ""}`}>
+    <div className={`mx-card mx-${side}${status && !bench ? ` mx-${probable ? "probable" : status.state}` : ""}`}>
       <PlayerCell player={entry.player} />
       {!bench && status && (
         <div className="mx-status-row">
-          <span className="mx-status" title={STATE_NOTE[status.state]}>
-            <StatusIcon state={status.state} />
-            {STATE_LABEL[status.state]}
+          <span className="mx-status" title={probable ? PROBABLE_NOTE : STATE_NOTE[status.state]}>
+            <StatusIcon state={probable ? "locked" : status.state} />
+            {probable ? "Probably locked" : STATE_LABEL[status.state]}
           </span>
           <span
             className={`mx-points num${shown ? "" : " quiet"}`}
@@ -250,6 +257,7 @@ function TeamHead({
   chance,
   projected,
   settled,
+  probable,
   onOpenTeam,
 }: {
   team: Team | undefined;
@@ -258,6 +266,7 @@ function TeamHead({
   chance: number | null;
   projected: number | null;
   settled: number | null;
+  probable: number;
   onOpenTeam: (id: number) => void;
 }) {
   const ahead = chance !== null && chance > 0.5;
@@ -291,6 +300,12 @@ function TeamHead({
           <div>
             <dt>Locked or final</dt>
             <dd className="num">{formatPoints(settled)}</dd>
+          </div>
+        )}
+        {probable > 0 && (
+          <div>
+            <dt>Probably locked</dt>
+            <dd className="num">{formatPoints(probable)}</dd>
           </div>
         )}
         <div>
@@ -327,6 +342,22 @@ export function MatchupDetail({ snapshot, model, matchup, myRosterId, onBack, on
     [week, matchup, deductions, scheduleKnown],
   );
 
+  // Your own locks you know; for the other team, mark scores a manager would
+  // usually have locked.
+  const probable = sides.map((side, s) =>
+    side.starters.map((entry, i) => {
+      const status = starterStatus[s]?.[i];
+      if (side.rosterId === myRosterId || !status || !model || !entry.player) return false;
+      return probablyLocked(
+        status.state,
+        entry.points ?? 0,
+        status.gamesLeft,
+        model.players.get(entry.player.id) ?? null,
+        injuryKind(entry.player.injuryStatus),
+      );
+    }),
+  );
+
   const forecast = useMemo(() => {
     if (!model || !scheduleKnown || sides.length < 2) return null;
     const simSides = sides.slice(0, 2).map((side, s) =>
@@ -358,7 +389,10 @@ export function MatchupDetail({ snapshot, model, matchup, myRosterId, onBack, on
     return player ? lockAdvice(entry.points ?? 0, status.gamesLeft, player, injuryKind(entry.player.injuryStatus)) : null;
   };
 
-  const yetToPlay = (s: number) => stillToPlay(starterStatus[s] ?? []);
+  const yetToPlay = (s: number) =>
+    stillToPlay((starterStatus[s] ?? []).map((status, i) => (probable[s]?.[i] ? null : status)));
+  const probableTotal = (s: number) =>
+    sides[s]?.starters.reduce((sum, entry, i) => sum + (probable[s]?.[i] ? (entry.points ?? 0) : 0), 0) ?? 0;
   const settledTotal = (s: number) =>
     week ? settledPoints(starterStatus[s] ?? [], sides[s]?.starters.map((entry) => entry.points) ?? []) : null;
 
@@ -391,6 +425,7 @@ export function MatchupDetail({ snapshot, model, matchup, myRosterId, onBack, on
             chance={forecast?.winChance[0] ?? null}
             projected={forecast?.projected[0] ?? null}
             settled={settledTotal(0)}
+            probable={probableTotal(0)}
             onOpenTeam={onOpenTeam}
           />
           <span className="mx-vs">vs</span>
@@ -402,6 +437,7 @@ export function MatchupDetail({ snapshot, model, matchup, myRosterId, onBack, on
               chance={forecast?.winChance[1] ?? null}
               projected={forecast?.projected[1] ?? null}
               settled={settledTotal(1)}
+              probable={probableTotal(1)}
               onOpenTeam={onOpenTeam}
             />
           ) : (
@@ -433,8 +469,16 @@ export function MatchupDetail({ snapshot, model, matchup, myRosterId, onBack, on
               <dt>Locked or final</dt>
               <dd>
                 Scores we can tell are settled: an earlier game this week (so it was locked), or his last game of the week.
-                A score from a player's latest game with games still to come may also be locked; Sleeper does not share
-                that, so it is not counted here. Sleeper's own app shows locked totals that include those.
+                Sleeper's data does not say which scores are locked, so a score from a player's latest game, with games
+                still to come, is not counted here even if it is locked.
+              </dd>
+            </div>
+            <div>
+              <dt>Probably locked</dt>
+              <dd>
+                For the other team: latest-game scores that beat what waiting is expected to bring, so a manager would
+                usually have locked them. It becomes certain when the player's next game starts: if the score stays, it
+                was locked. Your own locks you know, so your side never shows this.
               </dd>
             </div>
             <div>
@@ -495,6 +539,7 @@ export function MatchupDetail({ snapshot, model, matchup, myRosterId, onBack, on
                         projection={group.bench ? null : (forecast?.slotProjections[0][row.index] ?? null)}
                         perGame={perGameOf(row.left)}
                         advice={group.bench ? null : adviceFor(0, row.left, leftStatus)}
+                        probable={!group.bench && (probable[0]?.[row.index] ?? false)}
                         side="left"
                         bench={group.bench}
                       />
@@ -507,6 +552,7 @@ export function MatchupDetail({ snapshot, model, matchup, myRosterId, onBack, on
                         projection={group.bench ? null : (forecast?.slotProjections[1][row.index] ?? null)}
                         perGame={perGameOf(row.right)}
                         advice={group.bench ? null : adviceFor(1, row.right, rightStatus)}
+                        probable={!group.bench && (probable[1]?.[row.index] ?? false)}
                         side="right"
                         bench={group.bench}
                       />

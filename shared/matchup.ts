@@ -236,6 +236,22 @@ export function gameChances(availability: number, gamesLeft: number, injury: Inj
 
 const mean = (values: number[]) => (values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0);
 
+/**
+ * Whether another manager has probably locked an open score. Sleeper does not
+ * share locks, so this applies the same rule as the lock advice: a score that
+ * beats what waiting is expected to bring is one a manager would usually lock.
+ */
+export function probablyLocked(
+  state: SlotState,
+  points: number,
+  gamesLeft: number | null,
+  player: { waitValue: ArrayLike<number>; availability: number } | null,
+  injury: InjuryKind = null,
+): boolean {
+  if (state !== "open" || !player || !gamesLeft || points <= 0) return false;
+  return lockAdvice(points, gamesLeft, player, injury).lock;
+}
+
 /** A starter as the win-chance simulation sees him. */
 export interface SimSlot {
   state: SlotState;

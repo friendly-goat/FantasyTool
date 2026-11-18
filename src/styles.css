@@ -1121,6 +1121,12 @@ th[aria-sort] .sort-button {
   color: var(--text);
 }
 
+/* A guess, not a fact: accent color, but the score stays plain. */
+.mx-probable .mx-status {
+  color: var(--accent);
+  opacity: 0.8;
+}
+
 .mx-live .mx-status {
   color: var(--loss);
 }
