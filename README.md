@@ -146,9 +146,10 @@ happens to its projected weekly score.
 | Game-to-game spread | strength | his own, blended with the league's typical spread until he has 6 games; kept between 10% and 60% of his level |
 | Scattered missed games | availability | a rate, blended with a typical 90% early on |
 | Long absence (4+ games in a row) | availability | a current one is expected to last as long again; finished ones are not held against him |
-| Reluctance to trade at all | chance they accept | fixed: an even trade comes out a little under 50% |
-| What they see on averages (players they would drop subtracted) | chance they accept | +1.0 to -2.0 on the log-odds scale |
-| What the trade does to their team | chance they accept | ±1.5 on the log-odds scale |
+| Reluctance to trade at all | chance they accept | fixed: with the premium below, an even trade comes out at about a third |
+| Own-player premium (managers overvalue their own players) | what they see on averages | fixed: their players count 8% higher (`OWN_PLAYER_PREMIUM`) |
+| What they see on averages (players they would drop subtracted) | chance they accept | +0.8 to -2.0 on the log-odds scale |
+| What the trade does to their team (a gain counts 0.75, a loss 1.5) | chance they accept | ±1.25 on the log-odds scale |
 | Pressure on the other team (absences, record, this week's matchup) | chance they accept | 0 to +0.6 on the log-odds scale |
 
 ### Projections
@@ -241,7 +242,7 @@ the labels. "A real change" in a label means the same as a B- or better.
 
 `findTrades` in `shared/trade.ts`, with `shared/insight.ts`. Trades are ranked
 by the weekly points they add for you multiplied by the estimated chance they
-are accepted, in three bands: likely (55% or more), possible (40 to 55%) and
+are accepted, in three bands: likely (50% or more), possible (35 to 50%) and
 long shots. The chance's parts are combined on the log-odds scale, so one bad
 part (say, the trade clearly hurts their team) pulls it down however fair the
 trade looks; the builder shows how many points each part adds or takes away,

@@ -735,12 +735,12 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
         <p>
           Ideas likely to be accepted (50% or better) come first, ranked by the weekly points they add for you
           multiplied by that chance. Less likely ones are shown only when nothing likely exists, and long shots
-          (under 40%) only when there is nothing better. When you name a player, offers that cost you up to a
+          (under 35%) only when there is nothing better. When you name a player, offers that cost you up to a
           point a week are allowed, since that is sometimes the price of a move you want.
-          That chance is an estimate, not a measurement. It starts a little below even, since managers turn
-          down sideways moves more often than not, and adds three limited parts: what they see on the averages,
-          what the trade does to their team (which they sense through their own needs), and the pressure they are
-          under. One bad part pulls the chance down however good the others look. The builder shows how many
+          That chance is an estimate, not a measurement. Managers overvalue their own players, so an even trade
+          comes out at about a third: they count their own players 8% higher on the averages, and a loss to their
+          team weighs twice as much as a gain of the same size. It adds three limited parts: what they see on the averages, what the trade does to their team
+          (which they sense through their own needs), and the pressure they are under. One bad part pulls the chance down however good the others look. The builder shows how many
           points each part adds or takes away.
         </p>
         <p>

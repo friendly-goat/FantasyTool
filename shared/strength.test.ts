@@ -356,10 +356,23 @@ describe("team strength and trades (against the mock league)", async () => {
   });
 
   it("bands chances, words grades, and places the balance between teams", () => {
-    expect([0.62, 0.55, 0.45, 0.4, 0.39].map(likelihood)).toEqual(["likely", "likely", "possible", "possible", "long shot"]);
+    expect([0.62, 0.5, 0.49, 0.35, 0.34].map(likelihood)).toEqual(["likely", "likely", "possible", "possible", "long shot"]);
     expect([95, 60, 50, 43, 30, 5].map(gradeWord)).toEqual(["Big win", "Win", "About even", "About even", "Loss", "Big loss"]);
-    // An even trade with typical pressure lands a little under 50%.
-    expect(chanceFrom(0, 30, 30, 0.3)).toBeCloseTo(1 / (1 + Math.exp(-(-0.3 + 0.18))));
+    // An even trade with typical pressure lands at about a third: they value their own player 8% higher.
+    expect(chanceFrom(0, 30, 30, 0.3)).toBeCloseTo(1 / (1 + Math.exp(-(-0.3 + 6 * Math.log(1 / 1.08) + 0.18))));
+    expect(chanceFrom(0, 30, 30, 0.3)).toBeGreaterThan(0.3);
+    expect(chanceFrom(0, 30, 30, 0.3)).toBeLessThan(0.4);
+    // Averages must beat theirs by the premium before they look even.
+    expect(chanceFrom(0, 30 * 1.08, 30, 0)).toBeCloseTo(1 / (1 + Math.exp(0.3)));
+    // A loss to their team is felt twice as much as a gain of the same size.
+    const base = chanceParts(0, 30, 30, 0);
+    const logit = (p: number) => Math.log(p / (1 - p));
+    const up = logit(chanceFrom(1, 30, 30, 0)) - logit(base.chance);
+    const down = logit(base.chance) - logit(chanceFrom(-1, 30, 30, 0));
+    expect(down / up).toBeCloseTo(2);
+    // Every part keeps a fixed limit, so no chance runs away.
+    expect(chanceFrom(100, 1000, 1, 1)).toBeCloseTo(1 / (1 + Math.exp(-(-0.3 + 0.8 + 1.25 + 0.6))));
+    expect(chanceFrom(-100, 1, 1000, 0)).toBeCloseTo(1 / (1 + Math.exp(-(-0.3 - 2 - 1.25))));
     const even = evaluateTrade(model, snapshot, { teamA: strengths[0]!.rosterId, teamB: strengths[1]!.rosterId, aGives: [], bGives: [] });
     expect(even.valueBalance).toBe(50);
   });

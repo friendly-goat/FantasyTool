@@ -318,23 +318,31 @@ const OPEN_SCREEN_WEEKS = 16;
 // with a fixed limit, combined on the log-odds scale so that one bad part
 // pulls the chance down however good the others look:
 //
-//   What they see:      the averages they get back against what they send.
-//                       Up to +1.0 for a clear win, down to -2.0 for a clear loss.
+//   What they see:      the averages they get back against what they send,
+//                       with their own players counted 8% higher (managers
+//                       overvalue what they have). Up to +0.8 for a clear
+//                       win, down to -2.0 for a clear loss.
 //   Their team:         what the trade does to their projected weekly score.
 //                       A manager senses this through his own needs: a thin
-//                       position filled, an injury covered. Limited to ±1.5.
+//                       position filled, an injury covered. A gain counts
+//                       three quarters, a loss one and a half times (a loss
+//                       is felt more). Limited to ±1.25.
 //   Pressure:           long absences, a losing record, a tough matchup this
 //                       week. Up to +0.6, never negative.
 //
-// An even trade (looks even, changes nothing, typical pressure) comes out
-// a little under 50%: people say no to sideways moves more often than yes.
+// An even trade (equal averages, changes nothing, typical pressure) comes out
+// at about a third: in fantasy even a fair offer is usually turned down.
 
 /** Reluctance to trade at all, on the log-odds scale. */
 const RELUCTANCE = -0.3;
+/** Their own players look this much better to them than the same averages on someone else's roster. */
+export const OWN_PLAYER_PREMIUM = 1.08;
 const SEEN_SCALE = 6; // a 10% edge on averages is worth about 0.57
-const SEEN_LIMITS = [-2, 1] as const;
-const TEAM_SCALE = 2.5; // 2.5 points a week is worth 1.0
-const TEAM_LIMIT = 1.5;
+const SEEN_LIMITS = [-2, 0.8] as const;
+const TEAM_SCALE = 2.5; // 2.5 points a week is worth 1.0, before the weights below
+const TEAM_GAIN_WEIGHT = 0.75;
+const TEAM_LOSS_WEIGHT = 1.5;
+const TEAM_LIMIT = 1.25;
 const PRESSURE_WEIGHT = 0.6;
 
 export interface ChancePart {
@@ -352,9 +360,10 @@ const logistic = (x: number) => 1 / (1 + Math.exp(-x));
 const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value));
 
 export function chanceParts(theirWeeklyGain: number, receivedAverage: number, sentAverage: number, urgency: number): Chance {
-  const ratio = sentAverage > 0 ? Math.max(0.01, receivedAverage) / sentAverage : 2;
+  const ratio = sentAverage > 0 ? Math.max(0.01, receivedAverage) / (sentAverage * OWN_PLAYER_PREMIUM) : 2;
   const seen = clamp(Math.log(ratio) * SEEN_SCALE, SEEN_LIMITS[0], SEEN_LIMITS[1]);
-  const team = clamp(theirWeeklyGain / TEAM_SCALE, -TEAM_LIMIT, TEAM_LIMIT);
+  const felt = theirWeeklyGain * (theirWeeklyGain >= 0 ? TEAM_GAIN_WEIGHT : TEAM_LOSS_WEIGHT);
+  const team = clamp(felt / TEAM_SCALE, -TEAM_LIMIT, TEAM_LIMIT);
   const pressure = PRESSURE_WEIGHT * clamp(urgency, 0, 1);
   const total = RELUCTANCE + seen + team + pressure;
   const chance = logistic(total);
@@ -389,8 +398,9 @@ export function acceptanceChance(theirs: TradeSide, urgency: number): number {
 
 /** How likely an idea is to be accepted, in three plain bands. */
 export type Likelihood = "likely" | "possible" | "long shot";
-export const LIKELY = 0.55;
-export const POSSIBLE = 0.4;
+// Even a good offer is often turned down, so "likely" starts at even odds.
+export const LIKELY = 0.5;
+export const POSSIBLE = 0.35;
 
 export function likelihood(chance: number): Likelihood {
   return chance >= LIKELY ? "likely" : chance >= POSSIBLE ? "possible" : "long shot";
@@ -456,7 +466,7 @@ const MIN_GAIN = 0.3;
 /** With a player named, you may pay up to this much a week for the move. */
 const MAX_PRICE = 1;
 /** Ideas below this estimated chance are dropped at the first pass. */
-const SCREEN_FLOOR = 0.25;
+const SCREEN_FLOOR = 0.18;
 
 /**
  * Trades for `rosterId`. Ideas are grouped by how likely they are to be
