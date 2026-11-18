@@ -13,6 +13,7 @@ import {
   type FinderResult,
   type TradeIdea,
   type TradeOffer,
+  reserveMoves,
   tradePhases,
   tradeStory,
   type TradeResult,
@@ -208,15 +209,10 @@ function MoveList({ side, model }: { side: TradeSide; model: StrengthModel }) {
  * What the team would do after the trade, kept apart from it: IR moves,
  * waiver pickups and drops. None of it is part of the offer.
  */
-function TeamManagement({ side, model, teamName }: { side: TradeSide; model: StrengthModel; teamName: string }) {
+function TeamManagement({ side, model, team }: { side: TradeSide; model: StrengthModel; team: Team | undefined }) {
+  const teamName = team?.teamName ?? "This team";
   const value = (player: ModelPlayer) => <PlayerValue model={model} player={player} />;
-  const reserve = [
-    ...side.toReserve.map((player) => `${player.name} goes on IR while he is out.`),
-    ...side.noReserve.map(
-      (player) =>
-        `IR is full (${side.reserve.map((entry) => entry.name).join(" and ")}), so ${player.name} uses a bench spot while out.`,
-    ),
-  ];
+  const reserve = reserveMoves(side, team?.reserve ?? [], model);
   const moves = [
     ...side.pickups.map((pickup) => ({
       player: pickup.player,
@@ -270,7 +266,7 @@ function SideResult({ side, team, scale, model }: { side: TradeSide; team: Team 
       </p>
 
       <MoveList side={side} model={model} />
-      <TeamManagement side={side} model={model} teamName={team?.teamName ?? "This team"} />
+      <TeamManagement side={side} model={model} team={team} />
 
       <div className="effect-block">
         <div className="effect-head">

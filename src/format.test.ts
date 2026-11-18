@@ -13,3 +13,11 @@ describe("formatStatLine", () => {
     expect(formatStatLine(empty)).toBe("No stats");
   });
 });
+
+describe("formatDay", async () => {
+  const { formatDay } = await import("./format.ts");
+  it("shows the year only when it differs from today's", () => {
+    expect(formatDay("2026-12-09", "2026-11-18")).toBe("Dec 9");
+    expect(formatDay("2027-01-04", "2026-11-18")).toBe("Jan 4, 2027");
+  });
+});

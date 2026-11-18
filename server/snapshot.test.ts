@@ -295,3 +295,16 @@ describe("reserveSlots", async () => {
     expect(reserveSlots({ roster_positions: ["PG", "IR"], settings: { reserve_slots: 0 } })).toBe(1);
   });
 });
+
+describe("reserveAllows", async () => {
+  const { reserveAllows } = await import("./snapshot.ts");
+  it("allows out by default and the rest only when the league turns them on", () => {
+    expect(reserveAllows({})).toEqual({ out: true, doubtful: false, suspended: false, dayToDay: false });
+    expect(reserveAllows({ settings: { reserve_allow_out: 0, reserve_allow_sus: 1, reserve_allow_dtd: 1 } })).toEqual({
+      out: false,
+      doubtful: false,
+      suspended: true,
+      dayToDay: true,
+    });
+  });
+});

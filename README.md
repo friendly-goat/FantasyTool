@@ -305,8 +305,18 @@ season, in turn, so an injured player plays none of the weeks he is out and
 his usual share after: his weekly value is the average over the weeks left.
 
 IR slots come from the league settings (Sleeper's `reserve_slots`; Sleeper
-does not list IR among the roster positions). `npm run check:sleeper` prints
-the count it found.
+does not list IR among the roster positions), and so do the statuses allowed
+on IR (`reserve_allow_out`, `_doubtful`, `_sus`, `_dtd`; out only unless the
+league turns the others on). `npm run check:sleeper` prints both. Team
+management on a trade card lists IR moves against what Sleeper shows now:
+moving a player marked out onto a free IR slot, or a player off IR (no longer
+out, or making room for one out longer).
+
+A player's panel shows his injury report entry: the predicted return date as
+the report gives it, when the app plans on him being back (later for far-off
+dates and re-evaluations), and the report's note behind the info button. His
+chart shades the games he is expected to miss and starts the projection when
+he is back.
 
 Every roster is run as its manager would: a player marked out goes on IR
 (most out first, one per IR slot) and takes no active spot; open spots are

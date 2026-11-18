@@ -6,6 +6,7 @@ import type {
   Matchup,
   MatchupSlot,
   PlayerRef,
+  ReserveAllows,
   StarterSlot,
   Team,
   Transaction,
@@ -263,6 +264,17 @@ export function reserveSlots(league: RawLeague): number {
   return typeof setting === "number" && setting >= 0 ? Math.max(setting, listed) : listed;
 }
 
+/** Which injury statuses the league lets onto IR. Out is allowed unless the league turns it off. */
+export function reserveAllows(league: RawLeague): ReserveAllows {
+  const settings = league.settings ?? {};
+  return {
+    out: settings.reserve_allow_out !== 0,
+    doubtful: settings.reserve_allow_doubtful === 1,
+    suspended: settings.reserve_allow_sus === 1,
+    dayToDay: settings.reserve_allow_dtd === 1,
+  };
+}
+
 export function playoffSettings(league: RawLeague): LeagueSnapshot["league"]["playoffs"] {
   const startWeek = league.settings?.playoff_week_start;
   const teams = league.settings?.playoff_teams;
@@ -309,6 +321,7 @@ export async function buildSnapshot(
       totalRosters: league.total_rosters ?? asArray(rosters).length,
       rosterPositions: league.roster_positions ?? [],
       reserveSlots: reserveSlots(league),
+      reserveAllows: reserveAllows(league),
       scoringSettings: league.scoring_settings ?? {},
       playoffs: playoffSettings(league),
     },

@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
+import { returnOutlook } from "../../shared/injury.ts";
 import type { LeagueSnapshot, PlayerDetail, PlayerRef, StatsReport } from "../../shared/types.ts";
 import { getPlayerDetail } from "../api.ts";
-import { formatAverage, formatGameDate, formatPoints, formatSigned } from "../format.ts";
+import { formatAverage, formatDay, formatGameDate, formatPoints, formatSigned } from "../format.ts";
 
 const percent = new Intl.NumberFormat("en-US", { style: "percent", maximumFractionDigits: 0 });
 import { PositionChip } from "./PositionChip.tsx";
-import { ProjectionChart } from "./ProjectionChart.tsx";
+import { InjuryNote } from "./InjuryNote.tsx";
+import { absenceFor, ProjectionChart } from "./ProjectionChart.tsx";
 import { TeamTag } from "./TeamTag.tsx";
 
 interface Props {
@@ -53,6 +55,9 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
   const fantasyTeam = fantasyTeamOf(snapshot, player.id);
   const season = detail?.stats ?? null;
   const recentLabel = `Last ${stats?.recentWindow ?? 5}`;
+  // The injury report entry comes with the league's stats report.
+  const injury = stats?.players[player.id]?.injury ?? null;
+  const outlook = injury ? returnOutlook(injury) : null;
 
   return (
     <dialog
@@ -84,6 +89,8 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
             Close
           </button>
         </div>
+
+        {injury && <InjuryNote injury={injury} />}
 
         {error && (
           <p className="notice notice-error" role="alert">
@@ -136,7 +143,17 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
             )}
 
             <h3 className="panel-heading">Rest of season</h3>
-            <ProjectionChart stats={season} games={detail.games} />
+            <ProjectionChart
+              stats={season}
+              games={detail.games}
+              absence={
+                injury && outlook?.kind === "season"
+                  ? absenceFor(season, injury.asOf, null, null)
+                  : injury && outlook?.kind === "window"
+                    ? absenceFor(season, injury.asOf, outlook.window.expected, formatDay(outlook.window.expected, injury.asOf))
+                    : null
+              }
+            />
             <p className="quiet panel-note">
               {season.projection.factors.length > 0 ? (
                 <>
@@ -155,9 +172,13 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
                 : stats?.lastSeason === "loading"
                   ? "Last season's stats are still downloading and are not in this projection yet. "
                   : "No last season on record for him. "}
-              {season.longTermOut
-                ? `He has missed his team's last ${season.missedStreak} games, so he is expected to play only ${percent.format(season.availability)} of the rest.`
-                : `Expected to play ${percent.format(season.availability)} of his team's remaining games.`}
+              {outlook?.kind === "season"
+                ? "He is out for the season, so he counts for nothing in the weeks left."
+                : outlook?.kind === "window" && injury
+                  ? `He counts for nothing until he is back (about ${formatDay(outlook.window.expected, injury.asOf)}), then is expected to play ${percent.format(season.playRate ?? season.availability)} of his team's games.`
+                  : season.longTermOut
+                    ? `He has missed his team's last ${season.missedStreak} games, so he is expected to play only ${percent.format(season.availability)} of the rest.`
+                    : `Expected to play ${percent.format(season.availability)} of his team's remaining games.`}
             </p>
 
             <h3 className="panel-heading">Game log</h3>

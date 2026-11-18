@@ -98,6 +98,8 @@ export interface LeagueSnapshot {
     rosterPositions: string[];
     /** Injured reserve slots. */
     reserveSlots: number;
+    /** Which injury statuses may go on IR, from the league settings. */
+    reserveAllows?: ReserveAllows;
     scoringSettings: Record<string, number>;
     /** Playoff format from the league settings, or null when Sleeper does not say. */
     playoffs: { startWeek: number; teams: number } | null;
@@ -136,6 +138,14 @@ export interface WeekLine {
   team?: string | null;
   /** The box score itself. */
   stats: StatLine;
+}
+
+/** Injury statuses a league lets onto IR. */
+export interface ReserveAllows {
+  out: boolean;
+  doubtful: boolean;
+  suspended: boolean;
+  dayToDay: boolean;
 }
 
 /** One fantasy week's matchups, current or past. */

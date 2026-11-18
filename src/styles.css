@@ -1494,6 +1494,92 @@ th[aria-sort] .sort-button {
   margin-bottom: 1rem;
 }
 
+/* A player's injury report entry in his panel: status, predicted return, and the note behind an info button. */
+.chart-out {
+  fill: var(--warn-soft);
+}
+
+.chart-out-label {
+  fill: var(--warn);
+  font-weight: 700;
+}
+
+.key.key-out {
+  height: 0.7rem;
+  margin-left: 0.9rem;
+  background: var(--warn-soft);
+  border: 1px solid var(--warn);
+}
+
+.injury-note {
+  margin: 0 0 1rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--radius-small);
+  background: var(--surface-raised);
+}
+
+.injury-note-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.injury-note-headline {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.injury-note-label {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.info-button {
+  display: inline-grid;
+  place-items: center;
+  /* A full-size touch target around a small icon. */
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  margin: -0.6rem -0.5rem -0.6rem auto;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.info-button:hover,
+.info-button[aria-expanded="true"] {
+  color: var(--text);
+}
+
+.info-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -4px;
+}
+
+.injury-note-plan {
+  margin: 0.35rem 0 0;
+  font-size: 0.875rem;
+}
+
+.injury-note-detail {
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--line);
+  font-size: 0.875rem;
+  line-height: 1.55;
+}
+
+.injury-note-detail p {
+  margin: 0 0 0.4rem;
+}
+
 .panel-head .player-tags {
   margin: 0.35rem 0;
 }

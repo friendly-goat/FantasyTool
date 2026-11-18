@@ -44,6 +44,13 @@ async function main() {
   console.log(`\nLeague: ${snapshot.league.name} (${snapshot.league.season}), week ${snapshot.week}`);
   console.log("Lineup slots:", snapshot.league.rosterPositions.join(", "));
   console.log("IR slots:", snapshot.league.reserveSlots);
+  {
+    // Sleeper's own fields for IR, as sent, so the app's reading can be checked.
+    const raw = (await fetchFromSleeper(`/league/${leagueId}`)) as { settings?: Record<string, unknown> } | null;
+    const fields = Object.entries(raw?.settings ?? {}).filter(([key]) => key.startsWith("reserve"));
+    console.log("IR settings from Sleeper:", Object.fromEntries(fields));
+    console.log("IR allowed for:", snapshot.league.reserveAllows);
+  }
   console.log("Scoring settings:", snapshot.league.scoringSettings);
   console.table(
     snapshot.teams.map((team) => ({

@@ -96,6 +96,11 @@ export interface RawLeague {
     playoff_teams?: number;
     /** Injured reserve slots. Sleeper keeps these here, not in roster_positions. */
     reserve_slots?: number;
+    /** Which injury statuses may go on IR (1 allowed, 0 not). Out is allowed unless the league says otherwise. */
+    reserve_allow_out?: number;
+    reserve_allow_doubtful?: number;
+    reserve_allow_sus?: number;
+    reserve_allow_dtd?: number;
   } | null;
 }
 

@@ -5,7 +5,7 @@ import { createMockStats, mockInjuries } from "../server/stats/mock.ts";
 import { StatsService } from "../server/stats/service.ts";
 import { rosterPlayers } from "./analysis.ts";
 import { teamSituations } from "./insight.ts";
-import { buildModel, fillRoster, leagueStrength, type ModelPlayer, projectedWeekly } from "./strength.ts";
+import { buildModel, fillRoster, leagueStrength, type ModelPlayer, projectedWeekly, reserveEligible } from "./strength.ts";
 import {
   acceptance,
   chanceFrom,
@@ -15,6 +15,7 @@ import {
   isInjuredTarget,
   playerValue,
   POSSIBLE,
+  reserveMoves,
   seenAverage,
   similarityKey,
   tradePhases,
@@ -28,7 +29,8 @@ describe("injuries, IR and waiver pickups (against the mock league)", async () =
   await service.sync("2026");
   await service.sync("2025");
   const healthy = buildModel(snapshot, await service.report(snapshot, players));
-  const model = buildModel(snapshot, await service.report(snapshot, players, mockInjuries(raw)));
+  const stats = await service.report(snapshot, players, mockInjuries(raw));
+  const model = buildModel(snapshot, stats);
   const strengths = leagueStrength(snapshot, model);
   const situations = teamSituations(snapshot, model, strengths);
   const all = [...model.players.values()];
@@ -45,6 +47,41 @@ describe("injuries, IR and waiver pickups (against the mock league)", async () =
     expect(snapshot.league.rosterPositions).not.toContain("IR");
     expect(snapshot.league.reserveSlots).toBe(1);
     expect(model.rosterLimits).toEqual({ active: snapshot.league.rosterPositions.length, reserve: 1 });
+  });
+
+  it("puts a benched player marked out on a free IR slot instead of dropping someone for a two-for-one", () => {
+    // A team whose Sleeper IR is empty, with a player marked out on its bench, receives two for one.
+    const team = snapshot.teams.find((candidate) => candidate.rosterId === strengths[3]!.rosterId)!;
+    const benched = { ...snapshot, teams: snapshot.teams.map((t) => (t === team ? { ...t, bench: [...t.bench, ...t.reserve], reserve: [] } : t)) };
+    const local = buildModel(benched, { ...stats, players: { ...stats.players } });
+    for (const id of ids(team.rosterId)) local.players.get(id)!.irEligible = false;
+    const out = ids(team.rosterId).map((id) => local.players.get(id)!).filter((p) => p.games > 0).sort((a, b) => a.expected - b.expected)[0]!;
+    out.irEligible = true;
+    const other = strengths.find((entry) => entry.rosterId !== team.rosterId)!.rosterId;
+    const theirs = ids(other).map((id) => local.players.get(id)!).filter((p) => p.games > 0 && !p.irEligible);
+    const give = ids(team.rosterId).map((id) => local.players.get(id)!).find((p) => p !== out && p.games > 0)!;
+    const result = evaluateTrade(local, benched, {
+      teamA: team.rosterId,
+      teamB: other,
+      aGives: [give.id],
+      bGives: theirs.slice(0, 2).map((p) => p.id),
+    });
+    expect(result.a.reserve).toContain(out);
+    expect(result.a.drops).not.toContain(out);
+    const active = result.a.afterIds.filter((id) => !id.includes("~") && id !== out.id);
+    expect(active.length).toBeLessThanOrEqual(local.rosterLimits.active);
+    expect(reserveMoves(result.a, [], local)).toContain(`Move ${out.name} to IR: he is out and an IR slot is free.`);
+  });
+
+  it("lets only the statuses the league allows onto IR", () => {
+    const standard = { out: true, doubtful: false, suspended: false, dayToDay: false };
+    expect(reserveEligible("Out", standard)).toBe(true);
+    expect(reserveEligible("OUT", undefined)).toBe(true);
+    expect(reserveEligible("DTD", standard)).toBe(false);
+    expect(reserveEligible("Day-To-Day", { ...standard, dayToDay: true })).toBe(true);
+    expect(reserveEligible("Suspended", standard)).toBe(false);
+    expect(reserveEligible("Questionable", { out: true, doubtful: true, suspended: true, dayToDay: true })).toBe(false);
+    expect(reserveEligible(null, standard)).toBe(false);
   });
 
   it("counts an injured player for the weeks he is back, and keeps everyone else as they were", () => {

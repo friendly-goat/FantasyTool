@@ -116,3 +116,14 @@ export function formatStatLine(stats: StatLine, minutes?: number): string {
 export function formatWholeChange(value: number): string {
   return value > 0 ? `+${value}` : value < 0 ? `−${Math.abs(value)}` : "0";
 }
+
+/** A calendar day (YYYY-MM-DD) as "Jan 4", with the year when it is not the same year as `today`. */
+export function formatDay(date: string, today: string): string {
+  const sameYear = date.slice(0, 4) === today.slice(0, 4);
+  return new Date(`${date}T12:00:00Z`).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: sameYear ? undefined : "numeric",
+    timeZone: "UTC",
+  });
+}

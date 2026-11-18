@@ -7,7 +7,7 @@
 import { freeAgentPickups, type TeamSituation } from "./insight.ts";
 import { rosterPlayers } from "./analysis.ts";
 import { fillRoster, type ModelPlayer, projectedWeekly, type StrengthModel, strengthScore } from "./strength.ts";
-import { findTrades, type Likelihood, type TradeIdea } from "./trade.ts";
+import { findTrades, type Likelihood, reserveMoves, type TradeIdea } from "./trade.ts";
 import type { LeagueSnapshot } from "./types.ts";
 
 export interface Move {
@@ -60,8 +60,7 @@ export function topMoves(
       kind: "trade",
       notes: {},
       management: [
-        ...idea.result.a.toReserve.map((player) => `Put ${player.name} on IR`),
-        ...idea.result.a.noReserve.map((player) => `IR full: ${player.name} uses a bench spot while out`),
+        ...reserveMoves(idea.result.a, team.reserve, model).map((line) => line.replace(/\.$/, "")),
         ...idea.result.a.pickups.map(({ player, forInjured }) =>
           forInjured ? `Pick up ${player.name} until ${forInjured.name} is back` : `Pick up ${player.name}`,
         ),

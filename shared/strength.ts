@@ -1,7 +1,7 @@
 import { assignSlots, rosterPlayers, slotAccepts, startingSlots } from "./analysis.ts";
 import { lockInValue } from "./lockin.ts";
 import { returnOutlook, weeklyChanceBack } from "./injury.ts";
-import type { LeagueSnapshot, PlayerRef, PlayerStats, StatsReport } from "./types.ts";
+import type { LeagueSnapshot, PlayerRef, PlayerStats, ReserveAllows, StatsReport } from "./types.ts";
 import { weekRange } from "./weeks.ts";
 
 const POSITIONS = ["PG", "SG", "SF", "PF", "C"];
@@ -313,8 +313,22 @@ function undatedBack(stats: PlayerStats, weeks: number): number[] {
   return Array.from({ length: weeks }, (_, index) => Math.min(1, Math.max(0, index + 1 - weeksOut)));
 }
 
-/** Sleeper's tags that let a player sit in an injured reserve slot. */
-const IR_TAGS = /^(out|ir|inj|sus)/i;
+/**
+ * Whether an injury status lets a player onto injured reserve, under the
+ * league's rules (Sleeper: out by default; doubtful, suspended and
+ * day-to-day only if the league allows them). Statuses come from Sleeper or
+ * the injury report.
+ */
+export function reserveEligible(status: string | null | undefined, allows: ReserveAllows | undefined): boolean {
+  const rules = allows ?? { out: true, doubtful: false, suspended: false, dayToDay: false };
+  const value = (status ?? "").trim().toLowerCase();
+  if (!value) return false;
+  if (/^(out|o|ir|inj|injured reserve)$/.test(value)) return rules.out;
+  if (value.startsWith("doubt")) return rules.doubtful;
+  if (value.startsWith("sus")) return rules.suspended;
+  if (value === "dtd" || value.startsWith("day")) return rules.dayToDay;
+  return false;
+}
 
 export function buildModel(
   snapshot: LeagueSnapshot,
@@ -363,7 +377,8 @@ export function buildModel(
     // if he has only just been ruled out). Otherwise the share that allows
     // for an absence still going on.
     // Sleeper allows injured reserve only for players marked out.
-    const irEligible = IR_TAGS.test(stats.injuryStatus ?? "") || /^out/i.test(stats.injury?.status ?? "");
+    const allows = snapshot.league.reserveAllows;
+    const irEligible = reserveEligible(stats.injuryStatus, allows) || reserveEligible(stats.injury?.status, allows);
     const outlook = stats.injury ? returnOutlook(stats.injury) : null;
     let back = outlook ? weeklyChanceBack(outlook, calendar.weeks, calendar.today) : null;
     if (!back && irEligible && calendar.weeks.length > 0) back = undatedBack(stats, calendar.weeks.length);
@@ -399,7 +414,7 @@ export function buildModel(
       finishPlayer(
         ref,
         { games: 0, average: 0, projected: 0, longTermOut: false },
-        { level: 0, spread: 0, availability: 0, irEligible: IR_TAGS.test(ref.injuryStatus ?? "") },
+        { level: 0, spread: 0, availability: 0, irEligible: reserveEligible(ref.injuryStatus, snapshot.league.reserveAllows) },
         slots,
         scheduleFor(ref.team ?? `none:${ref.id}`),
         weeks,

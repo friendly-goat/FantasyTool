@@ -594,6 +594,40 @@ function reasonsFor(
   return reasons.slice(0, 5);
 }
 
+/**
+ * IR moves a side would make after the trade, against the roster Sleeper
+ * shows now: players to move onto IR (marked out, slot free) and players to
+ * move off it (no longer out, or making room for someone out longer).
+ * Players received who go straight on IR are included. One line each.
+ */
+export function reserveMoves(
+  side: TradeSide,
+  sleeperReserve: { id: string; name: string }[],
+  model: StrengthModel,
+): string[] {
+  const lines: string[] = [];
+  const onIr = new Set(sleeperReserve.map((player) => player.id));
+  for (const player of side.reserve) {
+    if (side.toReserve.includes(player)) lines.push(`${player.name} goes on IR while he is out.`);
+    else if (!onIr.has(player.id)) lines.push(`Move ${player.name} to IR: he is out and an IR slot is free.`);
+  }
+  const traded = new Set(side.gives.map((player) => player.id));
+  const kept = side.reserve.map((player) => player.name).join(" and ");
+  for (const player of sleeperReserve) {
+    if (traded.has(player.id) || side.reserve.some((entry) => entry.id === player.id)) continue;
+    const stillOut = model.players.get(player.id)?.irEligible ?? false;
+    lines.push(
+      stillOut && kept
+        ? `Move ${player.name} off IR to make room for ${kept}, who is out longer.`
+        : `Move ${player.name} off IR: he is no longer out.`,
+    );
+  }
+  for (const player of side.noReserve) {
+    lines.push(`IR is full (${kept}), so ${player.name} uses a bench spot while out.`);
+  }
+  return lines;
+}
+
 /** The side drops a player it receives in the trade, straight away or once someone is back from IR. */
 export function droppedOnArrival(side: TradeSide): boolean {
   return side.gets.some((player) => side.drops.includes(player) || side.leaving.some((entry) => entry.player === player));
