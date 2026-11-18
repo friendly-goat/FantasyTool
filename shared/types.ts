@@ -124,6 +124,8 @@ export interface WeekLine {
   final: boolean;
   opponent: string | null;
   home: boolean | null;
+  /** The box score itself. */
+  stats: StatLine;
 }
 
 /** Everything the matchup view needs about the NBA side of the current week. */

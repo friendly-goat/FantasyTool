@@ -206,6 +206,7 @@ export class StatsService {
         final: line.final,
         opponent: line.opponent ?? null,
         home: line.home ?? null,
+        stats: line.stats,
       });
     }
     for (const list of Object.values(result)) list.sort((a, b) => a.date.localeCompare(b.date));

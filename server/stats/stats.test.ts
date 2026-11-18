@@ -378,10 +378,10 @@ describe("schedule", () => {
     expect(
       toScheduledGame({ ...base, status: "2026-11-18T00:00:00Z", status_state: "scheduled", period: 0, home_team_score: 0, visitor_team_score: 0 }),
     ).toMatchObject({ state: "scheduled", startTime: "2026-11-18T00:00:00Z", homeScore: null, statusText: null, home: "CLE", away: "CHI" });
-    expect(toScheduledGame({ ...base, status: "3rd Qtr", period: 3, home_team_score: 70, visitor_team_score: 66 })).toMatchObject({
+    expect(toScheduledGame({ ...base, status: "3rd Qtr", period: 3, time: "4:12", home_team_score: 70, visitor_team_score: 66 })).toMatchObject({
       state: "in_progress",
       homeScore: 70,
-      statusText: "3rd Qtr",
+      statusText: "3rd Qtr 4:12",
     });
     expect(
       toScheduledGame({ ...base, status: "Final", datetime: "2026-11-17T23:00:00Z", home_team_score: 110, visitor_team_score: 99 }),

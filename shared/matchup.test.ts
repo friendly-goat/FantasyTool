@@ -26,7 +26,16 @@ const game = (date: string, state: NbaGame["state"], home = "CLE", away = "CHI")
   awayScore: null,
   statusText: null,
 });
-const line = (date: string, points: number): WeekLine => ({ date, points, minutes: 30, final: true, opponent: "CHI", home: true });
+const NO_STATS = { pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tov: 0, tpm: 0, tpa: 0, fgm: 0, fga: 0, ftm: 0, fta: 0, oreb: 0, dreb: 0, pf: 0 };
+const line = (date: string, points: number): WeekLine => ({
+  date,
+  points,
+  minutes: 30,
+  final: true,
+  opponent: "CHI",
+  home: true,
+  stats: NO_STATS,
+});
 const deductions = foulDeductions([-2, -3]);
 
 describe("teamWeek", () => {

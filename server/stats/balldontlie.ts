@@ -58,6 +58,8 @@ interface RawGame {
   status?: string | null;
   status_state?: string | null;
   period?: number | null;
+  /** Game clock during play, such as "1:27". */
+  time?: string | null;
   home_team?: RawTeam | null;
   visitor_team?: RawTeam | null;
   home_team_score?: number | null;
@@ -68,6 +70,14 @@ function addDays(date: string, days: number): string {
   const value = new Date(`${date}T00:00:00Z`);
   value.setUTCDate(value.getUTCDate() + days);
   return value.toISOString().slice(0, 10);
+}
+
+/** "3rd Qtr 4:12" during play, "Final" after, nothing before. */
+function statusText(state: ScheduledGame["state"], status: string, clock: string | null | undefined): string | null {
+  if (!status || /^\d{4}-\d{2}-\d{2}T/.test(status)) return null;
+  const time = clock?.trim();
+  if (state === "in_progress" && time && !status.includes(time)) return `${status} ${time}`;
+  return status;
 }
 
 export function toScheduledGame(game: RawGame): ScheduledGame | null {
@@ -94,7 +104,7 @@ export function toScheduledGame(game: RawGame): ScheduledGame | null {
     state,
     homeScore: played ? (game.home_team_score ?? null) : null,
     awayScore: played ? (game.visitor_team_score ?? null) : null,
-    statusText: status && !/^\d{4}-\d{2}-\d{2}T/.test(status) ? status : null,
+    statusText: statusText(state, status, game.time),
   };
 }
 

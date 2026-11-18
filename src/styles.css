@@ -1205,19 +1205,48 @@ th[aria-sort] .sort-button {
   list-style: none;
 }
 
+.mx-games > li {
+  display: flex;
+}
+
 .mx-game {
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0.15rem;
+  width: 100%;
   min-width: 2.4rem;
   padding: 0.3rem 0.2rem 0.25rem;
+  border: 0;
   border-radius: 6px;
   background: var(--surface);
   color: var(--muted);
+  font: inherit;
   font-size: 0.6875rem;
   font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.mx-game:hover {
+  color: var(--text);
+}
+
+.mx-game:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The game open in the panel below: a bar under it, as on Sleeper. */
+.mx-game-selected::after {
+  content: "";
+  position: absolute;
+  right: 0.35rem;
+  bottom: -0.3rem;
+  left: 0.35rem;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--accent);
 }
 
 .mx-game-played {
@@ -1262,6 +1291,68 @@ th[aria-sort] .sort-button {
   font-size: 0.5625rem;
   font-weight: 800;
   line-height: 1;
+}
+
+.mx-games {
+  padding-bottom: 0.3rem;
+}
+
+.mx-panel {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 6px;
+  background: var(--surface);
+  font-size: 0.75rem;
+}
+
+.mx-panel-live {
+  box-shadow: inset 3px 0 var(--loss);
+}
+
+.mx-panel-head,
+.mx-panel-body {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.mx-panel-head {
+  font-weight: 700;
+}
+
+.mx-panel-when {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.mx-panel-live .mx-panel-when {
+  color: var(--loss);
+}
+
+.mx-panel-body {
+  align-items: flex-end;
+}
+
+.mx-panel-stats {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.mx-panel-points {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  white-space: nowrap;
+}
+
+.mx-panel-points strong {
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.mx-panel-points .quiet {
+  font-size: 0.6875rem;
 }
 
 .mx-advice {
@@ -2064,8 +2155,12 @@ th[aria-sort] .sort-button {
     gap: 0.2rem;
   }
 
-  .mx-game {
+  .mx-games > li {
     flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .mx-game {
     min-width: 0;
     padding: 0.25rem 0.05rem 0.2rem;
     font-size: 0.625rem;
@@ -2078,6 +2173,24 @@ th[aria-sort] .sort-button {
   }
 
   .mx-status-row {
+    gap: 0.3rem;
+  }
+
+  .mx-panel {
+    padding: 0.45rem 0.45rem;
+    font-size: 0.6875rem;
+  }
+
+  .mx-panel-head,
+  .mx-panel-body {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.15rem;
+  }
+
+  .mx-panel-points {
+    flex-direction: row;
+    align-items: baseline;
     gap: 0.3rem;
   }
 

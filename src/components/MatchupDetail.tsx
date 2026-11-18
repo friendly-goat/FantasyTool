@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   forecastMatchup,
   foulDeductions,
+  gameChances,
   injuryKind,
   isFixed,
   lockAdvice,
@@ -18,7 +19,15 @@ import {
 import type { StrengthModel } from "../../shared/strength.ts";
 import type { LeagueSnapshot, Matchup, MatchupSide, MatchupSlot, Team, WeekData } from "../../shared/types.ts";
 import { getWeek } from "../api.ts";
-import { formatAgo, formatPoints, formatRecord, formatTipoff, formatWeekRange, formatWeekday } from "../format.ts";
+import {
+  formatAgo,
+  formatPoints,
+  formatRecord,
+  formatStatLine,
+  formatTipoff,
+  formatWeekRange,
+  formatWeekday,
+} from "../format.ts";
 import { Avatar } from "./Avatar.tsx";
 import { PlayerCell } from "./PlayerCell.tsx";
 import { PositionChip } from "./PositionChip.tsx";
@@ -111,30 +120,123 @@ function StatusIcon({ state }: { state: SlotStatus["state"] }) {
   );
 }
 
-/** One game in the week strip: opponent logo, then points if played or the day if not. */
-function GameChip({ entry, counted }: { entry: TeamGame; counted: boolean }) {
+/** One game in the week strip: opponent logo, then points if played or the day if not. Selecting it opens the game below. */
+function GameChip({
+  entry,
+  counted,
+  selected,
+  onSelect,
+}: {
+  entry: TeamGame;
+  counted: boolean;
+  selected: boolean;
+  onSelect: () => void;
+}) {
   const { game, opponent, home, line } = entry;
   const played = game.state !== "scheduled";
   const label = `${home ? "vs" : "at"} ${opponent ?? "?"}, ${formatWeekday(game.date)}${
     line ? `: ${formatPoints(line.points)} points` : game.state === "in_progress" ? ": playing now" : played ? ": did not play" : ""
   }${counted ? ", the game that counts" : ""}`;
   return (
-    <li
-      className={`mx-game${played ? " mx-game-played" : ""}${counted ? " mx-game-counted" : ""}${
-        game.state === "in_progress" ? " mx-game-live" : ""
-      }`}
-      title={label}
-    >
-      <span className="mx-game-logo">
-        <TeamLogo team={opponent} fallback={<span className="mx-game-abbr">{opponent ?? "?"}</span>} />
-        {!home && <span className="mx-game-at">@</span>}
-      </span>
-      <span className="mx-game-value">
-        {line ? formatPoints(line.points) : game.state === "in_progress" ? "Live" : played ? "DNP" : formatWeekday(game.date)}
-      </span>
-      <span className="visually-hidden">{label}</span>
+    <li>
+      <button
+        type="button"
+        className={`mx-game${played ? " mx-game-played" : ""}${counted ? " mx-game-counted" : ""}${
+          game.state === "in_progress" ? " mx-game-live" : ""
+        }${selected ? " mx-game-selected" : ""}`}
+        aria-pressed={selected}
+        aria-label={label}
+        title={label}
+        onClick={onSelect}
+      >
+        <span className="mx-game-logo">
+          <TeamLogo team={opponent} fallback={<span className="mx-game-abbr">{opponent ?? "?"}</span>} />
+          {!home && <span className="mx-game-at">@</span>}
+        </span>
+        <span className="mx-game-value">
+          {line ? formatPoints(line.points) : game.state === "in_progress" ? "Live" : played ? "DNP" : formatWeekday(game.date)}
+        </span>
+      </button>
     </li>
   );
+}
+
+/** The game picked in the strip: the score and his box score if played, his projection if not. */
+function GamePanel({
+  entry,
+  team,
+  counted,
+  projected,
+  chance,
+}: {
+  entry: TeamGame;
+  team: string | null;
+  counted: boolean;
+  /** His projected score for one game. */
+  projected: number | null;
+  /** His chance of playing this game, for games still to come. */
+  chance: number | null;
+}) {
+  const { game, opponent, home, line } = entry;
+  const us = team ?? "?";
+  const them = opponent ?? "?";
+  const ourScore = home ? game.homeScore : game.awayScore;
+  const theirScore = home ? game.awayScore : game.homeScore;
+  const started = game.state !== "scheduled";
+  const matchupText = started && ourScore !== null && theirScore !== null
+    ? `${us} ${ourScore} ${home ? "vs" : "@"} ${them} ${theirScore}`
+    : `${us} ${home ? "vs" : "@"} ${them}`;
+  const when =
+    game.state === "final"
+      ? (game.statusText ?? "Final")
+      : game.state === "in_progress"
+        ? (game.statusText ?? "Live")
+        : formatTipoff(game.startTime, game.date);
+
+  return (
+    <div className={`mx-panel${game.state === "in_progress" ? " mx-panel-live" : ""}`}>
+      <div className="mx-panel-head">
+        <span className="mx-panel-game">{matchupText}</span>
+        <span className="mx-panel-when">{when}</span>
+      </div>
+      <div className="mx-panel-body">
+        <span className="mx-panel-stats">
+          {line
+            ? formatStatLine(line.stats, line.minutes)
+            : game.state === "in_progress"
+              ? "No stats yet"
+              : started
+                ? "Did not play"
+                : chance !== null && chance < 0.995
+                  ? `Yet to play · ${Math.round(chance * 100)}% chance he plays`
+                  : "Yet to play"}
+        </span>
+        <span className="mx-panel-points">
+          {line ? (
+            <>
+              <strong className="num">{formatPoints(line.points)}</strong>
+              <span className="quiet">{counted ? "counts" : line.final ? "fantasy pts" : "so far"}</span>
+            </>
+          ) : started ? (
+            <strong className="num quiet">{game.state === "in_progress" ? "–" : "0.00"}</strong>
+          ) : projected !== null ? (
+            <>
+              <strong className="num">{formatPoints(projected)}</strong>
+              <span className="quiet">projected</span>
+            </>
+          ) : null}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** Which game a card opens on: his live game, else his next game, else his latest. */
+function defaultGame(games: TeamGame[]): number {
+  const live = games.findIndex((entry) => entry.game.state === "in_progress");
+  if (live >= 0) return live;
+  const next = games.findIndex((entry) => entry.game.state === "scheduled");
+  return next >= 0 ? next : games.length - 1;
 }
 
 function PlayerCard({
@@ -142,11 +244,14 @@ function PlayerCard({
   status,
   projection,
   perGame,
+  availability,
   advice,
   probable,
   side,
   bench,
 }: {
+  /** His usual chance of playing a game, for the game panel. */
+  availability: number | null;
   entry: MatchupSlot | undefined;
   /** The other manager has probably locked this score (Sleeper does not say). */
   probable: boolean;
@@ -159,6 +264,7 @@ function PlayerCard({
   side: "left" | "right";
   bench: boolean;
 }) {
+  const [picked, setPicked] = useState<number | null>(null);
   if (!entry?.player) {
     return (
       <div className={`mx-card mx-${side} mx-empty`}>
@@ -168,6 +274,8 @@ function PlayerCard({
   }
   const games = status?.games ?? [];
   const next = status?.nextGame ?? null;
+  const selected = picked !== null && picked < games.length ? picked : defaultGame(games);
+  const upcoming = games.filter((game) => game.game.state === "scheduled");
   const benchPoints = bench ? games.reduce<number | null>((best, game) => (game.line ? Math.max(best ?? 0, game.line.points) : best), null) : null;
   const shown = bench ? benchPoints : entry.points;
   const injury = injuryKind(entry.player.injuryStatus);
@@ -232,11 +340,32 @@ function PlayerCard({
         </div>
       )}
       {games.length > 0 && (
-        <ol className="mx-games" aria-label="Games this week">
-          {games.map((game, index) => (
-            <GameChip key={game.game.id} entry={game} counted={!bench && status?.counted === index} />
-          ))}
-        </ol>
+        <>
+          <ol className="mx-games" aria-label="Games this week">
+            {games.map((game, index) => (
+              <GameChip
+                key={game.game.id}
+                entry={game}
+                counted={!bench && status?.counted === index}
+                selected={index === selected}
+                onSelect={() => setPicked(index)}
+              />
+            ))}
+          </ol>
+          {games[selected] && (
+            <GamePanel
+              entry={games[selected]!}
+              team={entry.player.team}
+              counted={!bench && status?.counted === selected}
+              projected={perGame}
+              chance={(() => {
+                const position = upcoming.indexOf(games[selected]!);
+                if (position < 0 || availability === null) return null;
+                return gameChances(availability, upcoming.length, injury)[position] ?? null;
+              })()}
+            />
+          )}
+        </>
       )}
       {advice && (
         <p className={`mx-advice ${advice.lock ? "mx-advice-lock" : "mx-advice-wait"}`}>
@@ -399,6 +528,9 @@ export function MatchupDetail({ snapshot, model, matchup, myRosterId, onBack, on
   const perGameOf = (entry: MatchupSlot | undefined) =>
     entry?.player && model ? (model.players.get(entry.player.id)?.projected ?? null) : null;
 
+  const availabilityOf = (entry: MatchupSlot | undefined) =>
+    entry?.player && model ? (model.players.get(entry.player.id)?.availability ?? null) : null;
+
   const rows = (pick: (side: MatchupSide) => MatchupSlot[]) => {
     const a = pick(left);
     const b = right ? pick(right) : [];
@@ -538,6 +670,7 @@ export function MatchupDetail({ snapshot, model, matchup, myRosterId, onBack, on
                         status={leftStatus}
                         projection={group.bench ? null : (forecast?.slotProjections[0][row.index] ?? null)}
                         perGame={perGameOf(row.left)}
+                        availability={availabilityOf(row.left)}
                         advice={group.bench ? null : adviceFor(0, row.left, leftStatus)}
                         probable={!group.bench && (probable[0]?.[row.index] ?? false)}
                         side="left"
@@ -551,6 +684,7 @@ export function MatchupDetail({ snapshot, model, matchup, myRosterId, onBack, on
                         status={rightStatus}
                         projection={group.bench ? null : (forecast?.slotProjections[1][row.index] ?? null)}
                         perGame={perGameOf(row.right)}
+                        availability={availabilityOf(row.right)}
                         advice={group.bench ? null : adviceFor(1, row.right, rightStatus)}
                         probable={!group.bench && (probable[1]?.[row.index] ?? false)}
                         side="right"

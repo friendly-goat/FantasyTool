@@ -333,6 +333,11 @@ the week 4,000 times: settled scores stay, everyone else plays his remaining
 games, and each manager locks by the same rule. Starters stay in their slots;
 bench swaps are not modelled. These are display only and feed nothing else.
 
+Each game in a card's strip can be selected (his live game, else his next
+game, is open to start). A played or live game shows the score, the clock,
+his box score line and his fantasy points; a game to come shows his projected
+points and, if he might miss it, his chance of playing.
+
 The NBA schedule comes from the stats source (`fetchSchedule` on the
 `StatsProvider`), cached for 5 minutes (`SCHEDULE_CACHE_MINUTES`). While a
 matchup is open, box scores are kept within 15 minutes

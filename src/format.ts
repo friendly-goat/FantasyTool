@@ -1,3 +1,5 @@
+import type { StatLine } from "../shared/types.ts";
+
 // Fantasy points show two decimals, as Sleeper does. All calculations keep
 // full precision; rounding happens only here, when a number is displayed.
 const pointsFormat = new Intl.NumberFormat("en-US", {
@@ -87,4 +89,25 @@ export function formatWeekRange(start: string, end: string): string {
   const first = formatGameDate(start);
   const last = formatGameDate(end);
   return first.slice(0, 3) === last.slice(0, 3) ? `${first}–${last.slice(4)}` : `${first}–${last}`;
+}
+
+/**
+ * A box score in one line, as Sleeper shows it: "6 PTS, 3 AST, 3/4 FG, 0/1 3PM, 1 PF".
+ * Counting stats appear only when not zero; shooting only when attempted.
+ */
+export function formatStatLine(stats: StatLine, minutes?: number): string {
+  const parts: string[] = [];
+  if (minutes !== undefined && minutes > 0) parts.push(`${Math.round(minutes)} MIN`);
+  const count = (value: number, label: string) => value > 0 && parts.push(`${value} ${label}`);
+  count(stats.pts, "PTS");
+  count(stats.reb, "REB");
+  count(stats.ast, "AST");
+  count(stats.stl, "STL");
+  count(stats.blk, "BLK");
+  count(stats.tov, "TO");
+  if (stats.fga > 0) parts.push(`${stats.fgm}/${stats.fga} FG`);
+  if (stats.tpa > 0) parts.push(`${stats.tpm}/${stats.tpa} 3PM`);
+  if (stats.fta > 0) parts.push(`${stats.ftm}/${stats.fta} FT`);
+  count(stats.pf, "PF");
+  return parts.join(", ") || "No stats";
 }
