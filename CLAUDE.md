@@ -88,7 +88,9 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   ranked by your weekly gain times that chance. `findTrades` searches in
   layers (swaps, then near-misses grown into packages, up to 3) and goes
   deeper only when nothing is likely; never suggest an offer that is a big
-  loss (F) for the other team.
+  loss (F) for the other team, or one where either side drops a player it
+  receives (`droppedOnArrival`). IR slots come from Sleeper's
+  `settings.reserve_slots`, not `roster_positions`.
 - The owner wants analysis that finds what he would not notice himself, done
   with data in code. No chatbot or LLM inside the app.
 - The user's own team is chosen once per league (`myRosterId` in `src/App.tsx`).

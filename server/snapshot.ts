@@ -252,6 +252,17 @@ export function buildTransactions(
 
 /** Pulls everything about one league and assembles it for the UI. */
 /** Playoff start week and team count, when Sleeper reports both sensibly. */
+/**
+ * Injured reserve slots: Sleeper keeps the count in the league settings
+ * (`reserve_slots`). An "IR" entry among the roster positions counts too, in
+ * case a league lists it there.
+ */
+export function reserveSlots(league: RawLeague): number {
+  const listed = (league.roster_positions ?? []).filter((slot) => slot === "IR").length;
+  const setting = league.settings?.reserve_slots;
+  return typeof setting === "number" && setting >= 0 ? Math.max(setting, listed) : listed;
+}
+
 export function playoffSettings(league: RawLeague): LeagueSnapshot["league"]["playoffs"] {
   const startWeek = league.settings?.playoff_week_start;
   const teams = league.settings?.playoff_teams;
@@ -297,6 +308,7 @@ export async function buildSnapshot(
       status: league.status ?? "unknown",
       totalRosters: league.total_rosters ?? asArray(rosters).length,
       rosterPositions: league.roster_positions ?? [],
+      reserveSlots: reserveSlots(league),
       scoringSettings: league.scoring_settings ?? {},
       playoffs: playoffSettings(league),
     },

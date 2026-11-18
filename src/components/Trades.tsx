@@ -169,14 +169,31 @@ function EffectBar({ change, scale, label }: { change: number; scale: number; la
 }
 
 /** Players who join (green +) and leave (red −) one team in a trade, with each one's player value. */
-/** The players in the trade itself, joining and leaving. */
-function MoveList({ side, model }: { side: TradeSide; model: StrengthModel }) {
-  const value = (player: ModelPlayer) => (
+/**
+ * A player's value above a typical free agent. At or below that level it
+ * reads "free-agent level" rather than 0.00: he is worth no more than the
+ * players anyone can pick up.
+ */
+function PlayerValue({ model, player }: { model: StrengthModel; player: ModelPlayer }) {
+  const value = playerValue(model, player);
+  if (value < 0.005) {
+    return (
+      <span className="quiet" title="Worth no more a week than a typical free agent">
+        Free-agent level
+      </span>
+    );
+  }
+  return (
     <>
-      {formatPoints(playerValue(model, player))}
+      {formatPoints(value)}
       <span className="quiet"> value</span>
     </>
   );
+}
+
+/** The players in the trade itself, joining and leaving. */
+function MoveList({ side, model }: { side: TradeSide; model: StrengthModel }) {
+  const value = (player: ModelPlayer) => <PlayerValue model={model} player={player} />;
   return (
     <PlayerMoves
       moves={[
@@ -192,12 +209,7 @@ function MoveList({ side, model }: { side: TradeSide; model: StrengthModel }) {
  * waiver pickups and drops. None of it is part of the offer.
  */
 function TeamManagement({ side, model, teamName }: { side: TradeSide; model: StrengthModel; teamName: string }) {
-  const value = (player: ModelPlayer) => (
-    <>
-      {formatPoints(playerValue(model, player))}
-      <span className="quiet"> value</span>
-    </>
-  );
+  const value = (player: ModelPlayer) => <PlayerValue model={model} player={player} />;
   const reserve = [
     ...side.toReserve.map((player) => `${player.name} goes on IR while he is out.`),
     ...side.noReserve.map(

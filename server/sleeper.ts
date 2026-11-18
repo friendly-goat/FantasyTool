@@ -94,6 +94,8 @@ export interface RawLeague {
     playoff_week_start?: number;
     /** How many teams make the playoffs. */
     playoff_teams?: number;
+    /** Injured reserve slots. Sleeper keeps these here, not in roster_positions. */
+    reserve_slots?: number;
   } | null;
 }
 

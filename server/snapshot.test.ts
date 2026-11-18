@@ -285,3 +285,13 @@ describe("past weeks (against the mock league)", async () => {
     expect(counts.unclear).toBeGreaterThan(0);
   });
 });
+
+describe("reserveSlots", async () => {
+  const { reserveSlots } = await import("./snapshot.ts");
+  it("reads Sleeper's reserve_slots setting, and an IR roster position if a league lists one", () => {
+    expect(reserveSlots({ roster_positions: ["PG", "BN"], settings: { reserve_slots: 1 } })).toBe(1);
+    expect(reserveSlots({ roster_positions: ["PG", "BN", "IR", "IR"] })).toBe(2);
+    expect(reserveSlots({ roster_positions: ["PG", "BN"] })).toBe(0);
+    expect(reserveSlots({ roster_positions: ["PG", "IR"], settings: { reserve_slots: 0 } })).toBe(1);
+  });
+});

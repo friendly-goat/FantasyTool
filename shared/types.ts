@@ -94,7 +94,10 @@ export interface LeagueSnapshot {
     seasonStartDate: string | null;
     status: string;
     totalRosters: number;
+    /** Starting and bench slots, as Sleeper lists them (no IR). */
     rosterPositions: string[];
+    /** Injured reserve slots. */
+    reserveSlots: number;
     scoringSettings: Record<string, number>;
     /** Playoff format from the league settings, or null when Sleeper does not say. */
     playoffs: { startWeek: number; teams: number } | null;

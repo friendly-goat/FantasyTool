@@ -27,7 +27,8 @@ const FIRST = ["Marcus", "Devon", "Elias", "Jalen", "Theo", "Andre", "Kofi", "Ma
 const LAST = ["Whitfield", "Okafor", "Lindqvist", "Brooks", "Castellano", "Ndiaye", "Harlow", "Vance", "Petrov", "Mbeki", "Sorensen", "Calloway", "Reyes"];
 const NBA_TEAMS = ["ATL", "BOS", "CHI", "DAL", "DEN", "GSW", "LAL", "MIA", "MIL", "NYK", "OKC", "PHX"];
 const POSITIONS = [["PG"], ["SG"], ["PG", "SG"], ["SF"], ["PF"], ["SF", "PF"], ["C"], ["PF", "C"]];
-const ROSTER_POSITIONS = ["PG", "SG", "G", "SF", "PF", "F", "C", "UTIL", "UTIL", "BN", "BN", "BN", "BN", "IR"];
+// As Sleeper sends them: starting and bench slots only; IR slots are in settings.reserve_slots.
+const ROSTER_POSITIONS = ["PG", "SG", "G", "SF", "PF", "F", "C", "UTIL", "UTIL", "BN", "BN", "BN", "BN"];
 const ROSTER_SIZE = 13;
 
 /** Deterministic pseudo-random numbers, so mock data is the same every run. */
@@ -155,7 +156,7 @@ function build() {
       pts: 1, reb: 1.2, ast: 1.5, stl: 2, blk: 3, to: -1, dd: 3, td: 5,
       bonus_pt_40p: 5, bonus_pt_50p: 10, bonus_reb_20p: 10, bonus_ast_15p: 5,
     },
-    settings: { playoff_week_start: 22, playoff_teams: 6 },
+    settings: { playoff_week_start: 22, playoff_teams: 6, reserve_slots: 1 },
   };
 
   // A completed snake draft of each roster's players. It uses its own random

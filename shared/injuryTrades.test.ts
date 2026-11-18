@@ -9,6 +9,7 @@ import { buildModel, fillRoster, leagueStrength, type ModelPlayer, projectedWeek
 import {
   acceptance,
   chanceFrom,
+  droppedOnArrival,
   evaluateTrade,
   findTrades,
   isInjuredTarget,
@@ -39,6 +40,12 @@ describe("injuries, IR and waiver pickups (against the mock league)", async () =
     snapshot.teams.find((team) => rosterPlayers(team).some((ref) => ref.id === player.id))!;
   const ids = (rosterId: number) =>
     rosterPlayers(snapshot.teams.find((team) => team.rosterId === rosterId)!).map((player) => player.id);
+
+  it("takes IR slots from the league settings, as Sleeper sends them", () => {
+    expect(snapshot.league.rosterPositions).not.toContain("IR");
+    expect(snapshot.league.reserveSlots).toBe(1);
+    expect(model.rosterLimits).toEqual({ active: snapshot.league.rosterPositions.length, reserve: 1 });
+  });
 
   it("counts an injured player for the weeks he is back, and keeps everyone else as they were", () => {
     const reevaluated = named(/re-evaluated/);
@@ -171,10 +178,14 @@ describe("injuries, IR and waiver pickups (against the mock league)", async () =
   it("never lists two versions of the same offer (same team, same players back, same main piece)", () => {
     for (const { rosterId } of strengths.slice(0, 3)) {
       for (const options of [{}, { getInjured: true }]) {
-        const keys = findTrades(model, snapshot, rosterId, situations, options).ideas.map((idea) =>
-          similarityKey(idea.offer, idea.result),
-        );
+        const { ideas } = findTrades(model, snapshot, rosterId, situations, options);
+        const keys = ideas.map((idea) => similarityKey(idea.offer, idea.result));
         expect(new Set(keys).size).toBe(keys.length);
+        // Nobody is sent a player he would drop as soon as he arrives.
+        for (const idea of ideas) {
+          expect(droppedOnArrival(idea.result.a)).toBe(false);
+          expect(droppedOnArrival(idea.result.b)).toBe(false);
+        }
       }
     }
   }, 30_000);

@@ -594,6 +594,11 @@ function reasonsFor(
   return reasons.slice(0, 5);
 }
 
+/** The side drops a player it receives in the trade, straight away or once someone is back from IR. */
+export function droppedOnArrival(side: TradeSide): boolean {
+  return side.gets.some((player) => side.drops.includes(player) || side.leaving.some((entry) => entry.player === player));
+}
+
 /**
  * Two offers with the same key are versions of one idea: the same partner,
  * the same players received, and the same main piece sent (the player you
@@ -856,9 +861,10 @@ export function findTrades(
   }
 
   // ---- Deeper layers: grow the most promising near-misses ----
+  // A sweetener must be worth a roster spot to them (more than a typical free agent), or they would just drop him.
   const sweeteners = (gives: ModelPlayer[]) =>
     myPlayers
-      .filter((player) => player.games > 0 && !player.irEligible && !gives.includes(player))
+      .filter((player) => player.games > 0 && !player.irEligible && !gives.includes(player) && playerValue(model, player) > 0)
       .sort((a, b) => a.expected - b.expected)
       .slice(0, SWEETENERS);
   const grow = (depth: number) => {
@@ -927,6 +933,9 @@ export function findTrades(
       .map(measure)
       // Worth it for you, and not a big loss for them: an offer they would see as robbery is no idea at any chance.
       .filter(({ result }) => gain(result.a) >= minGain && result.b.grade >= BIG_LOSS)
+      // A player either side would drop as soon as he arrives is not really part of the offer:
+      // the same trade without him is the idea (or it does not work).
+      .filter(({ result }) => !droppedOnArrival(result.a) && !droppedOnArrival(result.b))
       .sort(
         (a, b) =>
           order.indexOf(a.likelihood) - order.indexOf(b.likelihood) ||

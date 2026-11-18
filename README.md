@@ -304,6 +304,10 @@ The model's imaginary weeks stand for the real weeks left in the regular
 season, in turn, so an injured player plays none of the weeks he is out and
 his usual share after: his weekly value is the average over the weeks left.
 
+IR slots come from the league settings (Sleeper's `reserve_slots`; Sleeper
+does not list IR among the roster positions). `npm run check:sleeper` prints
+the count it found.
+
 Every roster is run as its manager would: a player marked out goes on IR
 (most out first, one per IR slot) and takes no active spot; open spots are
 filled with the free agent who helps most; too many active players means

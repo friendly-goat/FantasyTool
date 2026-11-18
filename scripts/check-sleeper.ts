@@ -43,6 +43,7 @@ async function main() {
   const snapshot = await buildSnapshot(leagueId, fetchFromSleeper, players);
   console.log(`\nLeague: ${snapshot.league.name} (${snapshot.league.season}), week ${snapshot.week}`);
   console.log("Lineup slots:", snapshot.league.rosterPositions.join(", "));
+  console.log("IR slots:", snapshot.league.reserveSlots);
   console.log("Scoring settings:", snapshot.league.scoringSettings);
   console.table(
     snapshot.teams.map((team) => ({

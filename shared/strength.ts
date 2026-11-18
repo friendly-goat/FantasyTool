@@ -412,13 +412,14 @@ export function buildModel(
     .sort((a, b) => b.expected - a.expected)
     .map((player) => player.id);
 
-  const positions = snapshot.league.rosterPositions;
-  const reserve = positions.filter((slot) => slot === "IR").length;
+  // Active spots are the starting and bench slots; IR slots come from the league settings.
+  const positions = snapshot.league.rosterPositions.filter((slot) => slot !== "IR");
+  const reserve = snapshot.league.reserveSlots ?? 0;
   const model: StrengthModel = {
     slots, slotOrder, weeks, players, freeAgentIds, replacementProjection: 0, idealProjection: 0,
     replacementWeekly: 0,
     calendar,
-    rosterLimits: { active: positions.length > 0 ? positions.length - reserve : slots.length, reserve },
+    rosterLimits: { active: positions.length > 0 ? positions.length : slots.length, reserve },
     extra: new Map(),
   };
   const pickups = freeAgentIds.slice(0, Math.max(1, snapshot.teams.length));
