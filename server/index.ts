@@ -3,6 +3,16 @@ import path from "node:path";
 import express from "express";
 import type { AppConfig, LeagueSnapshot, WeekData } from "../shared/types.ts";
 import { nbaTeam } from "../shared/nbaTeams.ts";
+import {
+  authFromEnv,
+  clearedCookie,
+  createAttemptLimiter,
+  createSessionToken,
+  requireRole,
+  roleForPassword,
+  roleOf,
+  sessionCookie,
+} from "./auth.ts";
 import { Cache } from "./cache.ts";
 import { MemoryStorage, storageFromEnv } from "./storage.ts";
 import { createLogoSource } from "./logos.ts";
@@ -57,7 +67,61 @@ const stats = new StatsService(statsProvider, { storage: mock ? null : storage, 
 const getLogo = createLogoSource(new Cache({ storage }));
 
 const app = express();
+// On Heroku requests arrive through a proxy; this makes req.ip and secure
+// cookies work.
+app.set("trust proxy", 1);
 app.use(express.json({ limit: "10kb" }));
+
+// Sign-in. Off locally (no ADMIN_PASSWORD); required in production, so the
+// hosted app is never open to anyone with the link.
+const auth = authFromEnv(process.env);
+const production = process.env.NODE_ENV === "production";
+if (production && !auth) {
+  console.error("[auth] ADMIN_PASSWORD must be set in production. Set it with: heroku config:set ADMIN_PASSWORD=...");
+  process.exit(1);
+}
+const allowAttempt = createAttemptLimiter();
+
+app.get("/api/session", (req, res) => {
+  res.json({ authRequired: auth !== null, role: roleOf(auth, req) });
+});
+
+app.post("/api/session", (req, res) => {
+  if (!auth) {
+    res.json({ role: "admin" });
+    return;
+  }
+  if (!allowAttempt(req.ip ?? "unknown")) {
+    res.status(429).json({ error: "Too many tries. Wait 15 minutes and try again." });
+    return;
+  }
+  const password = typeof req.body?.password === "string" ? req.body.password : "";
+  const role = roleForPassword(auth, password);
+  if (!role) {
+    res.status(401).json({ error: "That password is not right." });
+    return;
+  }
+  res.setHeader("Set-Cookie", sessionCookie(createSessionToken(role, auth.secret), production));
+  res.json({ role });
+});
+
+app.delete("/api/session", (_req, res) => {
+  res.setHeader("Set-Cookie", clearedCookie);
+  res.json({ role: null });
+});
+
+// Everything else under /api needs a sign-in.
+app.use("/api", requireRole(auth));
+
+// With sign-in on and a league set, the app serves only that league, so
+// nobody can use it (and its stats key) for other leagues.
+const onlyLeague = auth ? process.env.SLEEPER_LEAGUE_ID?.trim() || null : null;
+if (onlyLeague) {
+  app.param("leagueId", (_req, res, next, id: string) => {
+    if (id.trim() === onlyLeague) next();
+    else res.status(404).json({ error: "This app only serves one league." });
+  });
+}
 
 // Lock marks are your own corrections, so they are kept even in mock mode
 // (in memory there, so sample data never mixes with your league's).
@@ -96,6 +160,10 @@ app.get("/api/config", (_req, res) => {
 });
 
 app.get("/api/user/:username/leagues", async (req, res) => {
+  if (onlyLeague) {
+    res.status(404).json({ error: "This app only serves one league." });
+    return;
+  }
   try {
     const username = req.params.username.trim();
     const result = await cache.get(`user-${username.toLowerCase()}`, leagueTtl, () =>
@@ -212,9 +280,9 @@ app.get("/api/league/:leagueId/locks", async (req, res) => {
   }
 });
 
-app.put("/api/league/:leagueId/locks", async (req, res) => {
+app.put("/api/league/:leagueId/locks", requireRole(auth, "admin"), async (req, res) => {
   try {
-    const leagueId = req.params.leagueId.trim();
+    const leagueId = String(req.params.leagueId ?? "").trim();
     const body = (req.body ?? {}) as { rosterId?: unknown; playerId?: unknown; locked?: unknown };
     const rosterId = Number(body.rosterId);
     const playerId = typeof body.playerId === "string" ? body.playerId : "";

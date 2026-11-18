@@ -11,13 +11,44 @@ import type {
 
 // All data comes from the local backend (server/), never from Sleeper directly.
 
+/** Sent when the server says the sign-in is missing or has run out; App shows the sign-in screen. */
+export const SIGNED_OUT_EVENT = "fantasytool:signed-out";
+
 async function getJson<T>(url: string): Promise<T> {
   const response = await fetch(url);
   const body = (await response.json().catch(() => null)) as { error?: string } | null;
+  if (response.status === 401) window.dispatchEvent(new Event(SIGNED_OUT_EVENT));
   if (!response.ok) {
     throw new Error(body?.error ?? `Request failed with status ${response.status}.`);
   }
   return body as T;
+}
+
+export type Role = "admin" | "viewer";
+
+export interface Session {
+  /** False when the server runs without passwords (local development). */
+  authRequired: boolean;
+  role: Role | null;
+}
+
+export function getSession(): Promise<Session> {
+  return getJson("/api/session");
+}
+
+export async function signIn(password: string): Promise<Role> {
+  const response = await fetch("/api/session", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password }),
+  });
+  const body = (await response.json().catch(() => null)) as { role?: Role; error?: string } | null;
+  if (!response.ok || !body?.role) throw new Error(body?.error ?? "Signing in failed.");
+  return body.role;
+}
+
+export async function signOut(): Promise<void> {
+  await fetch("/api/session", { method: "DELETE" });
 }
 
 export function getConfig(): Promise<AppConfig> {
@@ -57,6 +88,7 @@ export async function setLockMark(
     body: JSON.stringify({ rosterId, playerId, locked }),
   });
   const body = (await response.json().catch(() => null)) as (LockMarks & { error?: string }) | null;
+  if (response.status === 401) window.dispatchEvent(new Event(SIGNED_OUT_EVENT));
   if (!response.ok || !body) throw new Error(body?.error ?? `Saving the mark failed (${response.status}).`);
   return body;
 }

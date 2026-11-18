@@ -10,17 +10,22 @@
 import { readdir } from "node:fs/promises";
 import { FileStorage, createPostgresStorage } from "../server/storage.ts";
 
+// A DATABASE_URL given on the command line (such as Heroku's) wins over the
+// one in .env, so the copy never lands in the wrong database by accident.
+const fromCommandLine = process.env.DATABASE_URL?.trim();
 try {
   process.loadEnvFile(".env");
 } catch {
-  // DATABASE_URL may come from the command line instead.
+  // No .env: the command line has to give DATABASE_URL.
 }
 
 const DIR = ".cache";
-const url = process.env.DATABASE_URL?.trim();
+const url = fromCommandLine || process.env.DATABASE_URL?.trim();
 
 async function main() {
   if (!url) throw new Error("Set DATABASE_URL to the database to copy into.");
+  const target = url.replace(/\/\/[^@]*@/, "//…@");
+  console.log(`Copying ${DIR}/ into ${target}`);
   const files = new FileStorage(DIR);
   const database = createPostgresStorage(url);
   try {

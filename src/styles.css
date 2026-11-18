@@ -2902,3 +2902,43 @@ th[aria-sort] .sort-button {
   align-items: center;
   gap: 0.35rem;
 }
+
+/* ---- Sign-in ---- */
+
+.sign-in {
+  display: grid;
+  gap: 0.9rem;
+  max-width: 24rem;
+  margin: 4rem auto 0;
+  padding: 1.5rem;
+}
+
+.sign-in-title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 800;
+}
+
+.sign-in p {
+  margin: 0;
+}
+
+.sign-in-field {
+  display: grid;
+  gap: 0.35rem;
+  font-weight: 600;
+}
+
+.sign-in-field input {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--field-line);
+  border-radius: var(--radius-small);
+  background: var(--surface-raised);
+  color: var(--text);
+  font: inherit;
+}
+
+.sign-in-field input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

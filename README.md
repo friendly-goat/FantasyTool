@@ -282,6 +282,63 @@ interface (`server/storage.ts`):
 season again. Storage tests also run against Postgres when
 `TEST_DATABASE_URL` is set.
 
+## Sign-in and roles
+
+The hosted app asks for a password. There are two:
+
+- `ADMIN_PASSWORD`: everything, including marking locks.
+- `VIEWER_PASSWORD`: for league mates. Everything except marking locks; the
+  lock buttons are not shown.
+
+A sign-in sets a signed cookie (`SESSION_SECRET`) that lasts 30 days. Ten
+wrong tries from one address within 15 minutes are refused. With sign-in on
+and `SLEEPER_LEAGUE_ID` set, the app serves only that league. Locally, with
+no `ADMIN_PASSWORD`, there is no sign-in and you are admin. In production
+(`NODE_ENV=production`, which Heroku sets) the server will not start without
+`ADMIN_PASSWORD`.
+
+## Deploying to Heroku
+
+The app runs on one Eco dyno ($5 a month for the account's pool of dyno
+hours; it sleeps after 30 minutes without visits and wakes on the next one)
+with a Heroku Postgres Essential-0 database ($5 a month). Heroku builds with
+`npm run build` and starts the `Procfile` (`npm start`). Run these from the
+project folder, signed in with `heroku login`:
+
+```bash
+# 1. Create the app (the name must be unique on Heroku; it becomes the web address).
+heroku create fantasytool-yourname
+
+# 2. Add the database. It takes a minute; `heroku pg:info` shows "Available" when ready.
+heroku addons:create heroku-postgresql:essential-0
+heroku pg:info
+
+# 3. Set the secrets. Pick your own passwords; the stats key is read from .env.
+heroku config:set \
+  ADMIN_PASSWORD='your-admin-password' \
+  VIEWER_PASSWORD='password-for-league-mates' \
+  SESSION_SECRET="$(openssl rand -hex 32)" \
+  SLEEPER_LEAGUE_ID=1416212537531211776 \
+  BALLDONTLIE_API_KEY="$(grep '^BALLDONTLIE_API_KEY=' .env | cut -d= -f2-)"
+
+# 4. Copy your saved data into Heroku's database, so the app starts full.
+DATABASE_URL="$(heroku config:get DATABASE_URL)" npm run db:import
+
+# 5. Deploy. From a branch other than main, push it to Heroku's main.
+git push heroku main
+#   or, from the database-and-heroku branch:
+git push heroku database-and-heroku:main
+
+# 6. Run it on an Eco dyno and open it.
+heroku ps:type web=eco
+heroku ps
+heroku open
+```
+
+Later deploys are step 5 again. `heroku logs --tail` shows the server's log,
+`heroku config` lists the settings, and `heroku config:set NAME=value`
+changes one (the app restarts).
+
 ## Commands
 
 | Command | What it does |
@@ -297,7 +354,8 @@ season again. Storage tests also run against Postgres when
 | `npm run check:stats -- <league_id> --schedule` | Prints this week's NBA schedule from the stats source |
 | `npm run db:import` | Copies `.cache/` into the database at `DATABASE_URL` |
 | `npm run check:logos` | Downloads every team logo and writes a preview page |
-| `npm start` | Builds the React app and serves everything from :8787 |
+| `npm run serve` | Builds the React app and serves everything from :8787 |
+| `npm start` | Serves the built app (what Heroku runs after building) |
 
 ## Live matchup
 

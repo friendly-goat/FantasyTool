@@ -10,8 +10,13 @@ import {
   loadSavedLeagueId,
   saveLeagueId,
   saveMyRosterId,
+  getSession,
+  type Session,
+  SIGNED_OUT_EVENT,
+  signOut,
 } from "./api.ts";
 import { Activity } from "./components/Activity.tsx";
+import { SignIn } from "./components/SignIn.tsx";
 import { Draft } from "./components/Draft.tsx";
 import { LeaguePicker } from "./components/LeaguePicker.tsx";
 import { Matchups } from "./components/Matchups.tsx";
@@ -50,8 +55,21 @@ export function App() {
   const [selectedRosterId, setSelectedRosterId] = useState<number | null>(null);
   const [openPlayer, setOpenPlayer] = useState<PlayerRef | null>(null);
   const { theme, toggleTheme } = useTheme();
+  const [session, setSession] = useState<Session | null>(null);
+
+  // Who is signed in comes first: without a sign-in the server answers nothing else.
+  useEffect(() => {
+    getSession()
+      .then(setSession)
+      .catch(() => setError("The server is not answering. Start it with npm run dev and reload."));
+    const signedOut = () => setSession((current) => (current ? { ...current, role: null } : current));
+    window.addEventListener(SIGNED_OUT_EVENT, signedOut);
+    return () => window.removeEventListener(SIGNED_OUT_EVENT, signedOut);
+  }, []);
+  const signedIn = !!session && (!session.authRequired || session.role !== null);
 
   useEffect(() => {
+    if (!signedIn) return;
     getConfig()
       .then((loaded) => {
         setConfig(loaded);
@@ -60,7 +78,7 @@ export function App() {
       .catch(() =>
         setError("The local server is not answering. Start it with npm run dev and reload."),
       );
-  }, []);
+  }, [signedIn]);
 
   const load = useCallback(async (id: string, refresh: boolean) => {
     setLoading(true);
@@ -185,6 +203,10 @@ export function App() {
   }
 
 
+  if (session && !signedIn) {
+    return <SignIn onSignedIn={(role) => setSession({ authRequired: true, role })} />;
+  }
+
   if (!config) {
     return <main className="page">{error ? <p className="notice notice-error">{error}</p> : <p className="quiet">Loading…</p>}</main>;
   }
@@ -233,6 +255,18 @@ export function App() {
           <button type="button" className="button button-plain" onClick={toggleTheme}>
             {theme === "dark" ? "Light mode" : "Dark mode"}
           </button>
+          {session?.authRequired && (
+            <button
+              type="button"
+              className="button button-plain"
+              title={session.role === "admin" ? "Signed in as admin" : "Signed in as a viewer"}
+              onClick={() => {
+                void signOut().then(() => setSession({ authRequired: true, role: null }));
+              }}
+            >
+              Sign out{session.role === "admin" ? " (admin)" : ""}
+            </button>
+          )}
         </div>
       </header>
 
@@ -324,6 +358,7 @@ export function App() {
             <Matchups
               snapshot={snapshot}
               model={model}
+              canMarkLocks={session?.role === "admin" || session?.authRequired === false}
               myRosterId={myRosterId}
               openMatchupId={openMatchupId}
               onOpenMatchup={setOpenMatchupId}

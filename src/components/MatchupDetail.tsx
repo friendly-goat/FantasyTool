@@ -46,6 +46,7 @@ import { TeamLogo } from "./TeamTag.tsx";
 interface Props {
   snapshot: LeagueSnapshot;
   model: StrengthModel | null;
+  canMarkLocks: boolean;
   matchup: Matchup;
   myRosterId: number | null;
   onBack: () => void;
@@ -527,7 +528,7 @@ function TeamHead({
 }
 
 /** Both lineups of one matchup, slot by slot, with where every starter stands this week. */
-export function MatchupDetail({ snapshot, model, matchup, myRosterId, onBack, onOpenTeam }: Props) {
+export function MatchupDetail({ snapshot, model, canMarkLocks, matchup, myRosterId, onBack, onOpenTeam }: Props) {
   const { week, marks, setMarks, error } = useWeek(snapshot.league.id);
   const markFor = (rosterId: number, playerId: string | undefined) =>
     playerId ? marks.find((mark) => mark.rosterId === rosterId && mark.playerId === playerId) : undefined;
@@ -631,7 +632,7 @@ export function MatchupDetail({ snapshot, model, matchup, myRosterId, onBack, on
   };
   const onMarkFor = (s: number, entry: MatchupSlot | undefined) => {
     const side = sides[s];
-    if (!side || !entry?.player) return null;
+    if (!canMarkLocks || !side || !entry?.player) return null;
     const playerId = entry.player.id;
     return async (locked: boolean | null) => {
       const result = await setLockMark(snapshot.league.id, side.rosterId, playerId, locked);
@@ -724,8 +725,8 @@ export function MatchupDetail({ snapshot, model, matchup, myRosterId, onBack, on
               <dd>
                 For the other team: latest-game scores that beat what waiting is expected to bring, so a manager would
                 usually have locked them. It becomes certain when the player's next game starts: if the score stays, it
-                was locked. Your own locks you know, so your side never shows this. Either way, "It is locked" or "Not
-                locked" on a card saves your word for it; a mark stops applying if the player's score changes.
+                was locked. Your own locks you know, so your side never shows this. The admin can mark a score locked or
+                not locked to correct this; a mark stops applying if the player's score changes.
               </dd>
             </div>
             <div>

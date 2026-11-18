@@ -35,6 +35,11 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   when `DATABASE_URL` is set, as on Heroku whose disk is wiped on restart;
   files in `.cache/` otherwise; memory in mock mode and tests). Never write
   files directly for saved data.
+- The hosted app (Heroku) needs a sign-in (`server/auth.ts`): admin and
+  viewer passwords, a signed cookie, and admin-only routes for anything that
+  changes saved data (`requireRole(auth, "admin")`). Viewers never see controls
+  that change data. Secrets live in Heroku config vars or `.env`, never in the
+  repo.
 - Respect Sleeper's limits: full player list at most once a day, and keep a
   league refresh to a handful of requests.
 - Sleeper's NBA responses are not formally documented. Treat every raw field as

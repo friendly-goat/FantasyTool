@@ -7,13 +7,15 @@ import { MatchupDetail } from "./MatchupDetail.tsx";
 interface Props {
   snapshot: LeagueSnapshot;
   model: StrengthModel | null;
+  /** Only the admin may mark locks; viewers see the results without the buttons. */
+  canMarkLocks: boolean;
   myRosterId: number | null;
   openMatchupId: number | null;
   onOpenMatchup: (matchupId: number | null) => void;
   onOpenTeam: (rosterId: number) => void;
 }
 
-export function Matchups({ snapshot, model, myRosterId, openMatchupId, onOpenMatchup, onOpenTeam }: Props) {
+export function Matchups({ snapshot, model, canMarkLocks, myRosterId, openMatchupId, onOpenMatchup, onOpenTeam }: Props) {
   const teams = new Map(snapshot.teams.map((team) => [team.rosterId, team]));
 
   if (snapshot.matchups.length === 0) {
@@ -26,6 +28,7 @@ export function Matchups({ snapshot, model, myRosterId, openMatchupId, onOpenMat
       <MatchupDetail
         snapshot={snapshot}
         model={model}
+        canMarkLocks={canMarkLocks}
         matchup={open}
         myRosterId={myRosterId}
         onBack={() => onOpenMatchup(null)}
