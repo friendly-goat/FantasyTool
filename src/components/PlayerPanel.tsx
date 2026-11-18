@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { returnOutlook } from "../../shared/injury.ts";
 import type { LeagueSnapshot, PlayerDetail, PlayerRef, StatsReport } from "../../shared/types.ts";
 import { getPlayerDetail } from "../api.ts";
+import { closeDialog } from "../closeDialog.ts";
 import { formatAverage, formatDay, formatGameDate, formatPoints, formatSigned } from "../format.ts";
 
 const percent = new Intl.NumberFormat("en-US", { style: "percent", maximumFractionDigits: 0 });
@@ -87,9 +88,14 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
       className="player-panel"
       aria-labelledby="player-panel-name"
       onClose={onClose}
+      onCancel={(event) => {
+        // Escape: close the same way as the button, sliding down on a phone.
+        event.preventDefault();
+        closeDialog(dialog.current);
+      }}
       onClick={(event) => {
         // A click on the dimmed area outside the panel closes it.
-        if (event.target === dialog.current) dialog.current?.close();
+        if (event.target === dialog.current) closeDialog(dialog.current);
       }}
     >
       <div className="panel-body">
@@ -107,7 +113,7 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
             </p>
             <p className="quiet">{fantasyTeam ? `On ${fantasyTeam}` : "Free agent in this league"}</p>
           </div>
-          <button type="button" className="button button-plain" onClick={() => dialog.current?.close()}>
+          <button type="button" className="button button-plain" onClick={() => closeDialog(dialog.current)}>
             Close
           </button>
         </div>

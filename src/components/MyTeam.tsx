@@ -6,6 +6,7 @@ import type { TradeOffer } from "../../shared/trade.ts";
 import type { LeagueSnapshot, PlayerRef, StatsReport, Team } from "../../shared/types.ts";
 import { formatPoints, formatRecord, formatSigned, formatWholeChange, ordinal } from "../format.ts";
 import { Avatar } from "./Avatar.tsx";
+import { ChanceTag } from "./TeamEffect.tsx";
 import { PlayerCell } from "./PlayerCell.tsx";
 import { PositionChip } from "./PositionChip.tsx";
 
@@ -270,10 +271,7 @@ export function MyTeam({ snapshot, stats, model, strengths, team, onChangeTeam, 
                           <td className="num move-chance">
                             {move.chance !== null && move.likelihood ? (
                               <>
-                                {percent.format(move.chance)}{" "}
-                                <span className={`likelihood likelihood-${move.likelihood.replace(" ", "-")}`}>
-                                  {move.likelihood}
-                                </span>
+                                <ChanceTag chance={move.chance} showPercent />
                               </>
                             ) : (
                               <span className="quiet">Yours to make</span>

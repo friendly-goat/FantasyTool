@@ -253,7 +253,11 @@ are accepted, in three bands: likely (50% or more), possible (35 to 50%) and
 long shots. The chance's parts are combined on the log-odds scale, so one bad
 part (say, the trade clearly hurts their team) pulls it down however fair the
 trade looks; the builder shows how many points each part adds or takes away,
-and its one-line verdict uses the same chance. Likely ideas come first; possible ones fill out a short list or
+and its one-line verdict uses the same chance. On screen the chance carries a
+word in seven steps, colored red through yellow to green: Never (under 8%),
+Unlikely (under 22%), Probably not (under 40%), Toss-up (under 55%), Maybe
+(under 70%), Likely (under 88%) and For sure (`chanceWord`; display only, the
+three bands above still sort the ideas). Likely ideas come first; possible ones fill out a short list or
 are shown when nothing is likely; long shots appear only when there is
 nothing better, at most three, with a plain note saying so. Versions of one offer
 (the same team, the same players back and the same main piece sent, with

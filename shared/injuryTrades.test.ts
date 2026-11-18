@@ -8,6 +8,7 @@ import { teamSituations } from "./insight.ts";
 import { buildModel, fillRoster, leagueStrength, type ModelPlayer, projectedWeekly, reserveEligible } from "./strength.ts";
 import {
   acceptance,
+  chanceWord,
   chanceFrom,
   droppedOnArrival,
   evaluateTrade,
@@ -252,5 +253,20 @@ describe("injuries, IR and waiver pickups (against the mock league)", async () =
       const active = filled.ids.filter((id) => !filled.reserve.some((p) => p.id === id));
       expect(active.length).toBeLessThanOrEqual(model.rosterLimits.active);
     }
+  });
+});
+
+describe("chance words", () => {
+  it("names a chance in seven steps, so even odds are a toss-up, not likely", () => {
+    expect(chanceWord(0.03)).toEqual({ word: "Never", step: 0 });
+    expect(chanceWord(0.15).word).toBe("Unlikely");
+    expect(chanceWord(0.3).word).toBe("Probably not");
+    expect(chanceWord(0.51).word).toBe("Toss-up");
+    expect(chanceWord(0.62).word).toBe("Maybe");
+    expect(chanceWord(0.75).word).toBe("Likely");
+    expect(chanceWord(0.95)).toEqual({ word: "For sure", step: 6 });
+    // Steps never go down as the chance rises.
+    const steps = Array.from({ length: 101 }, (_, i) => chanceWord(i / 100).step);
+    expect(steps.every((step, i) => i === 0 || step >= steps[i - 1]!)).toBe(true);
   });
 });

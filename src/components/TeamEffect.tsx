@@ -1,3 +1,4 @@
+import { chanceWord } from "../../shared/trade.ts";
 import type { Team } from "../../shared/types.ts";
 import { formatRecord, ordinal } from "../format.ts";
 
@@ -22,5 +23,18 @@ export function EffectBar({ change, scale, label }: { change: number; scale: num
         style={change >= 0 ? { left: "50%", width: `${width}%` } : { right: "50%", width: `${width}%` }}
       />
     </div>
+  );
+}
+
+const percent = new Intl.NumberFormat("en-US", { style: "percent", maximumFractionDigits: 0 });
+
+/** An acceptance chance with its word, colored from red ("Never") through yellow to green ("For sure"). */
+export function ChanceTag({ chance, showPercent = false }: { chance: number; showPercent?: boolean }) {
+  const { word, step } = chanceWord(chance);
+  return (
+    <>
+      {showPercent && `${percent.format(chance)} `}
+      <span className={`likelihood chance-${step}`}>{word}</span>
+    </>
   );
 }

@@ -5,6 +5,7 @@ import { bestNineLineup, type ModelPlayer, type Pickup, type StrengthModel } fro
 import {
   acceptance,
   evaluateTrade,
+  chanceWord,
   likelihood,
   findTrades,
   playerValue,
@@ -24,7 +25,7 @@ import {
 import type { LeagueSnapshot, Team } from "../../shared/types.ts";
 import { formatPoints, formatRecord, formatSigned, formatWholeChange as whole, ordinal } from "../format.ts";
 import { Avatar } from "./Avatar.tsx";
-import { EffectBar, RecordTag } from "./TeamEffect.tsx";
+import { ChanceTag, EffectBar, RecordTag } from "./TeamEffect.tsx";
 import { PlayerName } from "./PlayerName.tsx";
 import { PlayerCell } from "./PlayerCell.tsx";
 import { PlayerMoves } from "./PlayerMoves.tsx";
@@ -249,9 +250,9 @@ function SideResult({ side, team, scale, model }: { side: TradeSide; team: Team 
         <Avatar url={team?.avatarUrl ?? null} name={team?.teamName ?? "?"} />
         <div>
           <span className="league-option-name">{team?.teamName}</span>
-          <span className="quiet manager">
-            {team?.managerName}
-            {team && `, ${formatRecord(team.wins, team.losses, team.ties)}, ${ordinal(team.rank)}`}
+          <span className="team-meta">
+            <span className="quiet manager">{team?.managerName}</span>
+            {team && <RecordTag team={team} />}
           </span>
         </div>
       </div>
@@ -377,19 +378,26 @@ function verdict(result: TradeResult, chance: number, nameA: string, nameB: stri
   const pct = percent.format(chance);
   const first =
     result.a.grade >= 57 ? `Helps ${nameA}` : result.a.grade <= 43 ? `Costs ${nameA}` : `About even for ${nameA}`;
-  const band = likelihood(chance);
-  if (band === "likely") return `${first}, and ${nameB} would likely accept (${pct}).`;
-  if (band === "possible") return `${first}, and ${nameB} could go either way (${pct}).`;
-  return `${first}, ${result.a.grade >= 57 ? "but" : "and"} ${nameB} would likely turn it down (${pct}).`;
+  const { step } = chanceWord(chance);
+  const but = result.a.grade >= 57 ? "but" : "and";
+  const outcome = [
+    `${but} ${nameB} would almost certainly turn it down`,
+    `${but} ${nameB} would likely turn it down`,
+    `${but} ${nameB} would probably turn it down`,
+    `and ${nameB} could go either way`,
+    `and ${nameB} might accept`,
+    `and ${nameB} would likely accept`,
+    `and ${nameB} would almost certainly accept`,
+  ][step];
+  return `${first}, ${outcome} (${pct}).`;
 }
 
 function ChanceBlock({ chance, name }: { chance: Chance; name: string }) {
-  const band = likelihood(chance.chance);
   return (
     <div className="chance-block">
       <h3 className="my-card-title">Chance {name} accepts</h3>
       <p className="chance-figure">
-        {percent.format(chance.chance)} <span className={`likelihood likelihood-${band.replace(" ", "-")}`}>{band}</span>
+        <ChanceTag chance={chance.chance} showPercent />
       </p>
       <ul className="chance-parts quiet">
         {chance.parts.map((part) => (
@@ -632,10 +640,10 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
               : `No realistic offer for ${found.target ?? "that player"}: every trade found would cost you more than a point a week or be a big loss for the other team, even with packages.`)}
           {found.outlook === "likely" &&
             (found.ideas.filter((idea) => idea.likelihood === "likely").length < 3
-              ? `Only ${found.ideas.filter((idea) => idea.likelihood === "likely").length === 1 ? "one offer is" : "a few offers are"} likely to be accepted.`
+              ? `Only ${found.ideas.filter((idea) => idea.likelihood === "likely").length === 1 ? "one offer has" : "a few offers have"} an even chance or better of being accepted.`
               : null)}
           {found.outlook === "possible" &&
-            "None of these is likely to be accepted, but they stand a fair chance. These are the closest."}
+            "None of these has an even chance of being accepted, but they stand a fair one. These are the closest."}
           {found.outlook === "long-shot" &&
             `There is no realistic offer${found.target ? ` for ${found.target}` : ""} right now. These have the best odds, but all are long shots.`}
         </p>
@@ -675,7 +683,7 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
                   <div>
                     <dt>Chance they accept</dt>
                     <dd>
-                      {percent.format(idea.chance)} <span className={`likelihood likelihood-${idea.likelihood.replace(" ", "-")}`}>{idea.likelihood}</span>
+                      <ChanceTag chance={idea.chance} showPercent />
                     </dd>
                   </div>
                 </dl>
@@ -837,8 +845,8 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
           this only explains them.
         </p>
         <p>
-          Ideas likely to be accepted (50% or better) come first, ranked by the weekly points they add for you
-          multiplied by that chance. Less likely ones are shown only when nothing likely exists, and long shots
+          Ideas with an even chance or better of being accepted (50% and up) come first, ranked by the weekly points they add for you
+          multiplied by that chance. Less likely ones are shown only when none reach even odds, and long shots
           (under 35%) only when there is nothing better. When you name a player, offers that cost you up to a
           point a week are allowed, since that is sometimes the price of a move you want.
           That chance is an estimate, not a measurement. Managers overvalue their own players, so an even trade

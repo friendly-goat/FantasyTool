@@ -550,6 +550,26 @@ export function likelihood(chance: number): Likelihood {
   return chance >= LIKELY ? "likely" : chance >= POSSIBLE ? "possible" : "long shot";
 }
 
+/**
+ * The word shown beside an acceptance chance, in seven steps from "Never" to
+ * "For sure" (step 0 to 6, which the UI colors red through yellow to green).
+ * Display only: the search still sorts ideas with `likelihood` and the chance.
+ */
+export const CHANCE_WORDS: { below: number; word: string }[] = [
+  { below: 0.08, word: "Never" },
+  { below: 0.22, word: "Unlikely" },
+  { below: 0.4, word: "Probably not" },
+  { below: 0.55, word: "Toss-up" },
+  { below: 0.7, word: "Maybe" },
+  { below: 0.88, word: "Likely" },
+  { below: Infinity, word: "For sure" },
+];
+
+export function chanceWord(chance: number): { word: string; step: number } {
+  const step = CHANCE_WORDS.findIndex((band) => chance < band.below);
+  return { word: CHANCE_WORDS[step]!.word, step };
+}
+
 const points = (value: number) => value.toFixed(2);
 
 function reasonsFor(

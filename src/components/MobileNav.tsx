@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useRef } from "react";
+import { closeDialog } from "../closeDialog.ts";
 
 /**
  * Phone navigation, in the way iPhone apps do it: a tab bar along the
@@ -88,7 +89,7 @@ export function MobileNav<View extends string>({
     const element = sheet.current;
     if (!element) return;
     if (open && !element.open) element.showModal();
-    if (!open && element.open) element.close();
+    if (!open && element.open) closeDialog(element);
   }, [open]);
 
   const inMore = more.includes(view);
@@ -137,6 +138,10 @@ export function MobileNav<View extends string>({
         className="sheet"
         aria-label="More"
         onClose={() => onOpenChange(false)}
+        onCancel={(event) => {
+          event.preventDefault();
+          onOpenChange(false);
+        }}
         onClick={(event) => {
           // A tap on the dimmed area above the sheet closes it.
           if (event.target === sheet.current) onOpenChange(false);
