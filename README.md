@@ -617,7 +617,7 @@ The board only moves sideways inside its frame; the page itself scrolls down
 through the rounds. On a wide screen (1100px and up) the columns share the
 width, so all twelve teams fit with no sideways movement and the team names
 stay at the top while you scroll. On a phone the board runs edge to edge with
-compact cards (pick, first name and team, last name, position band), so every
+compact cards (pick, first name and team logo, last name, position band), so every
 round fits down the page and a swipe moves between teams, stopping on a
 column.
 
