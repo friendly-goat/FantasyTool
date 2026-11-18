@@ -261,6 +261,19 @@ start closed; "Open in builder" loads an idea and opens both. When one team
 has fewer players (an empty bench or IR spot), its list is padded with empty
 slots so the two rosters line up row for row.
 
+### Top moves (My team)
+
+`topMoves` in `shared/moves.ts`. The My team tab lists the five moves that
+would raise your team's strength most over the rest of the season: the trades
+from "see the best trades for my team" (only those with at least a fair chance
+of being accepted; long shots are left out) and the best waiver pickups, each
+measured the same way, as the change in strength from the full projection. A
+pickup drops the player your roster would miss least. Pickups compete on
+merit; when none makes the five, the best one takes the last place so the
+waiver wire stays in view. A trade opens in the builder on the Trades tab. The
+search takes a second or two, so it runs after the page has painted and is
+kept until the projections change.
+
 ### Lock-in scoring
 
 This is a lock-in league: each starter counts one game per week. After a

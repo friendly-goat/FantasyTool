@@ -111,3 +111,8 @@ export function formatStatLine(stats: StatLine, minutes?: number): string {
   count(stats.pf, "PF");
   return parts.join(", ") || "No stats";
 }
+
+/** A whole-number change with its sign, as strength changes are shown: "+24", "−3", "0". */
+export function formatWholeChange(value: number): string {
+  return value > 0 ? `+${value}` : value < 0 ? `−${Math.abs(value)}` : "0";
+}

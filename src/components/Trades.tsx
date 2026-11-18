@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { rosterPlayers } from "../../shared/analysis.ts";
 import { deepestSpot, POSITIONS, positionProfile, type TeamSituation, thinnestSpot } from "../../shared/insight.ts";
 import { bestNineLineup, type ModelPlayer, type StrengthModel } from "../../shared/strength.ts";
@@ -12,6 +12,7 @@ import {
   type FinderOptions,
   type FinderResult,
   type TradeIdea,
+  type TradeOffer,
   tradeStory,
   type TradeResult,
   type TradeSide,
@@ -19,7 +20,7 @@ import {
   type TradeStory,
 } from "../../shared/trade.ts";
 import type { LeagueSnapshot, Team } from "../../shared/types.ts";
-import { formatPoints, formatSigned } from "../format.ts";
+import { formatPoints, formatSigned, formatWholeChange as whole } from "../format.ts";
 import { Avatar } from "./Avatar.tsx";
 import { PlayerName } from "./PlayerName.tsx";
 import { PlayerCell } from "./PlayerCell.tsx";
@@ -31,12 +32,13 @@ interface Props {
   model: StrengthModel | null;
   situations: Map<number, TeamSituation> | null;
   myRosterId: number;
+  /** A trade sent here from another tab (top moves on My team), to open in the builder. */
+  incoming?: { offer: TradeOffer; at: number } | null;
 }
 
 type Goal = "best" | "position" | "send" | "get";
 
 const percent = new Intl.NumberFormat("en-US", { style: "percent", maximumFractionDigits: 0 });
-const whole = (value: number) => (value > 0 ? `+${value}` : value < 0 ? `−${Math.abs(value)}` : "0");
 const tone = (grade: number) => (grade >= 57 ? "up" : grade <= 43 ? "down" : "");
 
 function names(players: ModelPlayer[]) {
@@ -319,7 +321,7 @@ function ChanceBlock({ chance, name }: { chance: Chance; name: string }) {
 }
 
 /** Build a trade between two teams and see a grade and strength change for each. */
-export function Trades({ snapshot, model, situations, myRosterId }: Props) {
+export function Trades({ snapshot, model, situations, myRosterId, incoming = null }: Props) {
   const others = snapshot.teams.filter((team) => team.rosterId !== myRosterId);
   const [teamA, setTeamA] = useState(myRosterId);
   const [teamB, setTeamB] = useState(others[0]?.rosterId ?? myRosterId);
@@ -333,6 +335,23 @@ export function Trades({ snapshot, model, situations, myRosterId }: Props) {
   const [getId, setGetId] = useState("");
   // Both sides start closed; opening an idea in the builder opens both.
   const [openSides, setOpenSides] = useState({ a: false, b: false });
+
+  function loadOffer(offer: TradeOffer, behavior: ScrollBehavior) {
+    setTeamA(offer.teamA);
+    setTeamB(offer.teamB);
+    setAGives(new Set(offer.aGives));
+    setBGives(new Set(offer.bGives));
+    setOpenSides({ a: true, b: true });
+    // After the tab is shown and the builder has the trade.
+    requestAnimationFrame(() => document.getElementById("trade-builder")?.scrollIntoView({ behavior, block: "start" }));
+  }
+
+  useEffect(() => {
+    // A trade sent for an earlier choice of your team is not loaded.
+    if (incoming && incoming.offer.teamA === myRosterId) loadOffer(incoming.offer, "auto");
+    // Only a newly sent trade, told apart by `at`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [incoming?.at]);
 
 
   const team = (rosterId: number) => snapshot.teams.find((candidate) => candidate.rosterId === rosterId);
@@ -416,12 +435,7 @@ export function Trades({ snapshot, model, situations, myRosterId }: Props) {
   }
 
   function load(idea: TradeIdea) {
-    setTeamA(idea.offer.teamA);
-    setTeamB(idea.offer.teamB);
-    setAGives(new Set(idea.offer.aGives));
-    setBGives(new Set(idea.offer.bGives));
-    setOpenSides({ a: true, b: true });
-    document.getElementById("trade-builder")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    loadOffer(idea.offer, "smooth");
   }
 
   const a = team(teamA);

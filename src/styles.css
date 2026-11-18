@@ -1885,6 +1885,63 @@ th[aria-sort] .sort-button {
   color: var(--win);
 }
 
+/* Top moves on My team: a trade or a pickup, who comes and goes, and the strength it adds. */
+.moves-table th,
+.moves-table td {
+  vertical-align: top;
+}
+
+.move-kind {
+  white-space: nowrap;
+}
+
+.move-kind .quiet {
+  display: block;
+  margin-top: 0.3rem;
+  font-weight: 400;
+  white-space: normal;
+  max-width: 12rem;
+}
+
+.move-tag {
+  padding: 0.05rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.move-tag-trade {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.move-tag-pickup {
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+.move-players {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.move-strength {
+  display: block;
+  font-size: 1.0625rem;
+  font-weight: 700;
+}
+
+.move-weekly {
+  display: block;
+  white-space: nowrap;
+}
+
+.move-action {
+  text-align: right;
+  white-space: nowrap;
+}
+
 /* Players joining (+) and leaving (−) a team in a trade. */
 .moves {
   list-style: none;
@@ -2658,6 +2715,76 @@ th[aria-sort] .sort-button {
 
   .trade-rosters {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Top moves: each move becomes a small block, the strength gain beside what it is. */
+  .moves-table {
+    min-width: 0;
+  }
+
+  .moves-table thead {
+    display: none;
+  }
+
+  .moves-table tbody {
+    display: block;
+  }
+
+  .moves-table tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      "kind change"
+      "get give"
+      "chance action";
+    gap: 0.75rem 1rem;
+    padding: 0.9rem 1rem;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .moves-table tr:last-child {
+    border-bottom: 0;
+  }
+
+  .moves-table th,
+  .moves-table td {
+    padding: 0;
+    border: 0;
+  }
+
+  .moves-table .move-kind {
+    grid-area: kind;
+  }
+
+  .moves-table .move-change {
+    grid-area: change;
+  }
+
+  .moves-table .move-get {
+    grid-area: get;
+  }
+
+  .moves-table .move-give {
+    grid-area: give;
+  }
+
+  .moves-table.players-table td.move-chance {
+    grid-area: chance;
+    text-align: left;
+    align-self: center;
+  }
+
+  .moves-table .move-action {
+    grid-area: action;
+  }
+
+  .moves-table .move-get::before,
+  .moves-table .move-give::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 0.35rem;
+    font-size: 0.8125rem;
+    color: var(--muted);
   }
 
   .filters label,

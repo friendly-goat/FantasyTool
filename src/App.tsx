@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { teamSituations } from "../shared/insight.ts";
 import { buildModel, leagueStrength } from "../shared/strength.ts";
+import type { TradeOffer } from "../shared/trade.ts";
 import type { AppConfig, LeagueSnapshot, PlayerRef, StatsReport } from "../shared/types.ts";
 import {
   getConfig,
@@ -58,6 +59,8 @@ export function App() {
   /** Sleeper user ID from the league picker, used once to find the user's team. */
   const [pickedUserId, setPickedUserId] = useState<string | null>(null);
   const [openMatchupId, setOpenMatchupId] = useState<number | null>(null);
+  // A trade sent from another tab to the builder; `at` tells a repeat apart.
+  const [builderOffer, setBuilderOffer] = useState<{ offer: TradeOffer; at: number } | null>(null);
   const [selectedRosterId, setSelectedRosterId] = useState<number | null>(null);
   const [openPlayer, setOpenPlayer] = useState<PlayerRef | null>(null);
   const { theme, toggleTheme } = useTheme();
@@ -221,6 +224,11 @@ export function App() {
     setLeagueId(id);
   }
 
+  function openTrade(offer: TradeOffer) {
+    setBuilderOffer({ offer, at: Date.now() });
+    setView("Trades");
+  }
+
   function openMatchup(matchupId: number) {
     setOpenMatchupId(matchupId);
     setView("Matchups");
@@ -362,6 +370,8 @@ export function App() {
               team={myTeam}
               onChangeTeam={() => setChoosingTeam(true)}
               onOpenMatchup={openMatchup}
+              situations={situations}
+              onOpenTrade={openTrade}
             />
           )}
           {view === "Standings" && (
@@ -378,6 +388,7 @@ export function App() {
               model={model}
               situations={situations}
               myRosterId={myTeam.rosterId}
+              incoming={builderOffer}
             />
           </div>
           {view === "Teams" && (

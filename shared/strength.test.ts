@@ -17,7 +17,8 @@ import {
   strengthScore,
   type StrengthModel,
 } from "./strength.ts";
-import { deepestSpot, POSITIONS, positionProfile, teamSituations, thinnestSpot } from "./insight.ts";
+import { topMoves } from "./moves.ts";
+import { deepestSpot, freeAgentPickups, POSITIONS, positionProfile, teamSituations, thinnestSpot } from "./insight.ts";
 import { availabilityOutlook, projectPlayer } from "./projection.ts";
 import {
   acceptance,
@@ -241,6 +242,37 @@ describe("team strength and trades (against the mock league)", async () => {
       expect(ideas.length).toBeLessThanOrEqual(3);
     }
   });
+
+  it("ranks trades and pickups together by strength gain, keeping one pickup in view", () => {
+    let sawPickup = false;
+    for (const { rosterId } of [strengths[0]!, strengths[4]!, strengths[strengths.length - 1]!]) {
+      const started = Date.now();
+      const moves = topMoves(model, snapshot, rosterId, situations);
+      expect(Date.now() - started).toBeLessThan(5000);
+      expect(moves.length).toBeLessThanOrEqual(5);
+      const pickups = freeAgentPickups(model, ids(rosterId));
+      if (pickups.length > 0) expect(moves.some((move) => move.kind === "pickup")).toBe(true);
+      // Ranked by strength, except that a pickup may hold the last place when none earned one.
+      const ranked = moves.filter((move, index) => !(index === moves.length - 1 && move.kind === "pickup"));
+      ranked.forEach((move, index) => {
+        if (index > 0) expect(move.strengthChange).toBeLessThanOrEqual(ranked[index - 1]!.strengthChange);
+      });
+      for (const move of moves) {
+        expect(move.weeklyChange).toBeGreaterThan(0);
+        if (move.kind === "trade") {
+          expect(move.likelihood).not.toBe("long shot");
+          expect(move.idea?.offer.teamA).toBe(rosterId);
+          expect(move.gives.every((player) => ids(rosterId).includes(player.id))).toBe(true);
+        } else {
+          sawPickup = true;
+          expect(model.freeAgentIds).toContain(move.gets[0]!.id);
+          expect(ids(rosterId)).toContain(move.gives[0]!.id);
+          expect(move.chance).toBeNull();
+        }
+      }
+    }
+    expect(sawPickup).toBe(true);
+  }, 30_000);
 
   it("narrows the search to a position, a player to send, or a player to get", () => {
     const mine = strengths[4]!.rosterId;
