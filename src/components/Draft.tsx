@@ -1,8 +1,10 @@
 import { type CSSProperties, useEffect, useMemo, useState } from "react";
 import { draftTrends, type DraftTrend } from "../../shared/draft.ts";
-import type { StrengthModel } from "../../shared/strength.ts";
+import type { ModelPlayer, StrengthModel } from "../../shared/strength.ts";
+import { INJURED_SHARE } from "../../shared/trade.ts";
 import type { DraftBoard, DraftSelection, LeagueSnapshot } from "../../shared/types.ts";
 import { getDraft } from "../api.ts";
+import { formatDay } from "../format.ts";
 import { Avatar } from "./Avatar.tsx";
 import { PlayerButton } from "./PlayerName.tsx";
 import { TeamTag } from "./TeamTag.tsx";
@@ -16,7 +18,7 @@ interface Props {
 
 function ordinal(n: number): string {
   const tens = n % 100;
-  const suffix = tens >= 11 && tens <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] ?? "th";
+  const suffix = tens >= 11 && tens <= 13 ? "th" : (["th", "st", "nd", "rd"][n % 10] ?? "th");
   return `${n}${suffix}`;
 }
 
@@ -30,6 +32,31 @@ export function TrendIcon({ trend }: { trend: "up" | "down" }) {
       <polyline points={arrow} />
     </svg>
   );
+}
+
+/** A medical cross, for a player out long enough to matter (not a game or two). */
+export function InjuryIcon() {
+  return (
+    <svg className="injury-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="3" y="3" width="18" height="18" rx="5" />
+      <path d="M12 7.5v9M7.5 12h9" />
+    </svg>
+  );
+}
+
+/** The model's injured players: out at least INJURED_SHARE of the weeks left, the same line the trade search uses. */
+function injuryOf(model: StrengthModel | null, id: string): ModelPlayer | null {
+  const player = model?.players.get(id);
+  return player && player.outShare >= INJURED_SHARE ? player : null;
+}
+
+function injuryLabel(player: ModelPlayer, status: string | null | undefined): string {
+  const today = new Date().toISOString().slice(0, 10);
+  const what = status ? `Injured (${status})` : "Injured";
+  if (player.outShare >= 0.95) return `${what}, expected to miss the rest of the season.`;
+  return player.returnExpected
+    ? `${what}, predicted back around ${formatDay(player.returnExpected, today)}.`
+    : `${what}, no predicted return date.`;
 }
 
 function trendLabel(pick: DraftSelection, trend: DraftTrend): string {
@@ -48,14 +75,18 @@ function splitName(name: string): [string, string] {
 function DraftCard({
   pick,
   trend,
+  injury,
   pickedBy,
 }: {
   pick: DraftSelection;
   trend: DraftTrend | undefined;
+  injury: ModelPlayer | null;
   pickedBy: string | null;
 }) {
   const positions = pick.player.positions.length > 0 ? pick.player.positions : ["?"];
-  const label = trend?.trend ? trendLabel(pick, trend) : undefined;
+  const trendText = trend?.trend ? trendLabel(pick, trend) : undefined;
+  const injuryText = injury ? injuryLabel(injury, pick.player.injuryStatus) : undefined;
+  const label = [injuryText, trendText].filter(Boolean).join(" ") || undefined;
   const [first, last] = splitName(pick.player.name);
   return (
     <PlayerButton player={pick.player} className="draft-card">
@@ -64,9 +95,18 @@ function DraftCard({
           <span className="draft-pick">
             {pick.round}.{pick.pickInRound}
           </span>
-          {trend?.trend && (
-            <span className="draft-trend" title={label}>
-              <TrendIcon trend={trend.trend} />
+          {(injury || trend?.trend) && (
+            <span className="draft-marks">
+              {injury && (
+                <span className="draft-injury" title={injuryText}>
+                  <InjuryIcon />
+                </span>
+              )}
+              {trend?.trend && (
+                <span className="draft-trend" title={trendText}>
+                  <TrendIcon trend={trend.trend} />
+                </span>
+              )}
             </span>
           )}
         </span>
@@ -131,6 +171,7 @@ export function Draft({ leagueId, snapshot, model, myRosterId }: Props) {
   const rounds = Array.from({ length: board.rounds }, (_, index) => index + 1);
   const ups = [...trends.values()].filter((trend) => trend.trend === "up").length;
   const downs = [...trends.values()].filter((trend) => trend.trend === "down").length;
+  const hurt = board.picks.filter((pick) => injuryOf(model, pick.player.id)).length;
 
   return (
     <section aria-label="Draft board">
@@ -154,11 +195,21 @@ export function Draft({ leagueId, snapshot, model, myRosterId }: Props) {
           {rounds.flatMap((round) =>
             board.slots.map(({ slot, rosterId }) => {
               const pick = cell.get(`${round}-${slot}`);
-              if (!pick) return <div key={`${round}-${slot}`} className="draft-card draft-card-empty" aria-hidden="true" />;
-              const pickedBy = pick.rosterId !== null && rosterId !== null && pick.rosterId !== rosterId
-                ? teamOf(pick.rosterId)?.teamName ?? null
-                : null;
-              return <DraftCard key={`${round}-${slot}`} pick={pick} trend={trends.get(pick.pickNo)} pickedBy={pickedBy} />;
+              if (!pick)
+                return <div key={`${round}-${slot}`} className="draft-card draft-card-empty" aria-hidden="true" />;
+              const pickedBy =
+                pick.rosterId !== null && rosterId !== null && pick.rosterId !== rosterId
+                  ? (teamOf(pick.rosterId)?.teamName ?? null)
+                  : null;
+              return (
+                <DraftCard
+                  key={`${round}-${slot}`}
+                  pick={pick}
+                  trend={trends.get(pick.pickNo)}
+                  injury={injuryOf(model, pick.player.id)}
+                  pickedBy={pickedBy}
+                />
+              );
             }),
           )}
         </div>
@@ -170,10 +221,15 @@ export function Draft({ leagueId, snapshot, model, myRosterId }: Props) {
         <span className="draft-legend-item">
           <TrendIcon trend="down" /> Worth at least a round later now ({downs})
         </span>
+        {model && (
+          <span className="draft-legend-item">
+            <InjuryIcon /> Injured, out more than a game or two ({hurt})
+          </span>
+        )}
       </p>
       <p className="quiet legend">
         {model
-          ? "Marks compare where each player was picked with where his weekly value now (what he locks in an average week at his projected level, allowing for missed games) ranks among everyone drafted. Within a round either way shows no mark. Hover over a mark for the numbers, or select a card for the player's details."
+          ? "Marks compare where each player was picked with where his weekly value now (what he locks in an average week at his projected level, allowing for missed games) ranks among everyone drafted. Within a round either way shows no mark. An injured player's value already allows for the games he will miss, which is often why he is falling. Hover over a mark for the numbers, or select a card for the player's details."
           : "Marks for players beating or missing their draft spot appear once player stats have loaded."}
       </p>
     </section>

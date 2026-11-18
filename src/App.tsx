@@ -25,9 +25,8 @@ import { MyTeam } from "./components/MyTeam.tsx";
 import { OpenPlayerContext } from "./components/PlayerName.tsx";
 import { PlayerPanel } from "./components/PlayerPanel.tsx";
 import { Players } from "./components/Players.tsx";
-import { Standings } from "./components/Standings.tsx";
 import { StatsNotice } from "./components/StatsNotice.tsx";
-import { Strength } from "./components/Strength.tsx";
+import { type RankingMode, Rankings } from "./components/Rankings.tsx";
 import { MobileNav } from "./components/MobileNav.tsx";
 import { TeamChooser } from "./components/TeamChooser.tsx";
 import { Teams } from "./components/Teams.tsx";
@@ -35,7 +34,8 @@ import { Trades } from "./components/Trades.tsx";
 import { formatAgo, formatDate } from "./format.ts";
 import { useTheme } from "./theme.ts";
 
-const VIEWS = ["My team", "Standings", "Strength", "Teams", "Players", "Matchups", "Trades", "Draft", "Activity"] as const;
+// Matchups sits last for now: Sleeper's own matchup screen is better until ours catches up.
+const VIEWS = ["My team", "Rankings", "Trades", "Draft", "Teams", "Players", "Activity", "Matchups"] as const;
 /** How often to ask the server for the league while the page is open. It decides whether Sleeper is asked. */
 const LEAGUE_POLL_MS = 2 * 60_000;
 /** How soon to ask again when the server answered with saved data while fetching newer data. */
@@ -44,8 +44,8 @@ const REFRESHING_RECHECK_MS = 5_000;
 const STATS_POLL_MS = 2500;
 const LAST_SEASON_POLL_MS = 20000;
 type View = (typeof VIEWS)[number];
-// On a phone, the tab bar holds these; the rest sit under More.
-const PHONE_TABS = ["My team", "Matchups", "Trades", "Players"] as const satisfies readonly View[];
+// On a phone, the tab bar holds these (Trades in the middle, set apart); the rest sit under More.
+const PHONE_TABS = ["My team", "Rankings", "Trades", "Draft"] as const satisfies readonly View[];
 const PHONE_MORE = VIEWS.filter((name) => !(PHONE_TABS as readonly View[]).includes(name));
 
 export function App() {
@@ -64,6 +64,7 @@ export function App() {
   const [pickedUserId, setPickedUserId] = useState<string | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [openMatchupId, setOpenMatchupId] = useState<number | null>(null);
+  const [rankingMode, setRankingMode] = useState<RankingMode>("standings");
   // A trade sent from another tab to the builder; `at` tells a repeat apart.
   const [builderOffer, setBuilderOffer] = useState<{ offer: TradeOffer; at: number } | null>(null);
   const [selectedRosterId, setSelectedRosterId] = useState<number | null>(null);
@@ -234,11 +235,6 @@ export function App() {
     setView("Trades");
   }
 
-  function openMatchup(matchupId: number) {
-    setOpenMatchupId(matchupId);
-    setView("Matchups");
-  }
-
   function switchLeague() {
     saveLeagueId(null);
     setSnapshot(null);
@@ -293,7 +289,7 @@ export function App() {
     <main className="page">
       <header className="league-header">
         <div>
-          <h1 className="league-name">{snapshot?.league.name ?? "Loading league…"}</h1>
+          <h1 className="league-name">Fantasy Tool</h1>
           {snapshot && (
             <p className="quiet">
               {snapshot.league.season} season, week {snapshot.week}
@@ -375,6 +371,7 @@ export function App() {
           </nav>
           <MobileNav
             primary={PHONE_TABS}
+            featured="Trades"
             more={PHONE_MORE}
             view={view}
             onSelect={(name) => {
@@ -386,7 +383,7 @@ export function App() {
             onOpenChange={setMoreOpen}
           />
 
-          {(view === "My team" || view === "Teams" || view === "Players" || view === "Strength" || view === "Trades") &&
+          {(view === "My team" || view === "Teams" || view === "Players" || (view === "Rankings" && rankingMode === "strength") || view === "Trades") &&
             stats &&
             (stats.status !== "ready" || view === "My team" || view === "Teams" || view === "Players") && (
             <StatsNotice stats={stats} onRetry={() => void loadStats(snapshot.league.id, true)} />
@@ -400,16 +397,19 @@ export function App() {
               strengths={strengths}
               team={myTeam}
               onChangeTeam={() => setChoosingTeam(true)}
-              onOpenMatchup={openMatchup}
               situations={situations}
               onOpenTrade={openTrade}
             />
           )}
-          {view === "Standings" && (
-            <Standings snapshot={snapshot} myRosterId={myRosterId} onOpenTeam={openTeam} />
-          )}
-          {view === "Strength" && (
-            <Strength snapshot={snapshot} strengths={strengths} myRosterId={myRosterId} onOpenTeam={openTeam} />
+          {view === "Rankings" && (
+            <Rankings
+              mode={rankingMode}
+              onModeChange={setRankingMode}
+              snapshot={snapshot}
+              strengths={strengths}
+              myRosterId={myRosterId}
+              onOpenTeam={openTeam}
+            />
           )}
           {/* Kept mounted while hidden, so a trade in progress survives switching tabs. */}
           <div hidden={view !== "Trades"}>

@@ -43,6 +43,7 @@
   --warn: #f6c453;
   --warn-soft: rgba(246, 196, 83, 0.16);
   /* Dropdown chevron, drawn in --muted (an SVG in a URL cannot read variables). */
+  --segment-on: #3a4664;
   --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1.5 1.75l4.5 4.5 4.5-4.5' fill='none' stroke='%239ba7be' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
@@ -65,6 +66,7 @@
   --loss-soft: rgba(194, 47, 47, 0.09);
   --warn: #7a5200;
   --warn-soft: rgba(214, 158, 20, 0.2);
+  --segment-on: #ffffff;
   --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1.5 1.75l4.5 4.5 4.5-4.5' fill='none' stroke='%23586580' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
@@ -1660,6 +1662,123 @@ th[aria-sort] .sort-button {
   margin-bottom: 1.25rem;
 }
 
+/* My team: the roster card opens with the team's strength. */
+.roster-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.roster-card .table-scroll {
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+}
+
+.roster-strength {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 0.75rem 2rem;
+  padding: 1rem 1.25rem 1.1rem;
+}
+
+.roster-strength-score {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.roster-strength-score > span:last-child {
+  display: flex;
+  flex-direction: column;
+}
+
+.roster-strength-number {
+  font-size: 2.25rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.roster-strength-label {
+  font-weight: 700;
+}
+
+.roster-strength-facts {
+  display: flex;
+  justify-content: flex-end;
+  gap: 2rem;
+  margin: 0;
+}
+
+.roster-strength-facts div {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.roster-strength-facts dt {
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.roster-strength-facts dd {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+
+.roster-strength-meter,
+.roster-strength-note {
+  grid-column: 1 / -1;
+}
+
+.roster-strength-note {
+  margin: 0;
+}
+
+/* Two or three ways to view the same thing, iPhone style. */
+.segmented {
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 0.2rem;
+  padding: 0.2rem;
+  margin-bottom: 1rem;
+  background: var(--surface-raised);
+  border-radius: 0.65rem;
+}
+
+.segment {
+  min-height: 2.25rem;
+  padding: 0.3rem 1.25rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.segment:hover {
+  color: var(--text);
+}
+
+.segment[aria-pressed="true"] {
+  background: var(--segment-on);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(8, 12, 22, 0.25);
+}
+
+.segment:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .my-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
@@ -3183,8 +3302,27 @@ th[aria-sort] .sort-button {
   font-variant-numeric: tabular-nums;
 }
 
-.draft-trend {
+.draft-marks {
   display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.draft-trend,
+.draft-injury {
+  display: inline-flex;
+}
+
+/* Medical cross for an injured player, in the injury tag's color. */
+.injury-icon {
+  width: 1.05rem;
+  height: 1.05rem;
+  color: var(--warn);
+  fill: var(--warn-soft);
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .draft-name {
@@ -3450,6 +3588,31 @@ th[aria-sort] .sort-button {
     font-size: 0.875rem;
   }
 
+  .segmented {
+    display: grid;
+    width: 100%;
+  }
+
+  .roster-strength {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.85rem;
+    padding: 0.9rem 1rem 1rem;
+  }
+
+  .roster-strength-facts {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+
+  .roster-strength-facts div {
+    align-items: flex-start;
+  }
+
+  .roster-strength-facts dt {
+    font-size: 0.75rem;
+  }
+
   /* Tab bar */
   .tab-bar {
     position: fixed;
@@ -3484,7 +3647,7 @@ th[aria-sort] .sort-button {
     -webkit-tap-highlight-color: transparent;
   }
 
-  .tab-bar-item span {
+  .tab-bar-label {
     max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -3493,6 +3656,21 @@ th[aria-sort] .sort-button {
 
   .tab-bar-item[aria-current="page"] {
     color: var(--accent);
+  }
+
+  /* Trades, the heart of the app, sits in the middle in an accent circle. */
+  .tab-bar-badge {
+    display: grid;
+    place-items: center;
+    width: 2.75rem;
+    height: 1.625rem;
+    border-radius: 999px;
+    background: var(--accent);
+    color: var(--accent-ink);
+  }
+
+  .tab-bar-featured:active .tab-bar-badge {
+    transform: scale(0.94);
   }
 
   .tab-bar-item:focus-visible {

@@ -6,7 +6,8 @@ into a trade idea and analysis tool.
 
 **Status:** milestone 4 of 5 under way. Working: the league dashboard, player
 stats scored with your league's settings, rest-of-season projections with a
-chart, a My team tab, a Strength tab (1 to 1000), and a Trades tab that grades
+chart, a My team tab, a Rankings tab (standings, or team strength from 1 to
+1000), and a Trades tab that grades
 any trade for both managers and finds trades for your team with reasons.
 See [Roadmap](#roadmap).
 
@@ -189,7 +190,8 @@ week is managed:
 5. at the end of the week an open slot keeps the last game played in it.
 
 Because an open slot can take a different player each day, bench players are
-extra chances at a big game, not just injury cover. The Strength tab shows
+extra chances at a big game, not just injury cover. Rankings (Team strength)
+shows
 how much the bench adds over the best nine alone.
 
 The average is put on a 1 to 1000 scale between two reference rosters from
@@ -344,6 +346,13 @@ out, an IR slot and a pickup cover his spot. The team effect still counts the
 zeros. If your IR slots are full, a received injured player uses a bench spot
 while out, and the trade card says who holds the IR slot.
 
+### My team
+
+The roster opens with the team's strength: the 1 to 1000 score and its rank,
+what the team locks in an average week, what its best nine alone would lock,
+and what the bench adds by rotating in. The week's matchup is no longer shown
+here (see [Live matchup](#live-matchup)).
+
 ### Top moves (My team)
 
 `topMoves` in `shared/moves.ts`. The My team tab lists the five moves that
@@ -495,6 +504,10 @@ changes one (the app restarts).
 
 ## Live matchup
 
+Matchups is the last tab for now (under More on a phone): Sleeper's own
+matchup screen knows which scores are locked and ours has to work it out, so
+this view is parked until it can match it.
+
 Opening a matchup shows both lineups slot by slot, modelled on Sleeper's
 matchup screen: each starter's counted score, his status, his next game, and
 a strip of his NBA team's games this week (opponent logo, then his points or
@@ -607,11 +620,21 @@ projected level, allowing for missed games), and that rank is compared with
 the order he was picked in (`shared/draft.ts`). Anything within a round shows
 no mark. It is a display label only and feeds nothing else.
 
+A medical cross beside the mark means the player is injured for a real stretch:
+out at least 5% of the weeks left (`INJURED_SHARE`, the same line the trade
+search uses), not a game or two. Hover over it for his predicted return. His
+weekly value already counts the games he will miss, which is often why an
+injured player shows a falling mark.
+
 ## Look
 
 Positions always appear as colored chips (PG pink, SG orange, G coral, SF
 green, PF blue, F teal, C purple, UTIL periwinkle), with the colors set once at
-the top of `src/styles.css`. On a phone, secondary table columns are hidden,
+the top of `src/styles.css`. On a phone the app works like an iPhone app: a tab bar along the bottom (My
+team, Rankings, Trades set apart in the middle, Draft, and More for the rest
+and the settings), bottom sheets for More and player details, and the iPhone's
+safe areas respected. Added to the home screen it opens full screen as
+"Fantasy Tool". Secondary table columns are hidden,
 wide tables keep player names in view while they scroll, notes fold away under
 "About these numbers", and the trade rosters start folded so the trade finder
 is close at hand.

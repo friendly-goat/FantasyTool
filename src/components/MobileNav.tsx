@@ -19,19 +19,20 @@ const ICONS: Record<string, ReactNode> = {
       <path d="M4.75 20c.6-3.8 3.6-6 7.25-6s6.65 2.2 7.25 6" />
     </>
   ),
-  Matchups: (
+  Rankings: (
     <>
-      <rect x="3.75" y="5" width="16.5" height="14" rx="2.5" />
-      <path d="M12 5v14M7.5 10.5h1.5M15 13.5h1.5" />
+      <rect x="3.75" y="12" width="5" height="8" rx="1.25" />
+      <rect x="9.5" y="5" width="5" height="15" rx="1.25" />
+      <rect x="15.25" y="9" width="5" height="11" rx="1.25" />
     </>
   ),
-  Trades: <path d="M5 8.5h13l-3.5-3.5M19 15.5H6l3.5 3.5" />,
-  Players: (
+  Draft: (
     <>
-      <circle cx="9" cy="9" r="3.25" />
-      <path d="M3.75 19c.5-3 2.7-4.75 5.25-4.75S13.75 16 14.25 19M15.5 6.25a3.25 3.25 0 0 1 0 5.5M17.5 14.6c1.5.7 2.5 2.2 2.75 4.4" />
+      <rect x="3.75" y="4.25" width="16.5" height="15.5" rx="2.5" />
+      <path d="M3.75 9.5h16.5M3.75 14.5h16.5M9.25 4.25v15.5M14.75 4.25v15.5" />
     </>
   ),
+  Trades: <path d="M5.5 9h12.5l-3.25-3.25M18.5 15H6l3.25 3.25" />,
   More: (
     <>
       <circle cx="6" cy="12" r="1.4" />
@@ -41,15 +42,15 @@ const ICONS: Record<string, ReactNode> = {
   ),
 };
 
-function Icon({ name }: { name: string }) {
+function Icon({ name, size = 26 }: { name: string; size?: number }) {
   return (
     <svg
       viewBox="0 0 24 24"
-      width="26"
-      height="26"
+      width={size}
+      height={size}
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.7"
+      strokeWidth={name === "Trades" ? 2.2 : 1.7}
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
@@ -61,6 +62,7 @@ function Icon({ name }: { name: string }) {
 
 export function MobileNav<View extends string>({
   primary,
+  featured,
   more,
   view,
   onSelect,
@@ -70,6 +72,8 @@ export function MobileNav<View extends string>({
 }: {
   /** The views on the tab bar itself. */
   primary: readonly View[];
+  /** The tab set apart on the bar, in an accent circle: the heart of the app. */
+  featured?: View;
   /** The views in the More sheet. */
   more: readonly View[];
   view: View;
@@ -99,12 +103,18 @@ export function MobileNav<View extends string>({
           <button
             key={name}
             type="button"
-            className="tab-bar-item"
+            className={name === featured ? "tab-bar-item tab-bar-featured" : "tab-bar-item"}
             aria-current={view === name ? "page" : undefined}
             onClick={() => choose(name)}
           >
-            <Icon name={name} />
-            <span>{name}</span>
+            {name === featured ? (
+              <span className="tab-bar-badge">
+                <Icon name={name} size={22} />
+              </span>
+            ) : (
+              <Icon name={name} />
+            )}
+            <span className="tab-bar-label">{name}</span>
           </button>
         ))}
         <button
@@ -117,7 +127,7 @@ export function MobileNav<View extends string>({
         >
           <Icon name="More" />
           {/* The view open from More takes the label, so you can see where you are. */}
-          <span>{inMore ? view : "More"}</span>
+          <span className="tab-bar-label">{inMore ? view : "More"}</span>
         </button>
       </nav>
 
@@ -144,7 +154,14 @@ export function MobileNav<View extends string>({
                 >
                   {name}
                   <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-                    <path d="M9.5 6l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    <path
+                      d="M9.5 6l6 6-6 6"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
                   </svg>
                 </button>
               </li>

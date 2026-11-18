@@ -16,7 +16,6 @@ interface Props {
   strengths: TeamStrength[] | null;
   team: Team;
   onChangeTeam: () => void;
-  onOpenMatchup: (matchupId: number) => void;
   situations: Map<number, TeamSituation> | null;
   /** Opens a trade in the Trades tab's builder. */
   onOpenTrade: (offer: TradeOffer) => void;
@@ -65,18 +64,8 @@ function ordinal(n: number): string {
   return `${n}${suffix}`;
 }
 
-/** The user's own team: this week's matchup, a lineup check, the roster, and free agents worth adding. */
-export function MyTeam({
-  snapshot,
-  stats,
-  model,
-  strengths,
-  team,
-  onChangeTeam,
-  onOpenMatchup,
-  situations,
-  onOpenTrade,
-}: Props) {
+/** The user's own team: the roster with its strength, and the top moves to make. */
+export function MyTeam({ snapshot, stats, model, strengths, team, onChangeTeam, situations, onOpenTrade }: Props) {
   const players = stats?.players ?? {};
   const hasStats = Object.keys(players).length > 0;
 
@@ -84,15 +73,6 @@ export function MyTeam({
   const moves = useTopMoves(model, snapshot, team.rosterId, situations);
   const teamName = (rosterId: number | null) =>
     snapshot.teams.find((candidate) => candidate.rosterId === rosterId)?.teamName ?? "another team";
-
-  const matchup = snapshot.matchups.find((candidate) =>
-    candidate.sides.some((side) => side.rosterId === team.rosterId),
-  );
-  const mine = matchup?.sides.find((side) => side.rosterId === team.rosterId);
-  const theirs = matchup?.sides.find((side) => side.rosterId !== team.rosterId);
-  const opponent = theirs ? snapshot.teams.find((candidate) => candidate.rosterId === theirs.rosterId) : undefined;
-  const stillToScore = (side: typeof mine) =>
-    side?.starters.filter((entry) => entry.player && !entry.points).length ?? 0;
 
   const rows: { slot: string; player: PlayerRef | null }[] = [
     ...team.starters,
@@ -113,124 +93,125 @@ export function MyTeam({
             </p>
           </div>
         </div>
-        <button type="button" className="button button-plain change-team" aria-label="Change my team" onClick={onChangeTeam}>
+        <button
+          type="button"
+          className="button button-plain change-team"
+          aria-label="Change my team"
+          onClick={onChangeTeam}
+        >
           Change<span className="hide-narrow"> my team</span>
         </button>
       </div>
 
-      <div className="my-cards">
-        <div className="card my-card">
-          <h3 className="my-card-title">Week {snapshot.week} matchup</h3>
-          {mine && theirs ? (
-            <>
-              <p className="my-score">
-                <span className={`num${mine.points > theirs.points ? " up" : ""}`}>{formatPoints(mine.points)}</span>
-                <span className="quiet">to</span>
-                <span className={`num${theirs.points > mine.points ? " up" : ""}`}>{formatPoints(theirs.points)}</span>
-              </p>
-              <p>against {opponent?.teamName ?? `roster ${theirs.rosterId}`}</p>
-              <p className="quiet">
-                Starters still to score: {stillToScore(mine)} for you, {stillToScore(theirs)} for them.
-              </p>
-              <button type="button" className="button my-card-action" onClick={() => onOpenMatchup(matchup!.matchupId)}>
-                View matchup
-              </button>
-            </>
-          ) : (
-            <p className="quiet">No matchup this week.</p>
-          )}
-        </div>
-
-        <div className="card my-card">
-          <h3 className="my-card-title">Team strength</h3>
+      <h3 className="panel-heading">Roster</h3>
+      <div className="roster-card">
+        <div className="roster-strength">
           {strength ? (
             <>
-              <p className="my-score">
-                <span className="num">{strength.score}</span>
-                <span className="quiet">
-                  of 1000, {ordinal(strength.rank)} of {snapshot.teams.length}
+              <div className="roster-strength-score">
+                <span className="num roster-strength-number">{strength.score}</span>
+                <span>
+                  <span className="roster-strength-label">Team strength</span>
+                  <span className="quiet">
+                    of 1000, {ordinal(strength.rank)} of {snapshot.teams.length}
+                  </span>
                 </span>
-              </p>
-              <p>Projected to lock {formatPoints(strength.projected)} points in an average week.</p>
-              <p className="quiet">
-                Your best nine alone would lock {formatPoints(strength.bestNine)}; the rest of your roster adds{" "}
-                {formatSigned(strength.benchAdds)} by rotating into open slots and covering missed games. This assumes
-                you set the best lineup each day, whatever your lineup in Sleeper shows right now.
+              </div>
+              <dl className="roster-strength-facts">
+                <div>
+                  <dt>Locks a week</dt>
+                  <dd className="num">{formatPoints(strength.projected)}</dd>
+                </div>
+                <div>
+                  <dt>Best nine alone</dt>
+                  <dd className="num">{formatPoints(strength.bestNine)}</dd>
+                </div>
+                <div>
+                  <dt>Bench adds</dt>
+                  <dd className="num">{formatSigned(strength.benchAdds)}</dd>
+                </div>
+              </dl>
+              <span className="meter roster-strength-meter" aria-hidden="true">
+                <span className="meter-fill" style={{ width: `${strength.score / 10}%` }} />
+              </span>
+              <p className="quiet roster-strength-note">
+                Points locked in an average week for the rest of the season, if you set the best lineup each day. The
+                bench adds by rotating into open slots and covering missed games.
               </p>
             </>
           ) : (
-            <p className="quiet">Available once player stats have loaded.</p>
+            <p className="quiet roster-strength-note">Team strength appears once player stats have loaded.</p>
           )}
         </div>
-      </div>
-
-      <h3 className="panel-heading">Roster</h3>
-      <div className="table-scroll">
-        <table className="players-table my-roster">
-          <thead>
-            <tr>
-              <th scope="col">Slot</th>
-              <th scope="col">Player</th>
-              {hasStats && (
-                <>
-                  <th scope="col" className="num">
-                    Weekly value
-                  </th>
-                  <th scope="col" className="num hide-narrow">
-                    Fantasy avg
-                  </th>
-                  <th scope="col" className="num hide-narrow">
-                    Projected
-                  </th>
-                  <th scope="col" className="num hide-narrow">
-                    Last {stats?.recentWindow ?? 5}
-                  </th>
-                  <th scope="col" className="num hide-narrow">
-                    Best game
-                  </th>
-                  <th scope="col" className="num hide-narrow">
-                    Games
-                  </th>
-                </>
-              )}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, index) => {
-              const line = row.player ? players[row.player.id] : undefined;
-              return (
-                <tr key={row.player?.id ?? `empty-${index}`}>
-                  <td>
-                    <PositionChip label={row.slot} />
-                  </td>
-                  <th scope="row">
-                    {row.player ? (
+        <div className="table-scroll">
+          <table className="players-table my-roster">
+            <thead>
+              <tr>
+                <th scope="col">Slot</th>
+                <th scope="col">Player</th>
+                {hasStats && (
+                  <>
+                    <th scope="col" className="num">
+                      Weekly value
+                    </th>
+                    <th scope="col" className="num hide-narrow">
+                      Fantasy avg
+                    </th>
+                    <th scope="col" className="num hide-narrow">
+                      Projected
+                    </th>
+                    <th scope="col" className="num hide-narrow">
+                      Last {stats?.recentWindow ?? 5}
+                    </th>
+                    <th scope="col" className="num hide-narrow">
+                      Best game
+                    </th>
+                    <th scope="col" className="num hide-narrow">
+                      Games
+                    </th>
+                  </>
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, index) => {
+                const line = row.player ? players[row.player.id] : undefined;
+                return (
+                  <tr key={row.player?.id ?? `empty-${index}`}>
+                    <td>
+                      <PositionChip label={row.slot} />
+                    </td>
+                    <th scope="row">
+                      {row.player ? (
+                        <>
+                          <PlayerCell player={row.player} />
+                        </>
+                      ) : (
+                        <span className="quiet">Empty slot</span>
+                      )}
+                    </th>
+                    {hasStats && (
                       <>
-                        <PlayerCell player={row.player} />
+                        <td className="num strong">
+                          {line && row.player && model?.players.get(row.player.id)
+                            ? formatPoints(model.players.get(row.player.id)!.expected)
+                            : "–"}
+                        </td>
+                        <td className="num hide-narrow">{line ? formatPoints(line.fantasyAvg) : "–"}</td>
+                        <td className="num hide-narrow">{line ? formatPoints(line.projection.perGame) : "–"}</td>
+                        <td className="num hide-narrow">
+                          {line?.recentAvg != null ? formatPoints(line.recentAvg) : "–"}
+                        </td>
+                        <td className="num hide-narrow">{line ? formatPoints(line.bestGame) : "–"}</td>
+                        <td className="num quiet-cell hide-narrow">{line ? line.games : "–"}</td>
                       </>
-                    ) : (
-                      <span className="quiet">Empty slot</span>
                     )}
-                  </th>
-                  {hasStats && (
-                    <>
-                      <td className="num strong">
-                        {line && row.player && model?.players.get(row.player.id)
-                          ? formatPoints(model.players.get(row.player.id)!.expected)
-                          : "–"}
-                      </td>
-                      <td className="num hide-narrow">{line ? formatPoints(line.fantasyAvg) : "–"}</td>
-                      <td className="num hide-narrow">{line ? formatPoints(line.projection.perGame) : "–"}</td>
-                      <td className="num hide-narrow">{line?.recentAvg != null ? formatPoints(line.recentAvg) : "–"}</td>
-                      <td className="num hide-narrow">{line ? formatPoints(line.bestGame) : "–"}</td>
-                      <td className="num quiet-cell hide-narrow">{line ? line.games : "–"}</td>
-                    </>
-                  )}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {model && (
