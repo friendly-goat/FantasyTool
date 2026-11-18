@@ -126,8 +126,15 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
 - Positions are always colored chips (`PositionChip`, `PositionChips`), never
   plain text like "PF/C". Colors are the `--pos-*` tokens in `src/styles.css`,
   matching Sleeper's: PG pink, SG orange, SF green, PF blue, C purple.
-- Check every UI change at phone width (390px) as well as desktop. Use the
-  `hide-narrow` class for columns that can go on a phone.
+- Check every UI change at phone width (390px and 440px, the owner's iPhone
+  Pro Max) as well as desktop. Use the `hide-narrow` class for columns that
+  can go on a phone; a table meant to fit a phone gets `min-width: 0` in the
+  720px query, others scroll inside `.table-scroll`. On a phone (720px and
+  narrower) navigation is the bottom tab bar in `MobileNav.tsx` (`PHONE_TABS`
+  in `src/App.tsx`, the rest and the settings in its More sheet); header
+  buttons carry `header-button` and are hidden there, so any new header
+  control needs a More row too. Dialogs open as bottom sheets on phones.
+  Respect `env(safe-area-inset-*)` for anything fixed to an edge.
 - Fantasy points display with two decimals (`formatPoints`), box-score
   averages with one (`formatAverage`). Keep full precision until display.
 - UI copy: sentence case, plain language. Visual tokens live at the top of

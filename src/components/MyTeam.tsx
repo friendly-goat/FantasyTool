@@ -113,8 +113,8 @@ export function MyTeam({
             </p>
           </div>
         </div>
-        <button type="button" className="button button-plain" onClick={onChangeTeam}>
-          Change my team
+        <button type="button" className="button button-plain change-team" aria-label="Change my team" onClick={onChangeTeam}>
+          Change<span className="hide-narrow"> my team</span>
         </button>
       </div>
 
@@ -166,7 +166,7 @@ export function MyTeam({
 
       <h3 className="panel-heading">Roster</h3>
       <div className="table-scroll">
-        <table className="players-table">
+        <table className="players-table my-roster">
           <thead>
             <tr>
               <th scope="col">Slot</th>
@@ -176,19 +176,19 @@ export function MyTeam({
                   <th scope="col" className="num">
                     Weekly value
                   </th>
-                  <th scope="col" className="num">
+                  <th scope="col" className="num hide-narrow">
                     Fantasy avg
                   </th>
-                  <th scope="col" className="num">
+                  <th scope="col" className="num hide-narrow">
                     Projected
                   </th>
-                  <th scope="col" className="num">
+                  <th scope="col" className="num hide-narrow">
                     Last {stats?.recentWindow ?? 5}
                   </th>
-                  <th scope="col" className="num">
+                  <th scope="col" className="num hide-narrow">
                     Best game
                   </th>
-                  <th scope="col" className="num">
+                  <th scope="col" className="num hide-narrow">
                     Games
                   </th>
                 </>
@@ -219,11 +219,11 @@ export function MyTeam({
                           ? formatPoints(model.players.get(row.player.id)!.expected)
                           : "–"}
                       </td>
-                      <td className="num">{line ? formatPoints(line.fantasyAvg) : "–"}</td>
-                      <td className="num">{line ? formatPoints(line.projection.perGame) : "–"}</td>
-                      <td className="num">{line?.recentAvg != null ? formatPoints(line.recentAvg) : "–"}</td>
-                      <td className="num">{line ? formatPoints(line.bestGame) : "–"}</td>
-                      <td className="num quiet-cell">{line ? line.games : "–"}</td>
+                      <td className="num hide-narrow">{line ? formatPoints(line.fantasyAvg) : "–"}</td>
+                      <td className="num hide-narrow">{line ? formatPoints(line.projection.perGame) : "–"}</td>
+                      <td className="num hide-narrow">{line?.recentAvg != null ? formatPoints(line.recentAvg) : "–"}</td>
+                      <td className="num hide-narrow">{line ? formatPoints(line.bestGame) : "–"}</td>
+                      <td className="num quiet-cell hide-narrow">{line ? line.games : "–"}</td>
                     </>
                   )}
                 </tr>

@@ -2853,7 +2853,8 @@ th[aria-sort] .sort-button {
   }
 
   .standings,
-  .strength-table {
+  .strength-table,
+  .my-roster {
     min-width: 0;
   }
 
@@ -2862,6 +2863,12 @@ th[aria-sort] .sort-button {
   .strength-table th,
   .strength-table td {
     padding: 0.6rem 0.5rem;
+  }
+
+  /* Long headings and team names wrap rather than push the table sideways. */
+  .strength-table thead th,
+  .strength-table tbody th {
+    white-space: normal;
   }
 
   .rank {
@@ -3037,6 +3044,9 @@ th[aria-sort] .sort-button {
 }
 
 .draft-scroll {
+  /* Positioned, so hidden labels inside the cards stay within the scrolling
+     frame instead of widening the page on a phone. */
+  position: relative;
   overflow: auto;
   max-height: min(80vh, 62rem);
   padding: 0 0.5rem 0.5rem;
@@ -3322,4 +3332,280 @@ th[aria-sort] .sort-button {
   height: 0.5rem;
   border-radius: 50%;
   background: currentColor;
+}
+
+/* ---- Phone layout ----
+   On a phone the app follows iPhone conventions: a compact header, a tab
+   bar along the bottom (MobileNav) instead of the tabs at the top, larger
+   section headings, and sheets that slide up from the bottom for More and
+   for player details. Wider screens are unchanged. */
+
+.tab-bar {
+  display: none;
+}
+
+.sheet {
+  display: none;
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes sheet-dim {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 720px) {
+  .page {
+    --tab-bar-height: 3.6rem;
+    padding: calc(0.75rem + env(safe-area-inset-top)) max(0.9rem, env(safe-area-inset-right))
+      calc(var(--tab-bar-height) + 2rem + env(safe-area-inset-bottom)) max(0.9rem, env(safe-area-inset-left));
+  }
+
+  /* Header: league name on one line, week and update time beneath it. */
+  .league-header {
+    flex-wrap: nowrap;
+    align-items: flex-start;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+
+  .league-header > div:first-child {
+    min-width: 0;
+  }
+
+  .league-name {
+    font-size: 1.375rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .league-header .quiet {
+    margin: 0.15rem 0 0;
+  }
+
+  .league-actions {
+    flex: none;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.3rem;
+    padding-top: 0.3rem;
+  }
+
+  .league-actions .updated {
+    font-size: 0.75rem;
+    white-space: nowrap;
+  }
+
+  .header-button,
+  nav.tabs {
+    display: none;
+  }
+
+  /* Section headings read as headings, not captions. */
+  .panel-heading {
+    font-size: 1.125rem;
+    font-weight: 750;
+    color: var(--text);
+    letter-spacing: -0.005em;
+    margin: 1.75rem 0 0.5rem;
+  }
+
+  /* My team: the change button sits beside the team name. */
+  .my-head {
+    flex-wrap: nowrap;
+    gap: 0.75rem;
+  }
+
+  .my-head .team-cell {
+    min-width: 0;
+  }
+
+  .my-head .team-cell > div {
+    min-width: 0;
+  }
+
+  .my-head .team-title {
+    font-size: 1.25rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .change-team {
+    flex: none;
+    padding: 0.35rem 0.85rem;
+    font-size: 0.875rem;
+  }
+
+  /* Tab bar */
+  .tab-bar {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 40;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    padding: 0.2rem max(0.25rem, env(safe-area-inset-right)) env(safe-area-inset-bottom)
+      max(0.25rem, env(safe-area-inset-left));
+    border-top: 1px solid var(--line);
+    background: color-mix(in srgb, var(--surface) 82%, transparent);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    backdrop-filter: saturate(180%) blur(20px);
+  }
+
+  .tab-bar-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.1rem;
+    min-width: 0;
+    min-height: var(--tab-bar-height);
+    padding: 0.3rem 0.1rem 0.25rem;
+    border: 0;
+    background: none;
+    color: var(--muted);
+    font: inherit;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .tab-bar-item span {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tab-bar-item[aria-current="page"] {
+    color: var(--accent);
+  }
+
+  .tab-bar-item:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -4px;
+    border-radius: var(--radius-small);
+  }
+
+  /* Bottom sheets: More, and player details. */
+  .sheet[open] {
+    display: block;
+  }
+
+  .sheet,
+  .player-panel {
+    width: 100%;
+    max-width: none;
+    margin: auto 0 0;
+    border: 0;
+    border-top: 1px solid var(--line);
+    border-radius: 1.25rem 1.25rem 0 0;
+    background: var(--surface);
+    color: var(--text);
+    padding: 0;
+  }
+
+  .sheet[open],
+  .player-panel[open] {
+    animation: sheet-up 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  .sheet::backdrop,
+  .player-panel::backdrop {
+    background: rgba(8, 12, 22, 0.55);
+    animation: sheet-dim 0.28s ease-out;
+  }
+
+  .player-panel {
+    max-height: calc(100dvh - 2.5rem - env(safe-area-inset-top));
+  }
+
+  .player-panel .panel-body {
+    padding: 1rem max(1rem, env(safe-area-inset-right)) calc(1.5rem + env(safe-area-inset-bottom))
+      max(1rem, env(safe-area-inset-left));
+  }
+
+  .sheet-body {
+    padding: 0.5rem max(1rem, env(safe-area-inset-right)) calc(1rem + env(safe-area-inset-bottom))
+      max(1rem, env(safe-area-inset-left));
+  }
+
+  .sheet-grabber {
+    width: 2.25rem;
+    height: 0.3rem;
+    margin: 0 auto 0.9rem;
+    border-radius: 999px;
+    background: var(--line);
+  }
+
+  .sheet-list {
+    margin: 0 0 1rem;
+    padding: 0;
+    list-style: none;
+    border-radius: var(--radius);
+    background: var(--surface-raised);
+    overflow: hidden;
+  }
+
+  .sheet-list li + li .sheet-row {
+    border-top: 1px solid var(--line);
+  }
+
+  .sheet-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    min-height: 2.875rem;
+    padding: 0.6rem 1rem;
+    border: 0;
+    background: none;
+    color: var(--text);
+    font: inherit;
+    font-size: 1rem;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .sheet-row svg {
+    color: var(--muted);
+  }
+
+  .sheet-row[aria-current="page"] {
+    color: var(--accent);
+    font-weight: 700;
+  }
+
+  .sheet-row:active {
+    background: var(--line);
+  }
+
+  .sheet-done {
+    width: 100%;
+    min-height: 2.875rem;
+    font-size: 1rem;
+  }
+}
+
+@media (max-width: 720px) and (prefers-reduced-motion: reduce) {
+  .sheet[open],
+  .player-panel[open],
+  .sheet::backdrop,
+  .player-panel::backdrop {
+    animation: none;
+  }
 }

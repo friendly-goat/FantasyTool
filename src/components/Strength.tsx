@@ -28,7 +28,7 @@ export function Strength({ snapshot, strengths, myRosterId, onOpenTeam }: Props)
               <th scope="col">Strength</th>
               <th scope="col" className="num">Projected weekly</th>
               <th scope="col" className="num hide-narrow">Best nine alone</th>
-              <th scope="col" className="num">Bench adds</th>
+              <th scope="col" className="num hide-narrow">Bench adds</th>
               <th scope="col" className="num hide-narrow">Best nine play</th>
             </tr>
           </thead>
@@ -62,7 +62,7 @@ export function Strength({ snapshot, strengths, myRosterId, onOpenTeam }: Props)
                   </td>
                   <td className="num strong">{formatPoints(strength.projected)}</td>
                   <td className="num hide-narrow">{formatPoints(strength.bestNine)}</td>
-                  <td className="num">{formatSigned(strength.benchAdds)}</td>
+                  <td className="num hide-narrow">{formatSigned(strength.benchAdds)}</td>
                   <td className="num hide-narrow">{percent.format(strength.starterAvailability)}</td>
                 </tr>
               );

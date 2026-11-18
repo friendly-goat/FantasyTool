@@ -28,6 +28,7 @@ import { Players } from "./components/Players.tsx";
 import { Standings } from "./components/Standings.tsx";
 import { StatsNotice } from "./components/StatsNotice.tsx";
 import { Strength } from "./components/Strength.tsx";
+import { MobileNav } from "./components/MobileNav.tsx";
 import { TeamChooser } from "./components/TeamChooser.tsx";
 import { Teams } from "./components/Teams.tsx";
 import { Trades } from "./components/Trades.tsx";
@@ -43,6 +44,9 @@ const REFRESHING_RECHECK_MS = 5_000;
 const STATS_POLL_MS = 2500;
 const LAST_SEASON_POLL_MS = 20000;
 type View = (typeof VIEWS)[number];
+// On a phone, the tab bar holds these; the rest sit under More.
+const PHONE_TABS = ["My team", "Matchups", "Trades", "Players"] as const satisfies readonly View[];
+const PHONE_MORE = VIEWS.filter((name) => !(PHONE_TABS as readonly View[]).includes(name));
 
 export function App() {
   const [config, setConfig] = useState<AppConfig | null>(null);
@@ -58,6 +62,7 @@ export function App() {
   const [choosingTeam, setChoosingTeam] = useState(false);
   /** Sleeper user ID from the league picker, used once to find the user's team. */
   const [pickedUserId, setPickedUserId] = useState<string | null>(null);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [openMatchupId, setOpenMatchupId] = useState<number | null>(null);
   // A trade sent from another tab to the builder; `at` tells a repeat apart.
   const [builderOffer, setBuilderOffer] = useState<{ offer: TradeOffer; at: number } | null>(null);
@@ -267,6 +272,22 @@ export function App() {
 
   const canSwitch = !config.defaultLeagueId;
   const myTeam = snapshot?.teams.find((team) => team.rosterId === myRosterId);
+  const selectView = (name: View) => {
+    setView(name);
+    setOpenMatchupId(null); // the Matchups tab opens on the list
+  };
+  const signOutNow = () => {
+    void signOut().then(() => setSession({ authRequired: true, role: null }));
+  };
+  // The phone's More sheet carries the header's buttons too.
+  const phoneSettings = [
+    { label: theme === "dark" ? "Light mode" : "Dark mode", onSelect: toggleTheme },
+    ...(canSwitch ? [{ label: "Switch league", onSelect: switchLeague }] : []),
+    ...(myTeam ? [{ label: "Change my team", onSelect: () => setChoosingTeam(true) }] : []),
+    ...(session?.authRequired
+      ? [{ label: `Sign out${session.role === "admin" ? " (admin)" : ""}`, onSelect: signOutNow }]
+      : []),
+  ];
 
   return (
     <main className="page">
@@ -287,26 +308,25 @@ export function App() {
             </span>
           )}
           {snapshot && (
-            <span className="quiet" title={`From Sleeper ${formatDate(snapshot.fetchedAt)}. Updates on its own.`}>
+            <span className="quiet updated" title={`From Sleeper ${formatDate(snapshot.fetchedAt)}. Updates on its own.`}>
               Updated {formatAgo(snapshot.fetchedAt)}
             </span>
           )}
+          {/* On a phone these move into the More sheet (MobileNav). */}
           {canSwitch && (
-            <button type="button" className="button button-plain" onClick={switchLeague}>
+            <button type="button" className="button button-plain header-button" onClick={switchLeague}>
               Switch league
             </button>
           )}
-          <button type="button" className="button button-plain" onClick={toggleTheme}>
+          <button type="button" className="button button-plain header-button" onClick={toggleTheme}>
             {theme === "dark" ? "Light mode" : "Dark mode"}
           </button>
           {session?.authRequired && (
             <button
               type="button"
-              className="button button-plain"
+              className="button button-plain header-button"
               title={session.role === "admin" ? "Signed in as admin" : "Signed in as a viewer"}
-              onClick={() => {
-                void signOut().then(() => setSession({ authRequired: true, role: null }));
-              }}
+              onClick={signOutNow}
             >
               Sign out{session.role === "admin" ? " (admin)" : ""}
             </button>
@@ -346,14 +366,25 @@ export function App() {
                 aria-current={view === name ? "page" : undefined}
                 onClick={(event) => {
                   event.currentTarget.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
-                  setView(name);
-                  setOpenMatchupId(null); // the Matchups tab opens on the list
+                  selectView(name);
                 }}
               >
                 {name}
               </button>
             ))}
           </nav>
+          <MobileNav
+            primary={PHONE_TABS}
+            more={PHONE_MORE}
+            view={view}
+            onSelect={(name) => {
+              selectView(name);
+              window.scrollTo({ top: 0 });
+            }}
+            settings={phoneSettings}
+            open={moreOpen}
+            onOpenChange={setMoreOpen}
+          />
 
           {(view === "My team" || view === "Teams" || view === "Players" || view === "Strength" || view === "Trades") &&
             stats &&
