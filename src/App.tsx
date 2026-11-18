@@ -460,7 +460,7 @@ export function App() {
             {view === "Draft" && (
               <Draft leagueId={snapshot.league.id} snapshot={snapshot} model={model} myRosterId={myTeam.rosterId} />
             )}
-            {view === "Activity" && <Activity snapshot={snapshot} />}
+            {view === "Activity" && <Activity snapshot={snapshot} model={model} myRosterId={myRosterId} />}
 
             {openPlayer && (
               <PlayerPanel

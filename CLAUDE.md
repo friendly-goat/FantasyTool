@@ -117,6 +117,9 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   (`pickWeek` in `server/index.ts`); finished weeks' matchups and schedule
   are saved under their own keys with long lifetimes, and lock marks are
   stored per week.
+- The Activity tab's team effect (`moveEffect` in `shared/activity.ts`)
+  measures each move on today's roster, with and without it; display only,
+  never fed into strength, grades or trade ideas.
 - The Draft tab's rising and falling marks (`shared/draft.ts`) are a display
   label only: rank by weekly value now against pick order, one round either
   way. Never feed them into strength, grades or trade ideas.

@@ -366,6 +366,18 @@ waiver wire stays in view. A trade opens in the builder on the Trades tab. The
 search takes a second or two, so it runs after the page has painted and is
 kept until the projections change.
 
+### Activity
+
+The league's trades, waiver claims and free agent moves from the last three
+weeks, filterable by kind. Each team in a move shows its manager, record and
+standings place, the players in and out, and the move's team effect: its
+strength with the move made against the same roster with it undone, both
+built from today's roster and run through `fillRoster` like a trade
+(`moveEffect` in `shared/activity.ts`). Measuring from today's roster keeps it
+fair whatever happened since; a player who has since left, or come back, is
+marked. It is display only and feeds nothing else. The tab measures a slice
+at a time, newest first, so it opens at once.
+
 ### Lock-in scoring
 
 This is a lock-in league: each starter counts one game per week. After a

@@ -22,8 +22,9 @@ import {
   type TradeStory,
 } from "../../shared/trade.ts";
 import type { LeagueSnapshot, Team } from "../../shared/types.ts";
-import { formatPoints, formatSigned, formatWholeChange as whole } from "../format.ts";
+import { formatPoints, formatRecord, formatSigned, formatWholeChange as whole, ordinal } from "../format.ts";
 import { Avatar } from "./Avatar.tsx";
+import { EffectBar, RecordTag } from "./TeamEffect.tsx";
 import { PlayerName } from "./PlayerName.tsx";
 import { PlayerCell } from "./PlayerCell.tsx";
 import { PlayerMoves } from "./PlayerMoves.tsx";
@@ -84,8 +85,12 @@ function RosterPicker({ team, model, chosen, onToggle, label, open, onOpenChange
   return (
     <details className="card trade-roster" open={open} onToggle={(event) => onOpenChange(event.currentTarget.open)}>
       <summary className="trade-roster-summary">
-        <span className="my-card-title">{label}</span>
-        <span className="quiet">
+        <Avatar url={team.avatarUrl} name={team.teamName} size="sm" />
+        <span className="trade-roster-title">
+          <span className="my-card-title">{label}</span>
+          <RecordTag team={team} />
+        </span>
+        <span className="quiet trade-roster-picked">
           {chosen.size > 0
             ? roster
                 .filter((player) => chosen.has(player.id))
@@ -155,19 +160,6 @@ function RosterPicker({ team, model, chosen, onToggle, label, open, onOpenChange
   );
 }
 
-/** A bar from the middle: right and green for a gain, left and red for a loss. */
-function EffectBar({ change, scale, label }: { change: number; scale: number; label: string }) {
-  const width = Math.min(50, (Math.abs(change) / Math.max(1, scale)) * 50);
-  return (
-    <div className="effect" role="img" aria-label={label}>
-      <span className="effect-center" />
-      <span
-        className={`effect-fill ${change >= 0 ? "effect-up" : "effect-down"}`}
-        style={change >= 0 ? { left: "50%", width: `${width}%` } : { right: "50%", width: `${width}%` }}
-      />
-    </div>
-  );
-}
 
 /** Players who join (green +) and leave (red −) one team in a trade, with each one's player value. */
 /**
@@ -257,7 +249,10 @@ function SideResult({ side, team, scale, model }: { side: TradeSide; team: Team 
         <Avatar url={team?.avatarUrl ?? null} name={team?.teamName ?? "?"} />
         <div>
           <span className="league-option-name">{team?.teamName}</span>
-          <span className="quiet manager">{team?.managerName}</span>
+          <span className="quiet manager">
+            {team?.managerName}
+            {team && `, ${formatRecord(team.wins, team.losses, team.ties)}, ${ordinal(team.rank)}`}
+          </span>
         </div>
       </div>
       <p className={`grade ${tone(side.grade)}`}>
@@ -547,8 +542,8 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
       <select value={value} onChange={(event) => chooseTeam(which, Number(event.target.value))}>
         {snapshot.teams.map((option) => (
           <option key={option.rosterId} value={option.rosterId}>
-            {option.teamName}
-            {option.rosterId === myRosterId ? " (you)" : ""}
+            {option.teamName} ({formatRecord(option.wins, option.losses, option.ties)}
+            {option.rosterId === myRosterId ? ", you" : ""})
           </option>
         ))}
       </select>

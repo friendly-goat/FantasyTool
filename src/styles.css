@@ -1643,6 +1643,20 @@ th[aria-sort] .sort-button {
 
 /* ---- Player details panel ---- */
 
+/* Stand-ins the size of the text they hold the place of, while it loads. */
+.skeleton {
+  display: inline-block;
+  width: 2rem;
+  height: 0.75em;
+  border-radius: 4px;
+  background: var(--surface-raised);
+  vertical-align: middle;
+}
+
+.skeleton-wide {
+  width: 4.5rem;
+}
+
 .player-link {
   background: none;
   border: 0;
@@ -2069,13 +2083,53 @@ th[aria-sort] .sort-button {
 }
 
 .trade-roster-summary {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 0.75rem;
+  row-gap: 0.1rem;
   padding: 1rem 2.75rem 1rem 1.25rem;
   cursor: pointer;
   list-style: none;
   position: relative;
+}
+
+.trade-roster-summary > .avatar {
+  grid-row: span 2;
+}
+
+.trade-roster-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
+  min-width: 0;
+}
+
+.trade-roster-picked {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A team's record and standings place, beside its name. */
+.record-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.05rem 0.5rem;
+  border-radius: 999px;
+  background: var(--surface-raised);
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.record-tag-rank {
+  color: var(--muted);
+  font-weight: 600;
 }
 
 .trade-roster-summary::-webkit-details-marker {
@@ -2838,10 +2892,6 @@ th[aria-sort] .sort-button {
     height: 0.85rem;
   }
 
-  .activity-sides-split {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   .my-shape {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -3015,58 +3065,150 @@ th[aria-sort] .sort-button {
 
 /* ---- Activity ---- */
 
+/* Each transaction is a card: the kind of move and when, then a row per
+   team with who made it (avatar, manager, record), the players in and out,
+   and what it does to that team's strength. */
+.activity-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.activity-toolbar .segmented {
+  margin-bottom: 0;
+}
+
+.segment-count {
+  margin-left: 0.15rem;
+  color: var(--muted);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
 .activity {
-  max-width: 46rem;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  overflow: hidden;
+  display: grid;
+  gap: 0.75rem;
 }
 
 .activity-item {
-  padding: 0.85rem 1rem;
-}
-
-.activity-item + .activity-item {
-  border-top: 1px solid var(--line);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
 }
 
 .activity-head {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  margin-bottom: 0.2rem;
+  padding: 0.65rem 1.25rem;
+  border-bottom: 1px solid var(--line);
 }
 
 .activity-type {
+  padding: 0.1rem 0.65rem;
+  border-radius: 999px;
+  background: var(--surface-raised);
+  font-size: 0.8125rem;
   font-weight: 700;
 }
 
 .activity-item.type-trade .activity-type {
+  background: var(--accent-soft);
   color: var(--accent);
 }
 
-.activity-sides {
+.activity-row {
   display: grid;
-  gap: 0.75rem 1.5rem;
-  margin-top: 0.5rem;
+  grid-template-columns: minmax(12rem, 17rem) minmax(0, 1fr) 14rem;
+  align-items: center;
+  gap: 0.75rem 2rem;
+  padding: 0.9rem 1.25rem;
 }
 
-.activity-sides-split {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+.activity-row + .activity-row {
+  border-top: 1px solid var(--line);
 }
 
 .activity-team {
-  display: block;
-  margin-bottom: 0.35rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.activity-team > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.activity-team-name {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 700;
+}
+
+.activity-team-name .mine {
+  margin: 0;
+}
+
+.activity-team-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.5rem;
 }
 
 .activity .moves {
-  margin-bottom: 0;
+  margin: 0;
+}
+
+@media (min-width: 721px) {
+  .activity .moves {
+    border-top: 0;
+  }
 }
 
 .activity .move:last-child {
   border-bottom: 0;
+}
+
+.activity-effect .effect-note {
+  margin-top: 0.4rem;
+}
+
+@media (max-width: 720px) {
+  .activity-head {
+    padding: 0.6rem 1rem;
+  }
+
+  .activity-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.6rem;
+    padding: 0.85rem 1rem;
+  }
+
+  /* The filter keeps one row, sliding sideways if a league has every kind of move. */
+  .activity-toolbar .segmented {
+    display: flex;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .activity-toolbar .segmented::-webkit-scrollbar {
+    display: none;
+  }
+
+  .activity-toolbar .segment {
+    flex: 1 0 auto;
+    padding: 0.3rem 0.7rem;
+  }
 }
 
 /* ---- League picker ---- */

@@ -28,7 +28,16 @@ function fantasyTeamOf(snapshot: LeagueSnapshot, playerId: string): string | nul
   return null;
 }
 
-/** Details for one player: season numbers and game log. Opens over the page. */
+// Game logs already opened this visit, so a second look is instant.
+const DETAIL_MINUTES = 5;
+const details = new Map<string, { detail: PlayerDetail; at: number }>();
+
+/**
+ * Details for one player: season numbers, projection and game log. Opens
+ * over the page (a bottom sheet on a phone). Everything but the game log
+ * comes with the league's stats report, so the panel opens at its full size
+ * at once; only the game scores and log rows fill in when they arrive.
+ */
 export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [detail, setDetail] = useState<PlayerDetail | null>(null);
@@ -41,10 +50,19 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
 
   useEffect(() => {
     let current = true;
-    setDetail(null);
+    const key = `${snapshot.league.id}:${player.id}`;
+    const saved = details.get(key);
     setError(null);
+    if (saved && Date.now() - saved.at < DETAIL_MINUTES * 60_000) {
+      setDetail(saved.detail);
+      return;
+    }
+    setDetail(null);
     getPlayerDetail(snapshot.league.id, player.id)
-      .then((loaded) => current && setDetail(loaded))
+      .then((loaded) => {
+        details.set(key, { detail: loaded, at: Date.now() });
+        if (current) setDetail(loaded);
+      })
       .catch((cause) => current && setError(cause instanceof Error ? cause.message : "Could not load this player."));
     return () => {
       current = false;
@@ -53,7 +71,11 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
 
   const shown = detail?.player ?? player;
   const fantasyTeam = fantasyTeamOf(snapshot, player.id);
-  const season = detail?.stats ?? null;
+  // Season numbers come from the league's stats report, the same figures the
+  // rest of the page shows, so nothing changes when the detail arrives; the
+  // detail adds the game log (and the numbers for a player the report lacks).
+  const season = stats?.players[player.id] ?? detail?.stats ?? null;
+  const games = detail?.games ?? null;
   const recentLabel = `Last ${stats?.recentWindow ?? 5}`;
   // The injury report entry comes with the league's stats report.
   const injury = stats?.players[player.id]?.injury ?? null;
@@ -97,7 +119,7 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
             {error}
           </p>
         )}
-        {!detail && !error && <p className="quiet">Loading…</p>}
+        {!season && !detail && !error && <p className="quiet">Loading…</p>}
 
         {detail && !season && (
           <p className="notice">
@@ -109,7 +131,7 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
           </p>
         )}
 
-        {detail && season && (
+        {season && (
           <>
             <dl className="figures">
               <div>
@@ -145,7 +167,7 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
             <h3 className="panel-heading">Rest of season</h3>
             <ProjectionChart
               stats={season}
-              games={detail.games}
+              games={games}
               absence={
                 injury && outlook?.kind === "season"
                   ? absenceFor(season, injury.asOf, null, null)
@@ -199,7 +221,24 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
                   </tr>
                 </thead>
                 <tbody>
-                  {detail.games.map((game) => (
+                  {/* Rows the size of the real ones hold the space until the log arrives. */}
+                  {!games &&
+                    Array.from({ length: Math.min(season.games, 82) }, (_, index) => (
+                      <tr key={`loading-${index}`} className="log-loading" aria-hidden="true">
+                        <th scope="row">
+                          <span className="skeleton" />
+                        </th>
+                        <td>
+                          <span className="skeleton skeleton-wide" />
+                        </td>
+                        {Array.from({ length: 8 }, (_, cell) => (
+                          <td key={cell} className="num">
+                            <span className="skeleton" />
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  {games?.map((game) => (
                     <tr key={game.date}>
                       <th scope="row">{formatGameDate(game.date)}</th>
                       <td>

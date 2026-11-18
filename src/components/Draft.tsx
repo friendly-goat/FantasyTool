@@ -4,7 +4,7 @@ import type { ModelPlayer, StrengthModel } from "../../shared/strength.ts";
 import { INJURED_SHARE } from "../../shared/trade.ts";
 import type { DraftBoard, DraftSelection, LeagueSnapshot } from "../../shared/types.ts";
 import { getDraft } from "../api.ts";
-import { formatDay } from "../format.ts";
+import { formatDay, ordinal } from "../format.ts";
 import { Avatar } from "./Avatar.tsx";
 import { PlayerButton } from "./PlayerName.tsx";
 import { TeamTag } from "./TeamTag.tsx";
@@ -14,12 +14,6 @@ interface Props {
   snapshot: LeagueSnapshot;
   model: StrengthModel | null;
   myRosterId: number;
-}
-
-function ordinal(n: number): string {
-  const tens = n % 100;
-  const suffix = tens >= 11 && tens <= 13 ? "th" : (["th", "st", "nd", "rd"][n % 10] ?? "th");
-  return `${n}${suffix}`;
 }
 
 /** A small rising or falling chart line. */

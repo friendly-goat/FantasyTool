@@ -4,7 +4,7 @@ import { type Move, topMoves } from "../../shared/moves.ts";
 import type { StrengthModel, TeamStrength } from "../../shared/strength.ts";
 import type { TradeOffer } from "../../shared/trade.ts";
 import type { LeagueSnapshot, PlayerRef, StatsReport, Team } from "../../shared/types.ts";
-import { formatPoints, formatRecord, formatSigned, formatWholeChange } from "../format.ts";
+import { formatPoints, formatRecord, formatSigned, formatWholeChange, ordinal } from "../format.ts";
 import { Avatar } from "./Avatar.tsx";
 import { PlayerCell } from "./PlayerCell.tsx";
 import { PositionChip } from "./PositionChip.tsx";
@@ -57,11 +57,6 @@ function MovePlayers({ players, notes }: { players: Move["gets"]; notes: Move["n
       ))}
     </span>
   );
-}
-
-function ordinal(n: number): string {
-  const suffix = ["th", "st", "nd", "rd"][n % 100 > 10 && n % 100 < 14 ? 0 : n % 10] ?? "th";
-  return `${n}${suffix}`;
 }
 
 /** The user's own team: the roster with its strength, and the top moves to make. */

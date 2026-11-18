@@ -41,6 +41,13 @@ export function formatAgo(iso: string, now: number = Date.now()): string {
   return relativeFormat.format(Math.round(hours / 24), "day");
 }
 
+/** 1 -> "1st", 12 -> "12th", 22 -> "22nd". */
+export function ordinal(n: number): string {
+  const tens = n % 100;
+  const suffix = tens >= 11 && tens <= 13 ? "th" : (["th", "st", "nd", "rd"][n % 10] ?? "th");
+  return `${n}${suffix}`;
+}
+
 export function formatRecord(wins: number, losses: number, ties: number): string {
   return ties > 0 ? `${wins}-${losses}-${ties}` : `${wins}-${losses}`;
 }

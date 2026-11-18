@@ -35,26 +35,30 @@ export function ProjectionChart({
   absence = null,
 }: {
   stats: PlayerStats;
-  games: PlayerGame[];
+  /** Null while the game log loads: the chart keeps its size and caption, and the scores fill in. */
+  games: PlayerGame[] | null;
   absence?: Absence | null;
 }) {
-  const played = [...games].reverse(); // oldest first
+  const loading = games === null || games.length === 0;
+  const played = loading ? [] : [...games].reverse(); // oldest first
   const projection = stats.projection;
   const remaining = Math.max(1, SEASON_GAMES - stats.teamGames);
   const missed = absence ? Math.min(remaining, absence.games) : 0;
   const seasonOver = absence !== null && absence.backLabel === null;
   const playRate = absence ? (stats.playRate ?? stats.availability) : stats.availability;
   const ahead = seasonOver ? 0 : Math.max(1, Math.round((remaining - missed) * playRate));
-  const total = played.length + missed + ahead;
+  // While loading, the season so far takes the space his games will.
+  const total = (loading ? stats.games : played.length) + missed + ahead;
   const top = Math.max(10, ...played.map((game) => game.fantasyPoints), projection.perGame) * 1.1;
 
   const x = (index: number) => PAD.left + ((WIDTH - PAD.left - PAD.right) * index) / Math.max(1, total - 1);
   const y = (value: number) => HEIGHT - PAD.bottom - ((HEIGHT - PAD.top - PAD.bottom) * value) / top;
   const ticks = [0, top / 3, (2 * top) / 3, top].map((value) => Math.round(value / 5) * 5);
-  const last = played[played.length - 1]!;
-  const lastX = x(played.length - 1);
-  const outX = x(played.length);
-  const startX = x(played.length + missed);
+  const shownPlayed = loading ? stats.games : played.length;
+  const last = played[played.length - 1];
+  const lastX = x(shownPlayed - 1);
+  const outX = x(shownPlayed);
+  const startX = x(shownPlayed + missed);
   const endX = x(total - 1);
   const tone = projection.trend === "rising" ? "up" : projection.trend === "fading" ? "down" : "flat";
   const trendWord = { rising: "rising", fading: "fading", steady: "holding steady" }[projection.trend];
@@ -78,12 +82,20 @@ export function ProjectionChart({
             </text>
           </g>
         ))}
-        <text className="chart-label" x={PAD.left} y={HEIGHT - 8}>
-          {formatGameDate(played[0]!.date)}
-        </text>
-        <text className="chart-label" x={lastX} y={HEIGHT - 8} textAnchor="middle">
-          {formatGameDate(last.date)}
-        </text>
+        {played[0] && last ? (
+          <>
+            <text className="chart-label" x={PAD.left} y={HEIGHT - 8}>
+              {formatGameDate(played[0].date)}
+            </text>
+            <text className="chart-label" x={lastX} y={HEIGHT - 8} textAnchor="middle">
+              {formatGameDate(last.date)}
+            </text>
+          </>
+        ) : (
+          <text className="chart-label" x={(PAD.left + lastX) / 2} y={y(top / 2)} textAnchor="middle">
+            Loading games…
+          </text>
+        )}
         <text className="chart-label" x={endX} y={HEIGHT - 8} textAnchor="end">
           Season end
         </text>
@@ -111,7 +123,7 @@ export function ProjectionChart({
         {!seasonOver && (
           <>
             {/* The step from the last game to the projected level (not across an absence) */}
-            {missed === 0 && (
+            {missed === 0 && last && (
               <line className="chart-bridge" x1={lastX} y1={y(last.fantasyPoints)} x2={startX} y2={y(projection.perGame)} />
             )}
             {/* The projected level */}
