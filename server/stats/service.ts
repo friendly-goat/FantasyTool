@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { LeagueSnapshot, PlayerDetail, PlayerRef, StatsReport } from "../../shared/types.ts";
-import { ignoredSettings } from "../scoring.ts";
+import type { LeagueSnapshot, NbaGame, PlayerDetail, PlayerRef, StatsReport, WeekLine } from "../../shared/types.ts";
+import { fantasyPoints, ignoredSettings } from "../scoring.ts";
 import { matchPlayers, sameLastName } from "./match.ts";
 import { PLAYER_ID_OVERRIDES } from "./overrides.ts";
 import type { GameLine, StatsProvider } from "./provider.ts";
@@ -153,6 +153,63 @@ export class StatsService {
       player,
       ...playerLog(player, matches.get(playerId), lines, scoring, snapshot.league.seasonStartDate, lastSeason),
     };
+  }
+
+  /** Whether the stats source can supply the NBA schedule. */
+  hasSchedule(): boolean {
+    return typeof this.provider?.fetchSchedule === "function";
+  }
+
+  /** NBA games from `start` to `end`, inclusive. Throws when the source cannot be reached. */
+  async schedule(start: string, end: string): Promise<NbaGame[]> {
+    if (!this.provider?.fetchSchedule) return [];
+    return this.provider.fetchSchedule(start, end);
+  }
+
+  /**
+   * Each rostered player's games from `start` to `end`, scored with the
+   * league's settings. During a week the box scores are kept fresher than
+   * usual: if they are older than `freshMs`, a background update starts.
+   */
+  async weekLines(
+    snapshot: LeagueSnapshot,
+    sleeperPlayers: Record<string, PlayerRef>,
+    start: string,
+    end: string,
+    freshMs: number,
+  ): Promise<{ lines: Record<string, WeekLine[]>; syncedAt: string | null }> {
+    if (!this.provider) return { lines: {}, syncedAt: null };
+    const season = snapshot.league.season;
+    const data = await this.load(season);
+    const old = data.syncedAt === null || this.now() - data.syncedAt >= freshMs;
+    const coolingOff = data.error !== null && this.now() - data.failedAt < RETRY_AFTER_MS;
+    if (old && !data.syncing && !coolingOff) void this.start(season, data);
+
+    const lines = [...data.lines.values()];
+    const prior = await this.load(previousSeason(season));
+    const { matches } = this.context(sleeperPlayers, lines, prior, snapshot.league.scoringSettings);
+    const wanted = new Map<string, string>();
+    for (const team of snapshot.teams) {
+      for (const player of [...team.starters.flatMap((s) => (s.player ? [s.player] : [])), ...team.bench, ...team.reserve]) {
+        const sourceId = matches.get(player.id);
+        if (sourceId) wanted.set(sourceId, player.id);
+      }
+    }
+    const result: Record<string, WeekLine[]> = {};
+    for (const line of lines) {
+      const sleeperId = wanted.get(line.playerId);
+      if (!sleeperId || line.date < start || line.date > end) continue;
+      (result[sleeperId] ??= []).push({
+        date: line.date,
+        points: fantasyPoints(line.stats, snapshot.league.scoringSettings),
+        minutes: line.minutes,
+        final: line.final,
+        opponent: line.opponent ?? null,
+        home: line.home ?? null,
+      });
+    }
+    for (const list of Object.values(result)) list.sort((a, b) => a.date.localeCompare(b.date));
+    return { lines: result, syncedAt: data.syncedAt ? new Date(data.syncedAt).toISOString() : null };
   }
 
   /** Stats-source players sharing a last name with `name`, for the check script. */

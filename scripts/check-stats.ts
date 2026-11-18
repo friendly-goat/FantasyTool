@@ -3,6 +3,7 @@
 //
 //   npm run check:stats -- <league_id>
 //   npm run check:stats -- <league_id> --player "James Harden"   (adds a game log)
+//   npm run check:stats -- <league_id> --schedule   (only this week's NBA schedule)
 //
 // Needs BALLDONTLIE_API_KEY in .env. The first run downloads the season so
 // far (about a minute); the result is saved in .cache/ and reused by the app.
@@ -28,6 +29,7 @@ const playerFlag = args.indexOf("--player");
 const playerName = playerFlag >= 0 ? args[playerFlag + 1] : undefined;
 // --mock runs the whole check against the built-in sample league, offline.
 const mock = args.includes("--mock");
+const scheduleOnly = args.includes("--schedule");
 const fetchJson = mock ? fetchFromMock : fetchFromSleeper;
 const leagueId = mock
   ? MOCK_LEAGUE_ID
@@ -46,6 +48,30 @@ async function main() {
   const provider = mock
     ? createMockStats((await fetchFromMock("/players/nba")) as Record<string, unknown>)
     : createBalldontlie(apiKey!);
+  if (scheduleOnly) {
+    if (!snapshot.league.seasonStartDate) throw new Error("Sleeper did not report the season start date.");
+    const { start, end } = weekRange(snapshot.league.seasonStartDate, snapshot.week);
+    if (!provider.fetchSchedule) throw new Error(`${provider.name} cannot supply a schedule.`);
+    const games = await provider.fetchSchedule(start, end);
+    console.log(`\nWeek ${snapshot.week} (${start} to ${end}): ${games.length} games`);
+    console.table(
+      games.map((game) => ({
+        date: game.date,
+        tipoff: game.startTime ? new Date(game.startTime).toLocaleString() : "?",
+        game: `${game.away ?? "?"} @ ${game.home ?? "?"}`,
+        state: game.state,
+        score: game.homeScore !== null ? `${game.awayScore}-${game.homeScore}` : "",
+      })),
+    );
+    const upcoming = games.filter((game) => game.state === "scheduled").length;
+    console.log(
+      upcoming > 0
+        ? `${upcoming} games still to be played: the schedule includes future games.`
+        : "No future games listed. If games remain this week, the source may not list unplayed games.",
+    );
+    return;
+  }
+
   const service = new StatsService(
     {
       name: provider.name,

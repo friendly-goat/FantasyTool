@@ -100,6 +100,48 @@ export interface LeagueSnapshot {
   transactions: Transaction[];
 }
 
+/** One NBA game in a fantasy week, played or not. */
+export interface NbaGame {
+  id: string;
+  /** Game day, YYYY-MM-DD, as the NBA lists it. */
+  date: string;
+  /** Tip-off as an ISO timestamp, when known. */
+  startTime: string | null;
+  home: string | null;
+  away: string | null;
+  state: "scheduled" | "in_progress" | "final";
+  homeScore: number | null;
+  awayScore: number | null;
+  statusText: string | null;
+}
+
+/** One player's game this week, scored with the league's settings. */
+export interface WeekLine {
+  date: string;
+  /** Fantasy points from the box score (no technical or flagrant fouls). */
+  points: number;
+  minutes: number;
+  final: boolean;
+  opponent: string | null;
+  home: boolean | null;
+}
+
+/** Everything the matchup view needs about the NBA side of the current week. */
+export interface WeekData {
+  week: number;
+  /** First and last day of the fantasy week, YYYY-MM-DD. */
+  start: string;
+  end: string;
+  /** "unavailable" when the stats source has no schedule or could not be reached. */
+  schedule: "ready" | "unavailable";
+  scheduleMessage: string | null;
+  games: NbaGame[];
+  /** Sleeper player ID -> his games this week, oldest first. */
+  lines: Record<string, WeekLine[]>;
+  /** When the box scores were last brought up to date. */
+  linesSyncedAt: string | null;
+}
+
 /** One pick on the draft board. */
 export interface DraftSelection {
   /** Overall pick number, from 1. */

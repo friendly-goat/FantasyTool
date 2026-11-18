@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { PlayerRef, StatLine } from "../../shared/types.ts";
 import { fetchFromMock, MOCK_LEAGUE_ID } from "../mock.ts";
 import { buildSnapshot, loadPlayers } from "../snapshot.ts";
-import { createBalldontlie, parseMinutes, toGameLine } from "./balldontlie.ts";
+import { createBalldontlie, parseMinutes, toGameLine, toScheduledGame } from "./balldontlie.ts";
 import { matchPlayers, normalizeName, sameLastName } from "./match.ts";
 import { createMockStats } from "./mock.ts";
 import type { GameLine, StatsProvider } from "./provider.ts";
@@ -369,5 +369,47 @@ describe("StatsService", async () => {
     await service.sync("2026");
     const report = await service.report(snapshot, players);
     expect(report).toMatchObject({ status: "error", message: "boom", players: {} });
+  });
+});
+
+describe("schedule", () => {
+  it("reads balldontlie games in each state", () => {
+    const base = { id: 1, date: "2026-11-17", home_team: { abbreviation: "CLE" }, visitor_team: { abbreviation: "CHI" } };
+    expect(
+      toScheduledGame({ ...base, status: "2026-11-18T00:00:00Z", status_state: "scheduled", period: 0, home_team_score: 0, visitor_team_score: 0 }),
+    ).toMatchObject({ state: "scheduled", startTime: "2026-11-18T00:00:00Z", homeScore: null, statusText: null, home: "CLE", away: "CHI" });
+    expect(toScheduledGame({ ...base, status: "3rd Qtr", period: 3, home_team_score: 70, visitor_team_score: 66 })).toMatchObject({
+      state: "in_progress",
+      homeScore: 70,
+      statusText: "3rd Qtr",
+    });
+    expect(
+      toScheduledGame({ ...base, status: "Final", datetime: "2026-11-17T23:00:00Z", home_team_score: 110, visitor_team_score: 99 }),
+    ).toMatchObject({ state: "final", startTime: "2026-11-17T23:00:00Z", awayScore: 99 });
+    expect(toScheduledGame({ date: "2026-11-17" })).toBeNull();
+  });
+
+  it("asks for a day either side and keeps only the week's games", async () => {
+    const urls: string[] = [];
+    const fetchImpl = (async (url: string) => {
+      urls.push(url);
+      return new Response(
+        JSON.stringify({
+          data: [
+            { id: 1, date: "2026-11-15", status: "Final" },
+            { id: 2, date: "2026-11-16", status: "Final" },
+            { id: 3, date: "2026-11-22", status: "2026-11-23T01:00:00Z" },
+            { id: 4, date: "2026-11-23", status: "2026-11-24T01:00:00Z" },
+          ],
+          meta: { next_cursor: null },
+        }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+    const games = await createBalldontlie("key", fetchImpl, 0).fetchSchedule!("2026-11-16", "2026-11-22");
+    expect(games.map((game) => game.id)).toEqual(["2", "3"]);
+    expect(urls[0]).toContain("start_date=2026-11-15");
+    expect(urls[0]).toContain("end_date=2026-11-23");
+    expect(urls[0]).toContain("/games?");
   });
 });

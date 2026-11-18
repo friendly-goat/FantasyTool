@@ -1,4 +1,4 @@
-import type { GameLine, StatsProvider } from "./provider.ts";
+import type { GameLine, ScheduledGame, StatsProvider } from "./provider.ts";
 
 // balldontlie (https://docs.balldontlie.io). Game stats need the ALL-STAR
 // plan, which allows 60 requests per minute. Requests here are spaced to
@@ -46,9 +46,56 @@ interface RawTeam {
   abbreviation?: string;
 }
 
-interface RawPage {
-  data?: RawRow[];
+interface RawPage<T = RawRow> {
+  data?: T[];
   meta?: { next_cursor?: number | null };
+}
+
+interface RawGame {
+  id?: number;
+  date?: string;
+  datetime?: string | null;
+  status?: string | null;
+  status_state?: string | null;
+  period?: number | null;
+  home_team?: RawTeam | null;
+  visitor_team?: RawTeam | null;
+  home_team_score?: number | null;
+  visitor_team_score?: number | null;
+}
+
+function addDays(date: string, days: number): string {
+  const value = new Date(`${date}T00:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
+export function toScheduledGame(game: RawGame): ScheduledGame | null {
+  const date = game.date?.slice(0, 10);
+  if (game.id == null || !date) return null;
+  const status = game.status ?? "";
+  // status_state is the normalized field; older answers only have status,
+  // which holds the tip-off time before a game, a quarter during it, and
+  // "Final" after.
+  const state: ScheduledGame["state"] =
+    game.status_state === "final" || /^final/i.test(status)
+      ? "final"
+      : game.status_state === "in_progress" || (game.period ?? 0) > 0
+        ? "in_progress"
+        : "scheduled";
+  const startTime = game.datetime ?? (/^\d{4}-\d{2}-\d{2}T/.test(status) ? status : null);
+  const played = state !== "scheduled";
+  return {
+    id: String(game.id),
+    date,
+    startTime,
+    home: game.home_team?.abbreviation ?? null,
+    away: game.visitor_team?.abbreviation ?? null,
+    state,
+    homeScore: played ? (game.home_team_score ?? null) : null,
+    awayScore: played ? (game.visitor_team_score ?? null) : null,
+    statusText: status && !/^\d{4}-\d{2}-\d{2}T/.test(status) ? status : null,
+  };
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -113,7 +160,7 @@ export function createBalldontlie(
   fetchImpl: typeof fetch = fetch,
   spacingMs: number = REQUEST_SPACING_MS,
 ): StatsProvider {
-  async function getPage(url: string): Promise<RawPage> {
+  async function getPage<T = RawRow>(url: string): Promise<RawPage<T>> {
     for (let attempt = 0; ; attempt++) {
       let response: Response;
       try {
@@ -124,7 +171,7 @@ export function createBalldontlie(
       } catch {
         throw new Error("balldontlie could not be reached. Check your internet connection.");
       }
-      if (response.ok) return (await response.json()) as RawPage;
+      if (response.ok) return (await response.json()) as RawPage<T>;
       if (response.status === 429 && attempt < MAX_RETRIES) {
         await sleep(Math.max(spacingMs, 1) * 15); // Rate limited: back off, then retry.
         continue;
@@ -161,6 +208,29 @@ export function createBalldontlie(
         await sleep(spacingMs);
       }
       return lines;
+    },
+    async fetchSchedule(startDate, endDate) {
+      // The date filters' edges are not documented as inclusive, so ask for a
+      // day either side and keep only the dates wanted.
+      const games: ScheduledGame[] = [];
+      let cursor: number | null = null;
+      for (let page = 1; page <= 10; page++) {
+        const params = new URLSearchParams({
+          per_page: "100",
+          start_date: addDays(startDate, -1),
+          end_date: addDays(endDate, 1),
+        });
+        if (cursor != null) params.set("cursor", String(cursor));
+        const body = await getPage<RawGame>(`${BASE_URL}/games?${params}`);
+        for (const raw of body.data ?? []) {
+          const game = toScheduledGame(raw);
+          if (game && game.date >= startDate && game.date <= endDate) games.push(game);
+        }
+        cursor = body.meta?.next_cursor ?? null;
+        if (cursor == null || (body.data ?? []).length === 0) break;
+        await sleep(spacingMs);
+      }
+      return games;
     },
   };
 }

@@ -1,18 +1,19 @@
-import type { LeagueSnapshot, StatsReport } from "../../shared/types.ts";
+import type { StrengthModel } from "../../shared/strength.ts";
+import type { LeagueSnapshot } from "../../shared/types.ts";
 import { formatPoints, formatRecord } from "../format.ts";
 import { Avatar } from "./Avatar.tsx";
 import { MatchupDetail } from "./MatchupDetail.tsx";
 
 interface Props {
   snapshot: LeagueSnapshot;
-  stats: StatsReport | null;
+  model: StrengthModel | null;
   myRosterId: number | null;
   openMatchupId: number | null;
   onOpenMatchup: (matchupId: number | null) => void;
   onOpenTeam: (rosterId: number) => void;
 }
 
-export function Matchups({ snapshot, stats, myRosterId, openMatchupId, onOpenMatchup, onOpenTeam }: Props) {
+export function Matchups({ snapshot, model, myRosterId, openMatchupId, onOpenMatchup, onOpenTeam }: Props) {
   const teams = new Map(snapshot.teams.map((team) => [team.rosterId, team]));
 
   if (snapshot.matchups.length === 0) {
@@ -24,8 +25,9 @@ export function Matchups({ snapshot, stats, myRosterId, openMatchupId, onOpenMat
     return (
       <MatchupDetail
         snapshot={snapshot}
-        stats={stats}
+        model={model}
         matchup={open}
+        myRosterId={myRosterId}
         onBack={() => onOpenMatchup(null)}
         onOpenTeam={onOpenTeam}
       />

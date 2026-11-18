@@ -80,6 +80,11 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   (`src/components/PlayerName.tsx`) so the name opens the player's details.
   In a list, use `PlayerCell` (name, injury tag, position chips, team). When a
   whole card should open the player (draft board), use `PlayerButton` instead.
+- Sleeper's matchup data never says which scores are locked; an unlocked
+  starter shows his latest game. Lock state, lock advice and win chances are
+  worked out in `shared/matchup.ts` from box scores and the NBA schedule
+  (`StatsProvider.fetchSchedule`). They are display only: never feed them into
+  strength, grades or trade ideas.
 - The Draft tab's rising and falling marks (`shared/draft.ts`) are a display
   label only: rank by weekly value now against pick order, one round either
   way. Never feed them into strength, grades or trade ideas.

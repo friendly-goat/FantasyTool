@@ -1,4 +1,4 @@
-import type { GameLine, StatsProvider } from "./provider.ts";
+import type { GameLine, ScheduledGame, StatsProvider } from "./provider.ts";
 
 // Made-up box scores for the mock league (`npm run dev:mock` and tests).
 // Player names match server/mock.ts so that name matching is exercised.
@@ -71,9 +71,56 @@ function lastSeasonLines(players: Record<string, unknown>, year: number): GameLi
   return lines;
 }
 
+/** Last day of mock box scores: games after it are still to be played. */
+const LAST_PLAYED = "2026-11-12";
+
+function mockDayIndex(date: string): number {
+  return Math.round((Date.parse(`${date}T00:00:00Z`) - Date.UTC(2026, 9, 21)) / 86_400_000);
+}
+
+/**
+ * A schedule that agrees with the mock box scores: every team plays on the
+ * days that have box scores, and after the last of them, games are still to
+ * come (half the teams one day, the other half the next, then everyone).
+ */
+export function mockSchedule(startDate: string, endDate: string): ScheduledGame[] {
+  const games: ScheduledGame[] = [];
+  for (let day = startDate; day <= endDate; ) {
+    const index = mockDayIndex(day);
+    const after = day > LAST_PLAYED ? mockDayIndex(day) - mockDayIndex(LAST_PLAYED) : 0;
+    let teams: string[] = [];
+    if (index >= 0 && day <= LAST_PLAYED && index % 2 === 0) teams = TEAMS;
+    else if (after > 0) teams = after % 3 === 1 ? TEAMS.slice(0, 6) : after % 3 === 2 ? TEAMS.slice(6) : TEAMS;
+    const half = teams.length / 2;
+    for (let i = 0; i < half; i++) {
+      const home = teams[(i + index) % teams.length]!;
+      const away = teams[(i + index + half) % teams.length]!;
+      const final = day <= LAST_PLAYED;
+      games.push({
+        id: `m${day}-${home}`,
+        date: day,
+        startTime: `${day}T${i % 2 === 0 ? "23" : "22"}:30:00Z`,
+        home,
+        away,
+        state: final ? "final" : "scheduled",
+        homeScore: final ? 100 + Math.round(fraction(index, i) * 30) : null,
+        awayScore: final ? 98 + Math.round(fraction(index, i + 7) * 30) : null,
+        statusText: final ? "Final" : null,
+      });
+    }
+    const next = new Date(`${day}T00:00:00Z`);
+    next.setUTCDate(next.getUTCDate() + 1);
+    day = next.toISOString().slice(0, 10);
+  }
+  return games;
+}
+
 export function createMockStats(players: Record<string, unknown>): StatsProvider {
   return {
     name: "mock",
+    async fetchSchedule(startDate, endDate) {
+      return mockSchedule(startDate, endDate);
+    },
     async fetchGameLines(season, fromDate, onPage) {
       if (season !== MOCK_SEASON) {
         onPage(1);

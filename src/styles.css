@@ -393,15 +393,6 @@ code {
   margin: 0;
 }
 
-.duel-right .pcell {
-  align-items: flex-end;
-}
-
-.duel-right .pcell-name,
-.duel-right .pcell-meta {
-  justify-content: flex-end;
-}
-
 /* ---- Standings ---- */
 
 .table-scroll {
@@ -864,49 +855,352 @@ th[aria-sort] .sort-button {
   margin-bottom: 1rem;
 }
 
-.duel {
-  padding: 1.25rem 1.5rem 1.5rem;
+.mx {
+  padding: 1.1rem 1.25rem 1.25rem;
 }
 
-.duel-head {
+.mx-head {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: center;
   gap: 1rem;
+  align-items: start;
 }
 
-.duel-team {
+.mx-vs {
+  align-self: center;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.mx-team {
+  min-width: 0;
+}
+
+.mx-team-id {
   display: flex;
   align-items: center;
   gap: 0.75rem;
   min-width: 0;
 }
 
-.duel-head .duel-team:last-child {
+.mx-team-right {
+  text-align: right;
+}
+
+.mx-team-right .mx-team-id {
   flex-direction: row-reverse;
-  text-align: right;
 }
 
-.duel-head .duel-team:last-child .team-link {
-  text-align: right;
-  margin-left: auto;
+.mx-team-name {
+  min-width: 0;
 }
 
-.duel-score {
-  display: flex;
-  align-items: baseline;
-  gap: 0.9rem;
+.mx-team-name .team-link {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.duel-score .num {
+.mx-team-right .team-link {
+  margin-left: auto;
+  text-align: right;
+}
+
+.mx-chance {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-top: 0.85rem;
+}
+
+.mx-chance-label {
+  font-size: 0.8125rem;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.mx-chance-bar {
+  display: flex;
+  height: 0.4rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--line);
+}
+
+.mx-team-right .mx-chance-bar {
+  justify-content: flex-end;
+}
+
+.mx-chance-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--muted);
+}
+
+.mx-chance-fill.ahead {
+  background: var(--win);
+}
+
+.mx-scores {
+  display: flex;
+  flex-direction: column;
+  margin-top: 0.5rem;
+}
+
+.mx-team-right .mx-scores {
+  align-items: flex-end;
+}
+
+.mx-projected {
   font-size: 1.75rem;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.mx-now {
+  font-size: 0.8125rem;
+}
+
+.mx-strip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: center;
+  margin: 1.1rem 0 0.25rem;
+  font-size: 0.8125rem;
+}
+
+.mx-strip > :last-child {
+  text-align: right;
+}
+
+.mx-week {
+  font-weight: 700;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.mx .notice {
+  margin-top: 0.75rem;
+}
+
+.mx-rows {
+  display: grid;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mx-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 3.25rem minmax(0, 1fr);
+  gap: 0.6rem;
+}
+
+.mx-slot {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 0.75rem;
+}
+
+.mx-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-small);
+  background: var(--surface-raised);
+}
+
+.mx-empty {
+  align-items: center;
+  justify-content: center;
+  min-height: 5rem;
+}
+
+/* The right-hand team mirrors the left, as on Sleeper: names and scores lean
+   toward the middle. */
+.mx-right .pcell {
+  align-items: flex-end;
+  display: flex;
+}
+
+.mx-right .pcell-name,
+.mx-right .pcell-meta,
+.mx-right .mx-games {
+  justify-content: flex-end;
+}
+
+.mx-right .mx-status-row,
+.mx-right .mx-next {
+  flex-direction: row-reverse;
+}
+
+.mx-status-row,
+.mx-next {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.mx-status {
+  display: inline-flex;
+  white-space: nowrap;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.mx-locked .mx-status,
+.mx-final .mx-status {
+  color: var(--accent);
+}
+
+.mx-open .mx-status {
+  color: var(--text);
+}
+
+.mx-live .mx-status {
+  color: var(--loss);
+}
+
+.mx-icon {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.mx-live-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--loss);
+}
+
+.mx-points {
+  font-size: 1.25rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.mx-locked .mx-points,
+.mx-final .mx-points {
+  color: var(--accent);
+}
+
+.mx-next {
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.mx-proj {
+  color: var(--text);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The week strip: one chip per game, opponent logo over points or day. */
+.mx-games {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mx-game {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  min-width: 2.4rem;
+  padding: 0.3rem 0.2rem 0.25rem;
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.mx-game-played {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.mx-game-counted {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.mx-game-live {
+  box-shadow: inset 0 0 0 2px var(--loss);
+}
+
+.mx-game-logo {
+  display: inline-grid;
+  place-items: center;
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.mx-game-logo .team-logo {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.mx-game:not(.mx-game-played) .mx-game-logo {
+  opacity: 0.75;
+}
+
+.mx-game-abbr {
+  font-size: 0.625rem;
   font-weight: 800;
 }
 
-.duel-note {
-  text-align: center;
-  margin-top: 0.75rem;
+.mx-game-at {
+  position: absolute;
+  top: 0.1rem;
+  left: 0.2rem;
+  color: var(--muted);
+  font-size: 0.5625rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.mx-advice {
+  margin: 0;
+  padding: 0.4rem 0.55rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.mx-advice-lock {
+  background: var(--win-soft);
+}
+
+.mx-advice-lock strong {
+  color: var(--win);
+}
+
+.mx-advice-wait {
+  background: var(--surface);
 }
 
 .panel-heading {
@@ -914,52 +1208,6 @@ th[aria-sort] .sort-button {
   font-weight: 700;
   color: var(--muted);
   margin: 1.5rem 0 0.25rem;
-}
-
-.duel-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.55rem 0;
-  border-bottom: 1px solid var(--line);
-}
-
-.duel-rows .duel-row:last-child {
-  border-bottom: 0;
-}
-
-.duel-cell {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  min-width: 0;
-}
-
-.duel-right {
-  flex-direction: row-reverse;
-  text-align: right;
-}
-
-.duel-player {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.duel-name {
-  font-weight: 600;
-}
-
-.duel-right .injury {
-  margin-right: 0;
-  margin-left: 0.5rem;
-}
-
-.duel-points {
-  font-size: 1.0625rem;
-  font-weight: 700;
 }
 
 /* ---- Player details panel ---- */
@@ -1669,6 +1917,90 @@ th[aria-sort] .sort-button {
 }
 
 @media (max-width: 720px) {
+  .mx {
+    padding: 0.9rem 0.75rem 1rem;
+  }
+
+  .mx-head {
+    gap: 0.5rem;
+  }
+
+  .mx-team-id {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.4rem;
+  }
+
+  .mx-team-right .mx-team-id {
+    flex-direction: column;
+    align-items: flex-end;
+  }
+
+  .mx-projected {
+    font-size: 1.35rem;
+  }
+
+  .mx-strip {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .mx-week {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+
+  .mx-row {
+    grid-template-columns: minmax(0, 1fr) 2.1rem minmax(0, 1fr);
+    gap: 0.3rem;
+  }
+
+  .mx-slot .chip {
+    min-width: 0;
+    padding: 0.1rem 0.3rem;
+    font-size: 0.6875rem;
+  }
+
+  .mx-card {
+    padding: 0.55rem 0.5rem;
+  }
+
+  /* A week fits on one row: chips share the card's width. */
+  .mx-games {
+    flex-wrap: nowrap;
+    gap: 0.2rem;
+  }
+
+  .mx-game {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 0.25rem 0.05rem 0.2rem;
+    font-size: 0.625rem;
+  }
+
+  .mx-game-logo,
+  .mx-game-logo .team-logo {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  .mx-status-row {
+    gap: 0.3rem;
+  }
+
+  .mx-points {
+    font-size: 1.05rem;
+  }
+
+  .mx-status {
+    gap: 0.2rem;
+    font-size: 0.6875rem;
+  }
+
+  .mx-icon {
+    width: 0.85rem;
+    height: 0.85rem;
+  }
+
   .activity-sides-split {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1841,7 +2173,6 @@ th[aria-sort] .sort-button {
   .idea {
     grid-template-columns: minmax(0, 1fr);
   }
-
 
 }
 
@@ -2084,42 +2415,6 @@ th[aria-sort] .sort-button {
 
   .rail-name {
     overflow: visible;
-  }
-
-  .duel,
-  .panel-body {
-    padding: 1rem;
-  }
-
-  .duel-head {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .duel-head .duel-team:last-child {
-    flex-direction: row;
-    text-align: left;
-  }
-
-  .duel-head .duel-team:last-child .team-link {
-    text-align: left;
-    margin-left: 0;
-  }
-
-  .duel-score {
-    justify-content: center;
-  }
-
-  .duel-cell,
-  .duel-right {
-    flex-direction: column;
-    align-items: flex-start;
-    text-align: left;
-    gap: 0.1rem;
-  }
-
-  .duel-right {
-    align-items: flex-end;
-    text-align: right;
   }
 }
 

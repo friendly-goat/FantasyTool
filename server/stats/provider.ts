@@ -23,6 +23,22 @@ export interface GameLine {
   stats: StatLine;
 }
 
+/** One NBA game on the schedule, played or not. */
+export interface ScheduledGame {
+  id: string;
+  /** Game day, YYYY-MM-DD (US Eastern, as the NBA lists it). */
+  date: string;
+  /** Tip-off as an ISO timestamp, when known. */
+  startTime: string | null;
+  home: string | null;
+  away: string | null;
+  state: "scheduled" | "in_progress" | "final";
+  homeScore: number | null;
+  awayScore: number | null;
+  /** The source's own status text, such as "3rd Qtr". */
+  statusText: string | null;
+}
+
 /**
  * A source of NBA box scores. Swapping stats vendors means writing one
  * more of these; nothing else in the app knows which vendor is in use.
@@ -38,4 +54,6 @@ export interface StatsProvider {
     fromDate: string | null,
     onPage: (pagesFetched: number) => void,
   ): Promise<GameLine[]>;
+  /** Every game from `startDate` to `endDate` (YYYY-MM-DD, inclusive), played or not. */
+  fetchSchedule?(startDate: string, endDate: string): Promise<ScheduledGame[]>;
 }

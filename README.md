@@ -273,8 +273,48 @@ run Monday to Sunday (`server/weeks.ts`).
 | `npm run check:sleeper` | Confirms Sleeper answers for NBA from your machine |
 | `npm run check:stats` | Confirms the stats key works and shows player matching |
 | `npm run check:sleeper -- <league_id> --raw-matchup` | Also prints one team's raw matchup entry, to see every field Sleeper sends |
+| `npm run check:stats -- <league_id> --schedule` | Prints this week's NBA schedule from the stats source |
 | `npm run check:logos` | Downloads every team logo and writes a preview page |
 | `npm start` | Builds the React app and serves everything from :8787 |
+
+## Live matchup
+
+Opening a matchup shows both lineups slot by slot, modelled on Sleeper's
+matchup screen: each starter's counted score, his status, his next game, and
+a strip of his NBA team's games this week (opponent logo, then his points or
+the day). Your team is on the left.
+
+Sleeper's matchup data has each starter's counted score but no word on
+whether it is locked, and the total includes stand-in scores (an unlocked
+starter shows his latest game). The status is worked out from the box scores
+and the NBA schedule (`shared/matchup.ts`):
+
+| Status | Meaning |
+| --- | --- |
+| Locked | The score is an earlier game this week; if it were not locked, it would have moved to his newer game. |
+| Final | His last game of the week is over. |
+| Can lock | The score is his latest game and he has games left. It can still be locked before his next game, or already is (you know; the data does not say). |
+| Live | His game is being played. |
+| Yet to play | No games yet this week. |
+| Checking | The score matches none of his box scores yet (they may still be loading). |
+
+Box scores lack technical and flagrant fouls, so a score a few foul
+deductions (from the league's `tf` and `ff` settings) below a game still
+matches it. A game his team played without him counts as zero.
+
+For your starters who can lock, the view says **Lock now** or **Wait**: lock
+when the score in hand beats what waiting is expected to bring, which is his
+expected locked score from his remaining games, weighted by his chance of
+playing each one. The **win chance** and projected finals play out the rest of
+the week 4,000 times: settled scores stay, everyone else plays his remaining
+games, and each manager locks by the same rule. Starters stay in their slots;
+bench swaps are not modelled. These are display only and feed nothing else.
+
+The NBA schedule comes from the stats source (`fetchSchedule` on the
+`StatsProvider`), cached for 5 minutes (`SCHEDULE_CACHE_MINUTES`). While a
+matchup is open, box scores are kept within 15 minutes
+(`WEEK_STATS_MINUTES`) and the view reloads every 3 minutes. Sleeper's scores
+update when you press Refresh.
 
 ## Draft board
 

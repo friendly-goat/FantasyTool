@@ -1,6 +1,7 @@
 import type {
   AppConfig,
   DraftBoard,
+  WeekData,
   LeagueSnapshot,
   PlayerDetail,
   StatsReport,
@@ -32,6 +33,10 @@ export function getStats(leagueId: string, retry = false): Promise<StatsReport> 
 
 export function getPlayerDetail(leagueId: string, playerId: string): Promise<PlayerDetail> {
   return getJson(`/api/league/${encodeURIComponent(leagueId)}/players/${encodeURIComponent(playerId)}`);
+}
+
+export function getWeek(leagueId: string): Promise<WeekData> {
+  return getJson(`/api/league/${encodeURIComponent(leagueId)}/week`);
 }
 
 export function getDraft(leagueId: string): Promise<{ board: DraftBoard | null }> {

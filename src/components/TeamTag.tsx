@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { nbaTeam } from "../../shared/nbaTeams.ts";
 
 // Teams whose logo could not be loaded. Shared by every tag on the page, so
@@ -10,10 +10,19 @@ const failed = new Set<string>();
  * are listed; CSS shows the one for the current theme, and the browser only
  * downloads the one on screen.
  */
-export function TeamLogo({ team, size = "sm" }: { team: string | null; size?: "sm" | "md" }) {
+export function TeamLogo({
+  team,
+  size = "sm",
+  fallback = null,
+}: {
+  team: string | null;
+  size?: "sm" | "md";
+  /** Shown instead when there is no logo, such as the abbreviation. */
+  fallback?: ReactNode;
+}) {
   const info = nbaTeam(team);
   const [, setFailures] = useState(0);
-  if (!info || failed.has(info.abbr)) return null;
+  if (!info || failed.has(info.abbr)) return <>{fallback}</>;
 
   const onError = () => {
     failed.add(info.abbr);

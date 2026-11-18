@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import express from "express";
-import type { AppConfig, LeagueSnapshot } from "../shared/types.ts";
+import type { AppConfig, LeagueSnapshot, WeekData } from "../shared/types.ts";
 import { nbaTeam } from "../shared/nbaTeams.ts";
 import { Cache } from "./cache.ts";
 import { createLogoSource } from "./logos.ts";
@@ -12,6 +12,7 @@ import { createBalldontlie } from "./stats/balldontlie.ts";
 import { createMockStats } from "./stats/mock.ts";
 import type { StatsProvider } from "./stats/provider.ts";
 import { StatsService } from "./stats/service.ts";
+import { weekRange } from "./weeks.ts";
 
 // Local backend. It is the only part of the app that talks to Sleeper:
 // the React app calls /api/* here, and this process decides whether to
@@ -139,6 +140,51 @@ app.get("/api/league/:leagueId/players/:playerId", async (req, res) => {
       return;
     }
     res.json(detail);
+  } catch (error) {
+    sendError(res, error);
+  }
+});
+
+// The NBA side of this fantasy week: the schedule (cached for a few minutes,
+// since game states change on game nights) and each rostered player's games.
+const scheduleTtl = (Number(process.env.SCHEDULE_CACHE_MINUTES) || 5) * MINUTE;
+const weekFreshMs = (Number(process.env.WEEK_STATS_MINUTES) || 15) * MINUTE;
+
+app.get("/api/league/:leagueId/week", async (req, res) => {
+  try {
+    const leagueId = req.params.leagueId.trim();
+    const [snapshot, players] = await Promise.all([getSnapshot(leagueId, false), getPlayers()]);
+    const { league, week } = snapshot.value;
+    const seasonStart = league.seasonStartDate;
+    if (!seasonStart) {
+      res.status(502).json({ error: "Sleeper did not report when the season started, so this week's dates are unknown." });
+      return;
+    }
+    const { start, end } = weekRange(seasonStart, week);
+
+    let games: WeekData["games"] = [];
+    let scheduleMessage: string | null = null;
+    if (!stats.hasSchedule()) {
+      scheduleMessage = "No stats source is set up, so the NBA schedule is not available.";
+    } else {
+      try {
+        games = (await cache.get(`schedule-v1-${start}`, scheduleTtl, () => stats.schedule(start, end))).value;
+      } catch (error) {
+        scheduleMessage = error instanceof Error ? error.message : "The NBA schedule could not be loaded.";
+      }
+    }
+    const { lines, syncedAt } = await stats.weekLines(snapshot.value, players.value, start, end, weekFreshMs);
+    const body: WeekData = {
+      week,
+      start,
+      end,
+      schedule: scheduleMessage === null ? "ready" : "unavailable",
+      scheduleMessage,
+      games,
+      lines,
+      linesSyncedAt: syncedAt,
+    };
+    res.json(body);
   } catch (error) {
     sendError(res, error);
   }

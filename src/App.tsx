@@ -323,7 +323,7 @@ export function App() {
           {view === "Matchups" && (
             <Matchups
               snapshot={snapshot}
-              stats={stats}
+              model={model}
               myRosterId={myRosterId}
               openMatchupId={openMatchupId}
               onOpenMatchup={setOpenMatchupId}

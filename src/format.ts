@@ -56,3 +56,35 @@ const gameDateFormat = new Intl.DateTimeFormat("en-US", { month: "short", day: "
 export function formatGameDate(date: string): string {
   return gameDateFormat.format(new Date(`${date}T12:00:00`));
 }
+
+const clockFormat = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" });
+const weekdayFormat = new Intl.DateTimeFormat("en-US", { weekday: "short" });
+
+function localDay(value: Date): string {
+  return `${value.getFullYear()}-${value.getMonth() + 1}-${value.getDate()}`;
+}
+
+/**
+ * When a game tips off, in this browser's time zone: "Today 5:00 PM",
+ * "Tomorrow 6:30 PM" or "Wed 7:00 PM". Without a time, the day alone.
+ */
+export function formatTipoff(startTime: string | null, date: string, now: Date = new Date()): string {
+  const when = startTime ? new Date(startTime) : new Date(`${date}T12:00:00`);
+  const tomorrow = new Date(now);
+  tomorrow.setDate(now.getDate() + 1);
+  const day =
+    localDay(when) === localDay(now) ? "Today" : localDay(when) === localDay(tomorrow) ? "Tomorrow" : weekdayFormat.format(when);
+  return startTime ? `${day} ${clockFormat.format(when)}` : day;
+}
+
+/** The game's day as a short weekday, "Tue". */
+export function formatWeekday(date: string): string {
+  return weekdayFormat.format(new Date(`${date}T12:00:00`));
+}
+
+/** "Nov 16–22", or "Nov 30–Dec 6" across months. */
+export function formatWeekRange(start: string, end: string): string {
+  const first = formatGameDate(start);
+  const last = formatGameDate(end);
+  return first.slice(0, 3) === last.slice(0, 3) ? `${first}–${last.slice(4)}` : `${first}–${last}`;
+}
