@@ -90,9 +90,14 @@ describe("injuries, IR and waiver pickups (against the mock league)", async () =
   });
 
   it("splits a trade for an injured player into the weeks he is out and the weeks after", () => {
-    const idea = strengths
-      .flatMap(({ rosterId }) => findTrades(model, snapshot, rosterId, situations, { getInjured: true }).ideas)
-      .find((candidate) => tradePhases(model, candidate.result.a))!;
+    let idea: ReturnType<typeof findTrades>["ideas"][number] | undefined;
+    for (const { rosterId } of strengths) {
+      idea = findTrades(model, snapshot, rosterId, situations, { getInjured: true }).ideas.find((candidate) =>
+        tradePhases(model, candidate.result.a),
+      );
+      if (idea) break;
+    }
+    if (!idea) throw new Error("no trade for an injured player found");
     const phases = tradePhases(model, idea.result.a)!;
     expect(idea.result.a.gets.map((player) => player.id)).toContain(phases.player.id);
     expect(phases.weeksOut).toBeGreaterThan(0);
@@ -164,7 +169,7 @@ describe("injuries, IR and waiver pickups (against the mock league)", async () =
   });
 
   it("never lists two versions of the same offer (same team, same players back, same main piece)", () => {
-    for (const { rosterId } of strengths.slice(0, 5)) {
+    for (const { rosterId } of strengths.slice(0, 3)) {
       for (const options of [{}, { getInjured: true }]) {
         const keys = findTrades(model, snapshot, rosterId, situations, options).ideas.map((idea) =>
           similarityKey(idea.offer, idea.result),

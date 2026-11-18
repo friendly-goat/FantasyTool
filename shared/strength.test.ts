@@ -277,6 +277,31 @@ describe("team strength and trades (against the mock league)", async () => {
     expect(sawPickup).toBe(true);
   }, 30_000);
 
+  it("digs deeper only when the swaps find nothing likely, and never does worse for it", () => {
+    let deeper = 0;
+    for (const { rosterId } of strengths.slice(0, 2)) {
+      for (const player of ids(rosterId).map((id) => model.players.get(id)!).filter((p) => p.games > 0).slice(0, 5)) {
+        const swaps = findTrades(model, snapshot, rosterId, situations, { givePlayerId: player.id, maxDepth: 1 });
+        const full = findTrades(model, snapshot, rosterId, situations, { givePlayerId: player.id });
+        const best = (ideas: { chance: number }[]) => Math.max(0, ...ideas.map((idea) => idea.chance));
+        if (swaps.outlook === "likely") {
+          expect(full.depth).toBe(1);
+          continue;
+        }
+        deeper++;
+        expect(full.depth).toBeGreaterThan(1);
+        expect(full.depth).toBeLessThanOrEqual(3);
+        if (full.ideas.length > 0 && swaps.ideas.length > 0) expect(best(full.ideas)).toBeGreaterThanOrEqual(best(swaps.ideas) - 0.02);
+        for (const idea of full.ideas) {
+          expect(idea.offer.aGives).toContain(player.id);
+          expect(idea.result.b.grade).toBeGreaterThanOrEqual(20); // never a big loss for them
+          expect(idea.depth).toBeLessThanOrEqual(full.depth);
+        }
+      }
+    }
+    expect(deeper).toBeGreaterThan(0);
+  }, 120_000);
+
   it("narrows the search to a position, a player to send, or a player to get", () => {
     const mine = strengths[4]!.rosterId;
     for (const idea of findTrades(model, snapshot, mine, situations, { getPosition: "C" }).ideas) {

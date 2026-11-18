@@ -255,7 +255,26 @@ and its one-line verdict uses the same chance. Likely ideas come first; possible
 are shown when nothing is likely; long shots appear only when there is
 nothing better, at most three, with a plain note saying so. Versions of one offer
 (the same team, the same players back and the same main piece sent, with
-only the filler changed) count as one idea: only the best version is shown. Naming a player
+only the filler changed) count as one idea: only the best version is shown.
+When you named a player to trade away, he is the main piece.
+
+The search runs in layers, like a tree, and goes deeper only when it has to:
+
+1. Swaps: every one-for-one (two of yours for a named or injured target),
+   plus packages that fill another team's need.
+2. If nothing from layer 1 is likely to be accepted, the 12 most promising
+   near-misses (ranked like ideas: your gain times their chance) each grow by
+   one player: one of your 5 least valuable players added as a sweetener (you
+   refill from waivers), or, for a player you named to trade away, two of
+   theirs for him.
+3. Still nothing likely: the best of layer 2 grow again (a second sweetener,
+   or one of their least valuable players coming back as well).
+
+A package is kept only if it raises the chance of the offer it grew from by
+at least 3 points; growing an offer is meant to make it easier to accept. No
+idea that grades as a big loss for the other team (an F) is ever suggested,
+and when only long shots exist, the fairest come first. The page says when
+packages were built. Naming a player
 allows offers that cost you up to a point a week. You can search for the best trades overall, a player at a
 position, offers for one of your players, or offers for a named player on
 another team (two-for-one packages are tried for a named target). Each idea

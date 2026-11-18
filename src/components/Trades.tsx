@@ -613,6 +613,12 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
           again for fresh results.
         </p>
       )}
+      {found?.ideas.some((idea) => idea.depth > 1) && (
+        <p className="finder-outlook quiet">
+          No simple swap stood a good chance, so the search also built packages: one of your spare players added, or
+          two of their players for one of yours.
+        </p>
+      )}
       {found && (
         <p className={`finder-outlook${found.outlook === "likely" ? "" : " quiet"}`}>
           {found.outlook === "none" &&
@@ -620,7 +626,7 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
               ? "No injured player on another team is worth trading for right now: none would raise your team's strength over the rest of the season with a fair chance of being accepted."
               : goal === "best" || goal === "position"
               ? "No trade helps your team right now with a fair chance of being accepted."
-              : `No offer could be built around ${found.target ?? "that player"} without costing you more than a point a week.`)}
+              : `No realistic offer for ${found.target ?? "that player"}: every trade found would cost you more than a point a week or be a big loss for the other team, even with packages.`)}
           {found.outlook === "likely" &&
             (found.ideas.filter((idea) => idea.likelihood === "likely").length < 3
               ? `Only ${found.ideas.filter((idea) => idea.likelihood === "likely").length === 1 ? "one offer is" : "a few offers are"} likely to be accepted.`

@@ -85,7 +85,10 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   feed back into grades, chances or the ranking of ideas. The acceptance
   chance (`chanceParts`) does use the other team's team effect and what they
   see on averages, each capped, combined on the log-odds scale. Ideas are
-  ranked by your weekly gain times that chance.
+  ranked by your weekly gain times that chance. `findTrades` searches in
+  layers (swaps, then near-misses grown into packages, up to 3) and goes
+  deeper only when nothing is likely; never suggest an offer that is a big
+  loss (F) for the other team.
 - The owner wants analysis that finds what he would not notice himself, done
   with data in code. No chatbot or LLM inside the app.
 - The user's own team is chosen once per league (`myRosterId` in `src/App.tsx`).
