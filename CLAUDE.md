@@ -10,7 +10,7 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   player must be in the lineup when his game starts to be lock-eligible. The manager
   may lock a score after a game and before that player's next game; if
   nothing is locked, the last game of the week counts. Weeks run Monday to
-  Sunday (`server/weeks.ts`). Value players accordingly: a week is a few
+  Sunday (`shared/weeks.ts`). Value players accordingly: a week is a few
   chances at one good game, so games per week and game-to-game spread matter,
   not weekly totals.
 - 12 teams, points scoring with threshold bonuses (see the league's
@@ -101,6 +101,10 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   (`StatsProvider.fetchSchedule`), plus lock marks the managers save
   (`applyLockMark`; a mark holds only while the score it was made on stands).
   They are display only: never feed them into strength, grades or trade ideas.
+- Every week from 1 to the current one can be viewed: routes take `?week=`
+  (`pickWeek` in `server/index.ts`); finished weeks' matchups and schedule
+  are saved under their own keys with long lifetimes, and lock marks are
+  stored per week.
 - The Draft tab's rising and falling marks (`shared/draft.ts`) are a display
   label only: rank by weekly value now against pick order, one round either
   way. Never feed them into strength, grades or trade ideas.

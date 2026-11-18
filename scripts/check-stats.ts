@@ -15,7 +15,7 @@ import { buildSnapshot, loadPlayers } from "../server/snapshot.ts";
 import { normalizeName } from "../server/stats/match.ts";
 import { createBalldontlie } from "../server/stats/balldontlie.ts";
 import { createMockStats } from "../server/stats/mock.ts";
-import { weekRange } from "../server/weeks.ts";
+import { weekRange } from "../shared/weeks.ts";
 import { StatsService } from "../server/stats/service.ts";
 import { storageFromEnv } from "../server/storage.ts";
 

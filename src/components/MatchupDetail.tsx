@@ -48,23 +48,31 @@ interface Props {
   model: StrengthModel | null;
   canMarkLocks: boolean;
   matchup: Matchup;
+  /** The fantasy week shown; before the league's current week it is finished. */
+  week: number;
   myRosterId: number | null;
   onBack: () => void;
   onOpenTeam: (rosterId: number) => void;
 }
 
 const WEEK_REFRESH_MS = 3 * 60_000;
-const percent = new Intl.NumberFormat("en-US", { style: "percent", maximumFractionDigits: 0 });
+const percent = new Intl.NumberFormat("en-US", {
+  style: "percent",
+  maximumFractionDigits: 0,
+});
 
-/** The NBA schedule, box scores and lock marks for the week, refreshed every few minutes while open. */
-function useWeek(leagueId: string) {
+/**
+ * The NBA schedule, box scores and lock marks for a week. The current week
+ * refreshes every few minutes while open; a finished week is loaded once.
+ */
+function useWeek(leagueId: string, weekNumber: number, finished: boolean) {
   const [week, setWeek] = useState<WeekData | null>(null);
   const [marks, setMarks] = useState<LockMarkInfo[]>([]);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
     const load = () => {
-      getWeek(leagueId)
+      getWeek(leagueId, weekNumber)
         .then((data) => {
           if (cancelled) return;
           setWeek(data);
@@ -72,17 +80,19 @@ function useWeek(leagueId: string) {
         })
         .catch((reason: unknown) => !cancelled && setError(reason instanceof Error ? reason.message : String(reason)));
       // Marks are best effort: the view works without them.
-      getLockMarks(leagueId)
+      getLockMarks(leagueId, weekNumber)
         .then((data) => !cancelled && setMarks(data.marks))
         .catch(() => {});
     };
+    setWeek(null);
+    setMarks([]);
     load();
-    const timer = window.setInterval(load, WEEK_REFRESH_MS);
+    const timer = finished ? undefined : window.setInterval(load, WEEK_REFRESH_MS);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [leagueId]);
+  }, [leagueId, weekNumber, finished]);
   return { week, marks, setMarks, error };
 }
 
@@ -114,6 +124,17 @@ const STATE_NOTE: Record<SlotStatus["state"], string> = {
   waiting: "He has not played yet this week.",
   done: "He has no games left this week and nothing counted.",
   unclear: "Sleeper's score matches none of his box scores yet; they may still be loading.",
+};
+
+// In a finished week nothing is still loading or to come, so the wording changes.
+const FINISHED_LABEL: Partial<Record<SlotStatus["state"], string>> = {
+  unclear: "Unclear",
+};
+const FINISHED_NOTE: Partial<Record<SlotStatus["state"], string>> = {
+  final:
+    "This score is his last game of the week: it counted because he locked it or because nothing earlier was locked.",
+  unclear:
+    "Sleeper's score matches none of his box scores, often because of a stat correction or a foul the box score leaves out. The admin can mark it locked.",
 };
 
 const MARKED_NOTE = "You marked this score as locked. Sleeper does not share locks, so the app keeps your word for it.";
@@ -164,7 +185,13 @@ function GameChip({
   const { game, opponent, home, line } = entry;
   const played = game.state !== "scheduled";
   const label = `${home ? "vs" : "at"} ${opponent ?? "?"}, ${formatWeekday(game.date)}${
-    line ? `: ${formatPoints(line.points)} points` : game.state === "in_progress" ? ": playing now" : played ? ": did not play" : ""
+    line
+      ? `: ${formatPoints(line.points)} points`
+      : game.state === "in_progress"
+        ? ": playing now"
+        : played
+          ? ": did not play"
+          : ""
   }${counted ? ", the game that counts" : ""}`;
   return (
     <li>
@@ -183,7 +210,13 @@ function GameChip({
           {!home && <span className="mx-game-at">@</span>}
         </span>
         <span className="mx-game-value">
-          {line ? formatPoints(line.points) : game.state === "in_progress" ? "Live" : played ? "DNP" : formatWeekday(game.date)}
+          {line
+            ? formatPoints(line.points)
+            : game.state === "in_progress"
+              ? "Live"
+              : played
+                ? "DNP"
+                : formatWeekday(game.date)}
         </span>
       </button>
     </li>
@@ -212,9 +245,10 @@ function GamePanel({
   const ourScore = home ? game.homeScore : game.awayScore;
   const theirScore = home ? game.awayScore : game.homeScore;
   const started = game.state !== "scheduled";
-  const matchupText = started && ourScore !== null && theirScore !== null
-    ? `${us} ${ourScore} ${home ? "vs" : "@"} ${them} ${theirScore}`
-    : `${us} ${home ? "vs" : "@"} ${them}`;
+  const matchupText =
+    started && ourScore !== null && theirScore !== null
+      ? `${us} ${ourScore} ${home ? "vs" : "@"} ${them} ${theirScore}`
+      : `${us} ${home ? "vs" : "@"} ${them}`;
   const when =
     game.state === "final"
       ? (game.statusText ?? "Final")
@@ -280,7 +314,10 @@ function PlayerCard({
   onMark,
   side,
   bench,
+  finished,
 }: {
+  /** The week is over: every game is final. */
+  finished: boolean;
   mark: MarkView | null;
   /** Saves a mark: true locked, false not locked, null clears it. */
   onMark: ((locked: boolean | null) => Promise<void>) | null;
@@ -310,9 +347,13 @@ function PlayerCard({
   }
   const games = status?.games ?? [];
   const next = status?.nextGame ?? null;
-  const selected = picked !== null && picked < games.length ? picked : defaultGame(games);
+  // In a finished week, open on the game that counted.
+  const opening = finished && !bench && status?.counted != null ? status.counted : defaultGame(games);
+  const selected = picked !== null && picked < games.length ? picked : opening;
   const upcoming = games.filter((game) => game.game.state === "scheduled");
-  const benchPoints = bench ? games.reduce<number | null>((best, game) => (game.line ? Math.max(best ?? 0, game.line.points) : best), null) : null;
+  const benchPoints = bench
+    ? games.reduce<number | null>((best, game) => (game.line ? Math.max(best ?? 0, game.line.points) : best), null)
+    : null;
   const shown = bench ? benchPoints : entry.points;
   const injury = injuryKind(entry.player.injuryStatus);
   const save = async (locked: boolean | null) => {
@@ -336,14 +377,26 @@ function PlayerCard({
         <div className="mx-status-row">
           <span
             className="mx-status"
-            title={mark?.applied === "locked" ? MARKED_NOTE : probable ? PROBABLE_NOTE : STATE_NOTE[status.state]}
+            title={
+              mark?.applied === "locked"
+                ? MARKED_NOTE
+                : probable
+                  ? PROBABLE_NOTE
+                  : ((finished ? FINISHED_NOTE[status.state] : undefined) ?? STATE_NOTE[status.state])
+            }
           >
             <StatusIcon state={probable ? "locked" : status.state} />
-            {probable ? "Probably locked" : STATE_LABEL[status.state]}
+            {probable
+              ? "Probably locked"
+              : ((finished ? FINISHED_LABEL[status.state] : undefined) ?? STATE_LABEL[status.state])}
           </span>
           <span
             className={`mx-points num${shown ? "" : " quiet"}`}
-            title="The score Sleeper is counting for him right now: his latest game unless one was locked"
+            title={
+              finished
+                ? "The score Sleeper counted for him this week"
+                : "The score Sleeper is counting for him right now: his latest game unless one was locked"
+            }
           >
             {shown ? formatPoints(shown) : "–"}
           </span>
@@ -468,6 +521,7 @@ function TeamHead({
   projected,
   settled,
   probable,
+  result,
   onOpenTeam,
 }: {
   team: Team | undefined;
@@ -477,9 +531,55 @@ function TeamHead({
   projected: number | null;
   settled: number | null;
   probable: number;
+  /** For a finished week: how it ended, and what the box scores could tell about his starters. */
+  result: {
+    outcome: "Won" | "Lost" | "Tied";
+    lockedEarly: number;
+    lockedCount: number;
+    unclear: number;
+  } | null;
   onOpenTeam: (id: number) => void;
 }) {
   const ahead = chance !== null && chance > 0.5;
+  if (result) {
+    return (
+      <div className={`mx-team mx-team-${align}`}>
+        <div className="mx-team-id">
+          <Avatar url={team?.avatarUrl ?? null} name={team?.teamName ?? "?"} size="lg" />
+          <div className="mx-team-name">
+            <button
+              type="button"
+              className="team-link"
+              title={team?.teamName}
+              onClick={() => onOpenTeam(side.rosterId)}
+            >
+              {team?.teamName ?? `Roster ${side.rosterId}`}
+            </button>
+            {team && <span className="quiet manager">{formatRecord(team.wins, team.losses, team.ties)}</span>}
+          </div>
+        </div>
+        <div className="mx-chance">
+          <span className={`mx-chance-label${result.outcome === "Won" ? " up" : ""}`}>{result.outcome}</span>
+        </div>
+        <dl className="mx-figures">
+          <div className="mx-figure-main">
+            <dt>Final score</dt>
+            <dd className="num">{formatPoints(side.points)}</dd>
+          </div>
+          <div>
+            <dt>Locked early ({result.lockedCount})</dt>
+            <dd className="num">{formatPoints(result.lockedEarly)}</dd>
+          </div>
+          {result.unclear > 0 && (
+            <div>
+              <dt>Unclear</dt>
+              <dd className="num">{result.unclear}</dd>
+            </div>
+          )}
+        </dl>
+      </div>
+    );
+  }
   return (
     <div className={`mx-team mx-team-${align}`}>
       <div className="mx-team-id">
@@ -528,12 +628,24 @@ function TeamHead({
 }
 
 /** Both lineups of one matchup, slot by slot, with where every starter stands this week. */
-export function MatchupDetail({ snapshot, model, canMarkLocks, matchup, myRosterId, onBack, onOpenTeam }: Props) {
-  const { week, marks, setMarks, error } = useWeek(snapshot.league.id);
+export function MatchupDetail({
+  snapshot,
+  model,
+  canMarkLocks,
+  matchup,
+  week: weekNumber,
+  myRosterId,
+  onBack,
+  onOpenTeam,
+}: Props) {
+  const finished = weekNumber < snapshot.week;
+  const { week, marks, setMarks, error } = useWeek(snapshot.league.id, weekNumber, finished);
   const markFor = (rosterId: number, playerId: string | undefined) =>
     playerId ? marks.find((mark) => mark.rosterId === rosterId && mark.playerId === playerId) : undefined;
   // Your team on the left, as on Sleeper.
-  const sides = [...matchup.sides].sort((a, b) => Number(b.rosterId === myRosterId) - Number(a.rosterId === myRosterId));
+  const sides = [...matchup.sides].sort(
+    (a, b) => Number(b.rosterId === myRosterId) - Number(a.rosterId === myRosterId),
+  );
   const [left, right] = sides;
 
   const scheduleKnown = !!week && week.schedule === "ready" && week.games.length > 0;
@@ -544,7 +656,10 @@ export function MatchupDetail({ snapshot, model, canMarkLocks, matchup, myRoster
 
   const statusOf = (entry: MatchupSlot | undefined, bench: boolean): SlotStatus | null => {
     if (!week || !entry?.player) return null;
-    const games = teamWeek(week.games, entry.player.team, week.lines[entry.player.id] ?? [], scheduleKnown);
+    const lines = week.lines[entry.player.id] ?? [];
+    // His team in that week's games, in case he has been traded since.
+    const team = lines[lines.length - 1]?.team ?? entry.player.team;
+    const games = teamWeek(week.games, team, lines, scheduleKnown);
     return slotStatus(bench ? 0 : (entry.points ?? 0), games, scheduleKnown, deductions);
   };
 
@@ -569,7 +684,7 @@ export function MatchupDetail({ snapshot, model, canMarkLocks, matchup, myRoster
   const probable = sides.map((side, s) =>
     side.starters.map((entry, i) => {
       const status = starterStatus[s]?.[i];
-      if (side.rosterId === myRosterId || !status || !model || !entry.player) return false;
+      if (finished || side.rosterId === myRosterId || !status || !model || !entry.player) return false;
       if (marked[s]?.[i]?.marked) return false; // Your word beats the guess.
       return probablyLocked(
         status.state,
@@ -582,7 +697,7 @@ export function MatchupDetail({ snapshot, model, canMarkLocks, matchup, myRoster
   );
 
   const forecast = useMemo(() => {
-    if (!model || !scheduleKnown || sides.length < 2) return null;
+    if (finished || !model || !scheduleKnown || sides.length < 2) return null;
     const simSides = sides.slice(0, 2).map((side, s) =>
       side.starters.map((entry, i): SimSlot => {
         const status = starterStatus[s]![i];
@@ -598,18 +713,40 @@ export function MatchupDetail({ snapshot, model, canMarkLocks, matchup, myRoster
     ) as [SimSlot[], SimSlot[]];
     return forecastMatchup(simSides, 4000, matchup.matchupId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [model, scheduleKnown, starterStatus, matchup]);
+  }, [finished, model, scheduleKnown, starterStatus, matchup]);
+
+  const resultOf = (s: number) => {
+    const side = sides[s];
+    const other = sides[1 - s];
+    if (!finished || !side) return null;
+    const statuses = starterStatus[s] ?? [];
+    const locked = side.starters.filter((_, i) => statuses[i]?.state === "locked");
+    const outcome: "Won" | "Lost" | "Tied" =
+      !other || Math.abs(side.points - other.points) < 0.005 ? "Tied" : side.points > other.points ? "Won" : "Lost";
+    return {
+      outcome,
+      lockedEarly: locked.reduce((sum, entry) => sum + (entry.points ?? 0), 0),
+      lockedCount: locked.length,
+      unclear: statuses.filter((status) => status?.state === "unclear").length,
+    };
+  };
 
   if (!left) return null;
   const team = (side: MatchupSide | undefined) =>
     side ? snapshot.teams.find((candidate) => candidate.rosterId === side.rosterId) : undefined;
 
-  const adviceFor = (sideIndex: number, entry: MatchupSlot | undefined, status: SlotStatus | null): LockAdvice | null => {
+  const adviceFor = (
+    sideIndex: number,
+    entry: MatchupSlot | undefined,
+    status: SlotStatus | null,
+  ): LockAdvice | null => {
     const side = sides[sideIndex];
     if (!model || !side || side.rosterId !== myRosterId || !entry?.player || !status) return null;
     if ((status.state !== "open" && status.state !== "unclear") || !status.gamesLeft) return null;
     const player = model.players.get(entry.player.id);
-    return player ? lockAdvice(entry.points ?? 0, status.gamesLeft, player, injuryKind(entry.player.injuryStatus)) : null;
+    return player
+      ? lockAdvice(entry.points ?? 0, status.gamesLeft, player, injuryKind(entry.player.injuryStatus))
+      : null;
   };
 
   const yetToPlay = (s: number) =>
@@ -635,7 +772,7 @@ export function MatchupDetail({ snapshot, model, canMarkLocks, matchup, myRoster
     if (!canMarkLocks || !side || !entry?.player) return null;
     const playerId = entry.player.id;
     return async (locked: boolean | null) => {
-      const result = await setLockMark(snapshot.league.id, side.rosterId, playerId, locked);
+      const result = await setLockMark(snapshot.league.id, side.rosterId, playerId, locked, weekNumber);
       setMarks(result.marks);
     };
   };
@@ -658,7 +795,7 @@ export function MatchupDetail({ snapshot, model, canMarkLocks, matchup, myRoster
   };
 
   return (
-    <section aria-label={`Week ${snapshot.week} matchup`}>
+    <section aria-label={`Week ${weekNumber} matchup`}>
       <button type="button" className="button button-plain back-button" onClick={onBack}>
         All matchups
       </button>
@@ -673,6 +810,7 @@ export function MatchupDetail({ snapshot, model, canMarkLocks, matchup, myRoster
             projected={forecast?.projected[0] ?? null}
             settled={settledTotal(0)}
             probable={probableTotal(0)}
+            result={resultOf(0)}
             onOpenTeam={onOpenTeam}
           />
           <span className="mx-vs">vs</span>
@@ -685,6 +823,7 @@ export function MatchupDetail({ snapshot, model, canMarkLocks, matchup, myRoster
               projected={forecast?.projected[1] ?? null}
               settled={settledTotal(1)}
               probable={probableTotal(1)}
+              result={resultOf(1)}
               onOpenTeam={onOpenTeam}
             />
           ) : (
@@ -693,70 +832,105 @@ export function MatchupDetail({ snapshot, model, canMarkLocks, matchup, myRoster
         </div>
 
         <div className="mx-strip">
-          <span className="quiet">Yet to play ({yetToPlay(0)})</span>
+          <span className="quiet">{finished ? "Final" : `Yet to play (${yetToPlay(0)})`}</span>
           <span className="mx-week">
-            Week {snapshot.week}
+            Week {weekNumber}
             {week && <span className="quiet"> · {formatWeekRange(week.start, week.end)}</span>}
           </span>
-          <span className="quiet">Yet to play ({yetToPlay(1)})</span>
+          <span className="quiet">{finished ? "Final" : `Yet to play (${yetToPlay(1)})`}</span>
         </div>
 
-        <details className="mx-help">
-          <summary>What these numbers mean</summary>
-          <dl>
-            <div>
-              <dt>Expected final</dt>
-              <dd>
-                Where each team should end the week. Locked and final scores stay; every other starter plays his remaining
-                games and locks a score when it beats what waiting is expected to bring. Your opponent is assumed to lock
-                the same way.
-              </dd>
-            </div>
-            <div>
-              <dt>Locked or final</dt>
-              <dd>
-                Scores we can tell are settled: an earlier game this week (so it was locked), or his last game of the week.
-                Sleeper's data does not say which scores are locked, so a score from a player's latest game, with games
-                still to come, is not counted here even if it is locked.
-              </dd>
-            </div>
-            <div>
-              <dt>Probably locked</dt>
-              <dd>
-                For the other team: latest-game scores that beat what waiting is expected to bring, so a manager would
-                usually have locked them. It becomes certain when the player's next game starts: if the score stays, it
-                was locked. Your own locks you know, so your side never shows this. The admin can mark a score locked or
-                not locked to correct this; a mark stops applying if the player's score changes.
-              </dd>
-            </div>
-            <div>
-              <dt>Sleeper's live total</dt>
-              <dd>
-                The total Sleeper reports: each starter's latest game, locked or not. It drops or rises as players play
-                again, so mid-week it is not a real score.
-              </dd>
-            </div>
-            <div>
-              <dt>Per game</dt>
-              <dd>His projected score for one game, from his season, recent form and last season.</dd>
-            </div>
-            <div>
-              <dt>Chance to win</dt>
-              <dd>
-                The share of 4,000 played-out weeks each team wins. Injury tags count: out means he misses his next game
-                and is half as likely to play later this week; day-to-day makes his next game 40% less likely.
-              </dd>
-            </div>
-            <div>
-              <dt>Yet to play</dt>
-              <dd>Starters whose score is not settled and who still have a game this week, as Sleeper counts them.</dd>
-            </div>
-          </dl>
-        </details>
+        {finished ? (
+          <details className="mx-help">
+            <summary>What these numbers mean</summary>
+            <dl>
+              <div>
+                <dt>Final score</dt>
+                <dd>The week's result as Sleeper scored it: one game per starter.</dd>
+              </div>
+              <div>
+                <dt>Locked early</dt>
+                <dd>
+                  Starters whose score is an earlier game of the week. Without a lock his last game would have counted,
+                  so these were locked for certain.
+                </dd>
+              </div>
+              <div>
+                <dt>Final</dt>
+                <dd>
+                  The score is his last game of the week. He may have locked it or simply let it count; the result is
+                  the same.
+                </dd>
+              </div>
+              <div>
+                <dt>Unclear</dt>
+                <dd>
+                  The score matches none of his box scores, usually because of a stat correction or a technical or
+                  flagrant foul the box score leaves out. The admin can mark it locked.
+                </dd>
+              </div>
+            </dl>
+          </details>
+        ) : (
+          <details className="mx-help">
+            <summary>What these numbers mean</summary>
+            <dl>
+              <div>
+                <dt>Expected final</dt>
+                <dd>
+                  Where each team should end the week. Locked and final scores stay; every other starter plays his
+                  remaining games and locks a score when it beats what waiting is expected to bring. Your opponent is
+                  assumed to lock the same way.
+                </dd>
+              </div>
+              <div>
+                <dt>Locked or final</dt>
+                <dd>
+                  Scores we can tell are settled: an earlier game this week (so it was locked), or his last game of the
+                  week. Sleeper's data does not say which scores are locked, so a score from a player's latest game,
+                  with games still to come, is not counted here even if it is locked.
+                </dd>
+              </div>
+              <div>
+                <dt>Probably locked</dt>
+                <dd>
+                  For the other team: latest-game scores that beat what waiting is expected to bring, so a manager would
+                  usually have locked them. It becomes certain when the player's next game starts: if the score stays,
+                  it was locked. Your own locks you know, so your side never shows this. The admin can mark a score
+                  locked or not locked to correct this; a mark stops applying if the player's score changes.
+                </dd>
+              </div>
+              <div>
+                <dt>Sleeper's live total</dt>
+                <dd>
+                  The total Sleeper reports: each starter's latest game, locked or not. It drops or rises as players
+                  play again, so mid-week it is not a real score.
+                </dd>
+              </div>
+              <div>
+                <dt>Per game</dt>
+                <dd>His projected score for one game, from his season, recent form and last season.</dd>
+              </div>
+              <div>
+                <dt>Chance to win</dt>
+                <dd>
+                  The share of 4,000 played-out weeks each team wins. Injury tags count: out means he misses his next
+                  game and is half as likely to play later this week; day-to-day makes his next game 40% less likely.
+                </dd>
+              </div>
+              <div>
+                <dt>Yet to play</dt>
+                <dd>
+                  Starters whose score is not settled and who still have a game this week, as Sleeper counts them.
+                </dd>
+              </div>
+            </dl>
+          </details>
+        )}
 
         {error && (
           <p className="notice notice-error" role="alert">
-            Could not load this week's games: {error}
+            Could not load the week's games: {error}
           </p>
         )}
         {week && week.schedule === "unavailable" && (
@@ -765,10 +939,14 @@ export function MatchupDetail({ snapshot, model, canMarkLocks, matchup, myRoster
             games left, lock advice and win chances need the schedule.
           </p>
         )}
-        {!week && !error && <p className="quiet">Loading this week's games…</p>}
+        {!week && !error && <p className="quiet">Loading the week's games…</p>}
 
         {[
-          { title: "Starters", rows: rows((side) => side.starters), bench: false },
+          {
+            title: "Starters",
+            rows: rows((side) => side.starters),
+            bench: false,
+          },
           { title: "Bench", rows: rows((side) => side.bench), bench: true },
         ]
           .filter((group) => group.rows.length > 0)
@@ -793,6 +971,7 @@ export function MatchupDetail({ snapshot, model, canMarkLocks, matchup, myRoster
                         onMark={group.bench ? null : onMarkFor(0, row.left)}
                         side="left"
                         bench={group.bench}
+                        finished={finished}
                       />
                       <div className="mx-slot">
                         <PositionChip label={row.slot} />
@@ -809,6 +988,7 @@ export function MatchupDetail({ snapshot, model, canMarkLocks, matchup, myRoster
                         onMark={group.bench ? null : onMarkFor(1, row.right)}
                         side="right"
                         bench={group.bench}
+                        finished={finished}
                       />
                     </li>
                   );
@@ -818,7 +998,14 @@ export function MatchupDetail({ snapshot, model, canMarkLocks, matchup, myRoster
           ))}
 
         <p className="quiet legend">
-          {week?.linesSyncedAt && `Box scores updated ${formatAgo(week.linesSyncedAt)}. `}Sleeper's scores update on their own: every couple of minutes while games are on.
+          {finished ? (
+            "A finished week no longer changes, apart from Sleeper's stat corrections in the days after it."
+          ) : (
+            <>
+              {week?.linesSyncedAt && `Box scores updated ${formatAgo(week.linesSyncedAt)}. `}
+              Sleeper's scores update on their own: every couple of minutes while games are on.
+            </>
+          )}
         </p>
       </div>
     </section>

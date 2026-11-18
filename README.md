@@ -260,7 +260,7 @@ reasoned estimate, not a measured probability.
 This is a lock-in league: each starter counts one game per week. After a
 player's game, the manager can lock that score in before the player's next
 game; if nothing is locked, the last game of the week counts. Fantasy weeks
-run Monday to Sunday (`server/weeks.ts`).
+run Monday to Sunday (`shared/weeks.ts`).
 
 ## Keeping data fresh
 
@@ -276,6 +276,8 @@ schedule); the header shows it.
 | League (rosters, matchups, transactions; about 8 requests) | Sleeper | 10 min, 2 min while games are on (`LEAGUE_CACHE_MINUTES`, `LIVE_LEAGUE_MINUTES`) | Sleeper asks to stay under 1,000 requests a minute; this is at most about 4 |
 | Player list | Sleeper | 24 hours | Sleeper asks for it at most once a day |
 | Draft | Sleeper | 7 days once finished, else as the league | A finished draft never changes |
+| A finished week's matchups (one request a week) | Sleeper | 6 hours for last week, 7 days for older weeks | Only Sleeper's stat corrections change them, in the days after a week |
+| A finished week's NBA schedule (one request a week) | balldontlie | 7 days | Every game is final; saved apart from the current week's copy so a game-night copy is never shown as final |
 | NBA schedule (one request) | balldontlie | 30 min, 3 min while games are on (`SCHEDULE_CACHE_MINUTES`, `LIVE_SCHEDULE_MINUTES`) | Scores and game states change on game nights |
 | Box scores, while a matchup is open | balldontlie | 30 min, 10 min while games are on (`WEEK_STATS_MINUTES`, `LIVE_WEEK_STATS_MINUTES`) | balldontlie updates live stats about every 10 minutes |
 | Box scores otherwise | balldontlie | 6 hours (`STATS_CACHE_HOURS`) | Season numbers barely move within a day |
@@ -460,6 +462,30 @@ points and, if he might miss it, his chance of playing.
 The NBA schedule comes from the stats source (`fetchSchedule` on the
 `StatsProvider`). How often it and the box scores update is in "Keeping data
 fresh" below. The matchup view reloads every 3 minutes while open.
+
+### Past weeks
+
+The week menu above the matchups lists every week so far. A finished week
+shows the final scores and who won, and its matchup page reads the same way
+as the current week's, from that week's box scores:
+
+| Status | Meaning in a finished week |
+| --- | --- |
+| Locked | The score is an earlier game of the week. Without a lock his last game would have counted, so it was locked for certain. |
+| Final | The score is his last game of the week, locked or simply left to count; the result is the same. |
+| No games left | He did not play that week; nothing counted. |
+| Unclear | The score matches none of his box scores, usually a Sleeper stat correction or a foul the box score leaves out. The admin can mark it locked. |
+
+The header shows the final score, the scores locked early (with how many),
+and how many are unclear. There is no forecast or lock advice once a week is
+over. Marks are saved per week, so marking a past week leaves this week alone.
+A player who has changed NBA teams since is matched to the team in his box
+scores that week, and a starter dropped since still gets his games.
+
+Each finished week costs one Sleeper request and one balldontlie request,
+saved: last week is checked again every 6 hours (for Sleeper's stat
+corrections), older weeks weekly. The browser never asks for a week after the
+current one.
 
 ## Draft board
 

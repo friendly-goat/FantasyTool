@@ -1,6 +1,7 @@
 import { fantasyPoints } from "./scoring.ts";
 import type { FetchJson } from "./sleeper.ts";
 import { createMockStats } from "./stats/mock.ts";
+import { weekRange } from "../shared/weeks.ts";
 
 // Stand-in for the Sleeper API, used by `npm run dev:mock` and the tests.
 // It answers the same paths with a made-up ten-team league so the app can
@@ -207,43 +208,60 @@ function build() {
 
 const data = build();
 
-/** Week 4 of the mock season, matching server/weeks.ts for a 2026-10-20 start. */
-const WEEK_START = "2026-11-09";
-const WEEK_END = "2026-11-15";
-let matchupsCache: Promise<unknown[]> | null = null;
+const SEASON_START = "2026-10-20";
+const matchupsCache = new Map<number, Promise<unknown[]>>();
+
+/** Week `week`'s pairs of roster indexes: the current week pairs neighbours, other weeks rotate (circle method). */
+function pairings(week: number, teams: number): number[][] {
+  if (week === WEEK) return Array.from({ length: teams / 2 }, (_, k) => [2 * k, 2 * k + 1]);
+  const others = Array.from({ length: teams - 1 }, (_, k) => k + 1);
+  const turned = others.map((_, k) => others[(k + week) % others.length]!);
+  const order = [0, ...turned];
+  return Array.from({ length: teams / 2 }, (_, k) => [order[k]!, order[teams - 1 - k]!]);
+}
 
 /**
- * This week's matchups, scored from the mock box scores the way Sleeper
- * reports a lock-in week: a starter shows either an earlier game this week
- * (he locked it) or his latest game (not locked yet, or locked on it), and 0
- * before he plays. Bench players show 0, as on Sleeper.
+ * A week's matchups, scored from the mock box scores the way Sleeper reports
+ * a lock-in week: a starter shows either an earlier game that week (he
+ * locked it) or his latest game (not locked yet, or locked on it), and 0
+ * before he plays. Bench players show 0, as on Sleeper. In past weeks one
+ * score in a few is nudged off its box score, as a stat correction would, so
+ * the app has something it cannot explain.
  */
-function mockMatchups(): Promise<unknown[]> {
-  matchupsCache ??= (async () => {
-    const lines = await createMockStats(data.players).fetchGameLines("2026", WEEK_START, () => {});
+function mockMatchups(week: number): Promise<unknown[]> {
+  let cached = matchupsCache.get(week);
+  if (cached) return cached;
+  cached = (async () => {
+    const { start, end } = weekRange(SEASON_START, week);
+    const lines = await createMockStats(data.players).fetchGameLines("2026", start, () => {});
     const byPlayer = new Map<string, typeof lines>();
     for (const line of lines) {
-      if (line.date > WEEK_END) continue;
+      if (line.date > end) continue;
       const list = byPlayer.get(line.playerId) ?? [];
       list.push(line);
       byPlayer.set(line.playerId, list);
     }
     for (const list of byPlayer.values()) list.sort((a, b) => a.date.localeCompare(b.date));
     const scoring = data.league.scoring_settings;
+    const matchupOf = new Map<number, number>();
+    pairings(week, data.rosters.length).forEach((pair, k) => pair.forEach((index) => matchupOf.set(index, k + 1)));
     return data.rosters.map((roster, i) => {
       const playersPoints: Record<string, number> = {};
       for (const id of roster.players) playersPoints[id] = 0;
       const startersPoints = roster.starters.map((id, slot) => {
         const games = byPlayer.get(`p${id}`) ?? [];
         if (games.length === 0) return 0;
-        const counted = (i + slot) % 3 === 0 && games.length > 1 ? games[0]! : games[games.length - 1]!;
-        const score = Math.round(fantasyPoints(counted.stats, scoring) * 100) / 100;
+        // The current week keeps the pattern the tests know; past weeks shift it.
+        const shift = WEEK - week;
+        const counted = (i + slot + shift) % 3 === 0 && games.length > 1 ? games[0]! : games[games.length - 1]!;
+        const corrected = shift > 0 && (i + slot + shift) % 17 === 0 ? 1.5 : 0;
+        const score = Math.round((fantasyPoints(counted.stats, scoring) + corrected) * 100) / 100;
         playersPoints[id] = score;
         return score;
       });
       return {
         roster_id: roster.roster_id,
-        matchup_id: Math.floor(i / 2) + 1,
+        matchup_id: matchupOf.get(i) ?? null,
         points: Math.round(startersPoints.reduce((sum, value) => sum + value, 0) * 100) / 100,
         starters: roster.starters,
         players: roster.players,
@@ -252,7 +270,8 @@ function mockMatchups(): Promise<unknown[]> {
       };
     });
   })();
-  return matchupsCache;
+  matchupsCache.set(week, cached);
+  return cached;
 }
 
 export const fetchFromMock: FetchJson = async (path) => {
@@ -263,7 +282,7 @@ export const fetchFromMock: FetchJson = async (path) => {
       season: "2026",
       league_season: "2026",
       season_type: "regular",
-      season_start_date: "2026-10-20",
+      season_start_date: SEASON_START,
     };
   }
   if (path === "/players/nba") return data.players;
@@ -277,7 +296,8 @@ export const fetchFromMock: FetchJson = async (path) => {
     if (rest === "") return data.league;
     if (rest === "/rosters") return data.rosters;
     if (rest === "/users") return data.users;
-    if (/^\/matchups\/\d+$/.test(rest)) return mockMatchups();
+    const matchups = rest.match(/^\/matchups\/(\d+)$/);
+    if (matchups) return Number(matchups[1]) > WEEK ? [] : mockMatchups(Number(matchups[1]));
     if (rest === "/drafts") return [data.draft];
     const tx = rest.match(/^\/transactions\/(\d+)$/);
     if (tx) return data.transactions[Number(tx[1])] ?? [];

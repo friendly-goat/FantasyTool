@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import express from "express";
-import type { AppConfig, LeagueSnapshot, WeekData } from "../shared/types.ts";
+import type { AppConfig, LeagueSnapshot, Matchup, WeekData, WeekMatchups } from "../shared/types.ts";
 import { nbaTeam } from "../shared/nbaTeams.ts";
 import {
   authFromEnv,
@@ -19,12 +19,12 @@ import { gamesLive } from "../shared/matchup.ts";
 import { createLogoSource } from "./logos.ts";
 import { fetchFromMock, MOCK_LEAGUE_ID } from "./mock.ts";
 import { fetchFromSleeper, SleeperError } from "./sleeper.ts";
-import { buildSnapshot, loadDraftBoard, loadPlayers, loadUserLeagues } from "./snapshot.ts";
+import { buildMatchups, buildSnapshot, loadDraftBoard, loadPlayers, loadUserLeagues } from "./snapshot.ts";
 import { createBalldontlie } from "./stats/balldontlie.ts";
 import { createMockStats } from "./stats/mock.ts";
 import type { StatsProvider } from "./stats/provider.ts";
 import { StatsService } from "./stats/service.ts";
-import { weekRange } from "./weeks.ts";
+import { weekRange } from "../shared/weeks.ts";
 
 // Local backend. It is the only part of the app that talks to Sleeper:
 // the React app calls /api/* here, and this process decides whether to
@@ -59,6 +59,11 @@ const liveWeekStatsMs = minutes("LIVE_WEEK_STATS_MINUTES", 10);
 const statsTtl = (Number(process.env.STATS_CACHE_HOURS) || 6) * 60 * MINUTE;
 // A finished draft never changes.
 const finishedDraftTtl = 7 * 24 * 60 * MINUTE;
+// A finished week's matchups only change with Sleeper's stat corrections in
+// the days after it, so last week is checked a few times a day and older
+// weeks weekly. A finished week's schedule never changes.
+const lastWeekTtl = 6 * 60 * MINUTE;
+const finishedWeekTtl = 7 * 24 * 60 * MINUTE;
 
 const fetchJson = mock ? fetchFromMock : fetchFromSleeper;
 // Postgres when DATABASE_URL is set (Heroku), otherwise files in .cache/.
@@ -150,6 +155,9 @@ function getPlayers() {
 // by an older version of the app are rebuilt instead of reused.
 const leagueKey = (leagueId: string) => `league-v3-${leagueId}`;
 const scheduleKey = (weekStart: string) => `schedule-v1-${weekStart}`;
+// Separate keys for finished weeks, so a copy saved while games were on is never served as final.
+const finishedScheduleKey = (weekStart: string) => `schedule-final-v1-${weekStart}`;
+const matchupsKey = (leagueId: string, week: number) => `matchups-v1-${leagueId}-${week}`;
 
 /** This fantasy week's dates, from a snapshot, or null if Sleeper did not give the season start. */
 function weekOf(snapshot: LeagueSnapshot) {
@@ -181,6 +189,37 @@ async function getSchedule(start: string, end: string, live: boolean) {
   return cache.get(scheduleKey(start), live ? liveScheduleTtl : scheduleTtl, () => stats.schedule(start, end), {
     background: true,
   });
+}
+
+/**
+ * The week asked for (from ?week= or a request body): any week from 1 to the
+ * current one. Missing means the current week; anything else is null.
+ */
+function pickWeek(value: unknown, snapshot: LeagueSnapshot): number | null {
+  if (value === undefined || value === null || value === "") return snapshot.week;
+  const week = Number(value);
+  return Number.isInteger(week) && week >= 1 && week <= snapshot.week ? week : null;
+}
+
+const BAD_WEEK = "Pick a week from 1 to the current week.";
+
+/** One week's matchups: the snapshot's for the current week, otherwise one saved Sleeper request per week. */
+async function getWeekMatchups(leagueId: string, snapshot: LeagueSnapshot, week: number): Promise<Matchup[]> {
+  if (week === snapshot.week) return snapshot.matchups;
+  const result = await cache.get(
+    matchupsKey(leagueId, week),
+    week === snapshot.week - 1 ? lastWeekTtl : finishedWeekTtl,
+    async () => {
+      const [raw, players] = await Promise.all([fetchJson(`/league/${leagueId}/matchups/${week}`), getPlayers()]);
+      return buildMatchups(
+        Array.isArray(raw) ? raw : [],
+        { roster_positions: snapshot.league.rosterPositions },
+        players.value,
+      );
+    },
+    { background: true },
+  );
+  return result.value;
 }
 
 function sendError(res: express.Response, error: unknown): void {
@@ -265,14 +304,19 @@ app.get("/api/league/:leagueId/week", async (req, res) => {
   try {
     const leagueId = req.params.leagueId.trim();
     const [snapshot, players] = await Promise.all([getSnapshot(leagueId), getPlayers()]);
-    const { week } = snapshot.value;
-    const range = weekOf(snapshot.value);
-    if (!range) {
+    const week = pickWeek(req.query.week, snapshot.value);
+    if (week === null) {
+      res.status(400).json({ error: BAD_WEEK });
+      return;
+    }
+    const seasonStart = snapshot.value.league.seasonStartDate;
+    if (!seasonStart) {
       res.status(502).json({ error: "Sleeper did not report when the season started, so this week's dates are unknown." });
       return;
     }
-    const { start, end } = range;
-    const live = await isLive(leagueId);
+    const { start, end } = weekRange(seasonStart, week);
+    const current = week === snapshot.value.week;
+    const live = current && (await isLive(leagueId));
 
     let games: WeekData["games"] = [];
     let scheduleMessage: string | null = null;
@@ -280,17 +324,30 @@ app.get("/api/league/:leagueId/week", async (req, res) => {
       scheduleMessage = "No stats source is set up, so the NBA schedule is not available.";
     } else {
       try {
-        games = (await getSchedule(start, end, live)).value;
+        games = current
+          ? (await getSchedule(start, end, live)).value
+          : (await cache.get(finishedScheduleKey(start), finishedWeekTtl, () => stats.schedule(start, end))).value;
       } catch (error) {
         scheduleMessage = error instanceof Error ? error.message : "The NBA schedule could not be loaded.";
       }
     }
+    // A past week's starters may have been dropped since, so ask for that week's players too.
+    const pastPlayers = current
+      ? []
+      : (await getWeekMatchups(leagueId, snapshot.value, week)).flatMap((matchup) =>
+          matchup.sides.flatMap((side) =>
+            [...side.starters.map((entry) => entry.player), ...side.bench.map((entry) => entry.player)].flatMap(
+              (player) => (player ? [player.id] : []),
+            ),
+          ),
+        );
     const { lines, syncedAt } = await stats.weekLines(
       snapshot.value,
       players.value,
       start,
       end,
       live ? liveWeekStatsMs : weekStatsMs,
+      pastPlayers,
     );
     const body: WeekData = {
       week,
@@ -308,12 +365,33 @@ app.get("/api/league/:leagueId/week", async (req, res) => {
   }
 });
 
-// Lock marks: a manager's word on whether a starter's current score is
-// locked, for the current week. Sleeper does not share locks.
+// Any week's matchups, from week 1 to the current one.
+app.get("/api/league/:leagueId/matchups", async (req, res) => {
+  try {
+    const leagueId = req.params.leagueId.trim();
+    const snapshot = (await getSnapshot(leagueId)).value;
+    const week = pickWeek(req.query.week, snapshot);
+    if (week === null) {
+      res.status(400).json({ error: BAD_WEEK });
+      return;
+    }
+    const body: WeekMatchups = { week, matchups: await getWeekMatchups(leagueId, snapshot, week) };
+    res.json(body);
+  } catch (error) {
+    sendError(res, error);
+  }
+});
+
+// Lock marks: a manager's word on whether a starter's score is locked, for
+// any week so far. Sleeper does not share locks.
 app.get("/api/league/:leagueId/locks", async (req, res) => {
   try {
     const leagueId = req.params.leagueId.trim();
-    const { week } = (await getSnapshot(leagueId)).value;
+    const week = pickWeek(req.query.week, (await getSnapshot(leagueId)).value);
+    if (week === null) {
+      res.status(400).json({ error: BAD_WEEK });
+      return;
+    }
     res.json({ week, marks: await markStorage.readLockMarks(leagueId, week) });
   } catch (error) {
     sendError(res, error);
@@ -323,22 +401,27 @@ app.get("/api/league/:leagueId/locks", async (req, res) => {
 app.put("/api/league/:leagueId/locks", requireRole(auth, "admin"), async (req, res) => {
   try {
     const leagueId = String(req.params.leagueId ?? "").trim();
-    const body = (req.body ?? {}) as { rosterId?: unknown; playerId?: unknown; locked?: unknown };
+    const body = (req.body ?? {}) as { rosterId?: unknown; playerId?: unknown; locked?: unknown; week?: unknown };
     const rosterId = Number(body.rosterId);
     const playerId = typeof body.playerId === "string" ? body.playerId : "";
     if (!Number.isInteger(rosterId) || !playerId || (body.locked !== null && typeof body.locked !== "boolean")) {
       res.status(400).json({ error: "Send rosterId, playerId and locked (true, false, or null to clear)." });
       return;
     }
-    const { week, matchups } = (await getSnapshot(leagueId)).value;
-    // The mark is tied to the score Sleeper shows now, taken from the server's
-    // copy rather than the browser's.
-    const starter = matchups
+    const snapshot = (await getSnapshot(leagueId)).value;
+    const week = pickWeek(body.week, snapshot);
+    if (week === null) {
+      res.status(400).json({ error: BAD_WEEK });
+      return;
+    }
+    // The mark is tied to the score Sleeper shows for that week, taken from
+    // the server's copy rather than the browser's.
+    const starter = (await getWeekMatchups(leagueId, snapshot, week))
       .flatMap((matchup) => matchup.sides)
       .find((side) => side.rosterId === rosterId)
       ?.starters.find((entry) => entry.player?.id === playerId);
     if (!starter) {
-      res.status(404).json({ error: "That player is not one of this team's starters this week." });
+      res.status(404).json({ error: "That player is not one of this team's starters that week." });
       return;
     }
     if (body.locked === null) {

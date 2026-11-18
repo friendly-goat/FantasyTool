@@ -177,6 +177,8 @@ export class StatsService {
     start: string,
     end: string,
     freshMs: number,
+    /** Sleeper IDs to include besides today's rosters, such as a past week's starters since dropped. */
+    alsoPlayerIds: string[] = [],
   ): Promise<{ lines: Record<string, WeekLine[]>; syncedAt: string | null }> {
     if (!this.provider) return { lines: {}, syncedAt: null };
     const season = snapshot.league.season;
@@ -195,6 +197,10 @@ export class StatsService {
         if (sourceId) wanted.set(sourceId, player.id);
       }
     }
+    for (const id of alsoPlayerIds) {
+      const sourceId = matches.get(id);
+      if (sourceId) wanted.set(sourceId, id);
+    }
     const result: Record<string, WeekLine[]> = {};
     for (const line of lines) {
       const sleeperId = wanted.get(line.playerId);
@@ -206,6 +212,7 @@ export class StatsService {
         final: line.final,
         opponent: line.opponent ?? null,
         home: line.home ?? null,
+        team: line.team ?? null,
         stats: line.stats,
       });
     }

@@ -128,11 +128,19 @@ export interface WeekLine {
   final: boolean;
   opponent: string | null;
   home: boolean | null;
+  /** His team in that game, when the stats source says (a past week may predate a trade). */
+  team?: string | null;
   /** The box score itself. */
   stats: StatLine;
 }
 
-/** Everything the matchup view needs about the NBA side of the current week. */
+/** One fantasy week's matchups, current or past. */
+export interface WeekMatchups {
+  week: number;
+  matchups: Matchup[];
+}
+
+/** Everything the matchup view needs about the NBA side of a fantasy week. */
 export interface WeekData {
   week: number;
   /** First and last day of the fantasy week, YYYY-MM-DD. */

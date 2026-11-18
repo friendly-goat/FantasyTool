@@ -226,3 +226,62 @@ describe("loadUserLeagues", () => {
     ]);
   });
 });
+
+describe("past weeks (against the mock league)", async () => {
+  const { foulDeductions, slotStatus, teamWeek } = await import("../shared/matchup.ts");
+  const { createMockStats } = await import("./stats/mock.ts");
+  const { fantasyPoints } = await import("./scoring.ts");
+  const { weekRange } = await import("../shared/weeks.ts");
+  const players = await loadPlayers(fetchFromMock);
+  const rawPlayers = (await fetchFromMock("/players/nba")) as Record<string, unknown>;
+  const league = (await fetchFromMock(`/league/${MOCK_LEAGUE_ID}`)) as Parameters<typeof buildMatchups>[1];
+
+  it("pairs every team once in a finished week, and has nothing after the current week", async () => {
+    const raw = (await fetchFromMock(`/league/${MOCK_LEAGUE_ID}/matchups/2`)) as unknown[];
+    const matchups = buildMatchups(raw as never, league, players);
+    const rosterIds = matchups.flatMap((matchup) => matchup.sides.map((side) => side.rosterId));
+    expect(new Set(rosterIds).size).toBe(10);
+    expect(matchups.every((matchup) => matchup.sides.length === 2)).toBe(true);
+    expect(await fetchFromMock(`/league/${MOCK_LEAGUE_ID}/matchups/9`)).toEqual([]);
+  });
+
+  it("tells locked, final and unclear scores apart from that week's box scores", async () => {
+    const week = 2;
+    const { start, end } = weekRange("2026-10-20", week);
+    const raw = (await fetchFromMock(`/league/${MOCK_LEAGUE_ID}/matchups/${week}`)) as unknown[];
+    const matchups = buildMatchups(raw as never, league, players);
+    const stats = createMockStats(rawPlayers);
+    const games = await stats.fetchSchedule!(start, end);
+    const allLines = await stats.fetchGameLines("2026", start, () => {});
+    const scoring = (league as { scoring_settings?: Record<string, number> }).scoring_settings ?? {};
+    const counts: Record<string, number> = {};
+    for (const side of matchups.flatMap((matchup) => matchup.sides)) {
+      for (const entry of side.starters) {
+        if (!entry.player) continue;
+        const lines = allLines
+          .filter((line) => line.playerId === `p${entry.player!.id}` && line.date <= end)
+          .map((line) => ({
+            date: line.date,
+            points: fantasyPoints(line.stats, scoring),
+            minutes: line.minutes,
+            final: line.final,
+            opponent: line.opponent ?? null,
+            home: line.home ?? null,
+            stats: line.stats,
+          }));
+        const nbaGames = games.map((game) => ({ ...game, startTime: game.startTime ?? null }));
+        const status = slotStatus(
+          entry.points ?? 0,
+          teamWeek(nbaGames as never, entry.player.team, lines, true),
+          true,
+          foulDeductions([scoring.tf ?? 0, scoring.ff ?? 0]),
+        );
+        expect(status.gamesLeft).toBe(0);
+        counts[status.state] = (counts[status.state] ?? 0) + 1;
+      }
+    }
+    expect(counts.locked).toBeGreaterThan(0);
+    expect(counts.final).toBeGreaterThan(0);
+    expect(counts.unclear).toBeGreaterThan(0);
+  });
+});

@@ -3,6 +3,7 @@ import type {
   DraftBoard,
   LockMarks,
   WeekData,
+  WeekMatchups,
   LeagueSnapshot,
   PlayerDetail,
   StatsReport,
@@ -68,12 +69,18 @@ export function getPlayerDetail(leagueId: string, playerId: string): Promise<Pla
   return getJson(`/api/league/${encodeURIComponent(leagueId)}/players/${encodeURIComponent(playerId)}`);
 }
 
-export function getWeek(leagueId: string): Promise<WeekData> {
-  return getJson(`/api/league/${encodeURIComponent(leagueId)}/week`);
+/** The NBA side of a fantasy week (the current one when `week` is left out): schedule and box scores. */
+export function getWeek(leagueId: string, week?: number): Promise<WeekData> {
+  return getJson(`/api/league/${encodeURIComponent(leagueId)}/week${week ? `?week=${week}` : ""}`);
 }
 
-export function getLockMarks(leagueId: string): Promise<LockMarks> {
-  return getJson(`/api/league/${encodeURIComponent(leagueId)}/locks`);
+/** A week's matchups, for weeks before the current one (the current week's come with the league). */
+export function getMatchups(leagueId: string, week: number): Promise<WeekMatchups> {
+  return getJson(`/api/league/${encodeURIComponent(leagueId)}/matchups?week=${week}`);
+}
+
+export function getLockMarks(leagueId: string, week?: number): Promise<LockMarks> {
+  return getJson(`/api/league/${encodeURIComponent(leagueId)}/locks${week ? `?week=${week}` : ""}`);
 }
 
 /** Marks a starter's current score as locked (true) or not (false), or clears the mark (null). */
@@ -82,11 +89,12 @@ export async function setLockMark(
   rosterId: number,
   playerId: string,
   locked: boolean | null,
+  week?: number,
 ): Promise<LockMarks> {
   const response = await fetch(`/api/league/${encodeURIComponent(leagueId)}/locks`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ rosterId, playerId, locked }),
+    body: JSON.stringify({ rosterId, playerId, locked, week }),
   });
   const body = (await response.json().catch(() => null)) as (LockMarks & { error?: string }) | null;
   if (response.status === 401) window.dispatchEvent(new Event(SIGNED_OUT_EVENT));
