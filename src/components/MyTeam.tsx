@@ -50,11 +50,11 @@ function useTopMoves(
   return found && found.model === model && found.rosterId === rosterId ? found.moves : null;
 }
 
-function MovePlayers({ players }: { players: Move["gets"] }) {
+function MovePlayers({ players, notes }: { players: Move["gets"]; notes: Move["notes"] }) {
   return (
     <span className="move-players">
       {players.map((player) => (
-        <PlayerCell key={player.id} player={player} />
+        <PlayerCell key={player.id} player={player} extra={notes[player.id]} />
       ))}
     </span>
   );
@@ -245,10 +245,10 @@ export function MyTeam({ snapshot, stats, model, strengths, team, onChangeTeam, 
                         )}
                       </th>
                       <td className="move-get" data-label="You get">
-                        <MovePlayers players={move.gets} />
+                        <MovePlayers players={move.gets} notes={move.notes} />
                       </td>
                       <td className="move-give" data-label="You give">
-                        <MovePlayers players={move.gives} />
+                        <MovePlayers players={move.gives} notes={move.notes} />
                       </td>
                       <td className="num move-change">
                         <span className={`move-strength ${move.strengthChange > 0 ? "up" : move.strengthChange < 0 ? "down" : ""}`}>

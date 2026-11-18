@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { rosterPlayers } from "../../shared/analysis.ts";
 import { deepestSpot, POSITIONS, positionProfile, type TeamSituation, thinnestSpot } from "../../shared/insight.ts";
-import { bestNineLineup, type ModelPlayer, type StrengthModel } from "../../shared/strength.ts";
+import { bestNineLineup, type ModelPlayer, type Pickup, type StrengthModel } from "../../shared/strength.ts";
 import {
   acceptance,
   evaluateTrade,
@@ -13,6 +13,7 @@ import {
   type FinderResult,
   type TradeIdea,
   type TradeOffer,
+  tradePhases,
   tradeStory,
   type TradeResult,
   type TradeSide,
@@ -36,7 +37,15 @@ interface Props {
   incoming?: { offer: TradeOffer; at: number } | null;
 }
 
-type Goal = "best" | "position" | "send" | "get";
+/** A short label for a waiver pickup in a trade. */
+function pickupLabel(pickup: Pickup): string {
+  return pickup.forInjured ? `Waiver pickup until ${pickup.forInjured.name} is back` : "Waiver pickup";
+}
+
+type Goal = "best" | "position" | "send" | "get" | "injured";
+
+const formatBackDate = (date: string) =>
+  new Date(`${date}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 
 const percent = new Intl.NumberFormat("en-US", { style: "percent", maximumFractionDigits: 0 });
 const tone = (grade: number) => (grade >= 57 ? "up" : grade <= 43 ? "down" : "");
@@ -170,10 +179,26 @@ function MoveList({ side, model }: { side: TradeSide; model: StrengthModel }) {
   return (
     <PlayerMoves
       moves={[
-        ...side.gets.map((player) => ({ player, joins: true, value: value(player) })),
-        ...side.adds.map((player) => ({ player, joins: true, note: "Free agent pickup", value: value(player) })),
+        ...side.gets.map((player) => ({
+          player,
+          joins: true,
+          note: side.toReserve.includes(player) ? "Goes on IR while out" : undefined,
+          value: value(player),
+        })),
+        ...side.pickups.map((pickup) => ({
+          player: pickup.player,
+          joins: true,
+          note: pickupLabel(pickup),
+          value: value(pickup.player),
+        })),
         ...side.gives.map((player) => ({ player, joins: false, value: value(player) })),
         ...side.drops.map((player) => ({ player, joins: false, note: "Dropped to make room", value: value(player) })),
+        ...side.leaving.map(({ player, when }) => ({
+          player,
+          joins: false,
+          note: `Dropped when ${when.name} is back`,
+          value: value(player),
+        })),
       ]}
     />
   );
@@ -181,6 +206,7 @@ function MoveList({ side, model }: { side: TradeSide; model: StrengthModel }) {
 
 function SideResult({ side, team, scale, model }: { side: TradeSide; team: Team | undefined; scale: number; model: StrengthModel }) {
   const strengthTone = side.strengthChange > 0 ? "up" : side.strengthChange < 0 ? "down" : "";
+  const phases = useMemo(() => tradePhases(model, side), [model, side]);
   return (
     <div className="card grade-card">
       <div className="team-cell">
@@ -211,6 +237,26 @@ function SideResult({ side, team, scale, model }: { side: TradeSide; team: Team 
           Strength {side.strengthBefore} to {side.strengthAfter}. Projected weekly score{" "}
           {formatPoints(side.projectedAfter)} ({formatSigned(side.teamChange)}).
         </p>
+        {phases && (
+          <dl className="phases" aria-label={`Weekly score change around ${phases.player.name}'s return`}>
+            <div>
+              <dt>While {phases.player.name} is out</dt>
+              <dd className={phases.whileOut > 0.05 ? "up" : phases.whileOut < -0.05 ? "down" : ""}>
+                {formatSigned(phases.whileOut)} <span className="quiet">a week</span>
+              </dd>
+              <dd className="quiet phases-when">
+                {phases.weeksOut === 1 ? "This week" : `Next ${phases.weeksOut} weeks`}
+              </dd>
+            </div>
+            <div>
+              <dt>After he is back</dt>
+              <dd className={phases.afterBack > 0.05 ? "up" : phases.afterBack < -0.05 ? "down" : ""}>
+                {formatSigned(phases.afterBack)} <span className="quiet">a week</span>
+              </dd>
+              <dd className="quiet phases-when">From about {formatBackDate(phases.backAround)}</dd>
+            </div>
+          </dl>
+        )}
       </div>
 
       <dl className="grade-facts">
@@ -402,7 +448,8 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
       .flatMap((player) => model.players.get(player.id) ?? [])
       .filter((player) => player.games > 0)
       .sort((x, y) => y.expected - x.expected);
-  const ready = goal === "best" || goal === "position" || (goal === "send" && sendId) || (goal === "get" && getId);
+  const ready =
+    goal === "best" || goal === "position" || goal === "injured" || (goal === "send" && sendId) || (goal === "get" && getId);
 
   const toggle = (set: Set<string>, update: (next: Set<string>) => void) => (id: string) => {
     const next = new Set(set);
@@ -425,7 +472,15 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
     setSearching(true);
     // Let the "Searching" label paint before the search starts.
     const options: FinderOptions =
-      goal === "position" ? { getPosition: position } : goal === "send" ? { givePlayerId: sendId } : goal === "get" ? { getPlayerId: getId } : {};
+      goal === "position"
+        ? { getPosition: position }
+        : goal === "send"
+          ? { givePlayerId: sendId }
+          : goal === "get"
+            ? { getPlayerId: getId }
+            : goal === "injured"
+              ? { getInjured: true }
+              : {};
     const target =
       goal === "get" ? (model!.players.get(getId)?.name ?? null) : goal === "send" ? (model!.players.get(sendId)?.name ?? null) : null;
     setTimeout(() => {
@@ -471,6 +526,7 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
             <option value="position">get a player at a position</option>
             <option value="send">trade away one of my players</option>
             <option value="get">get a specific player</option>
+            <option value="injured">trade for an injured player</option>
           </select>
         </label>
         {goal === "position" && (
@@ -523,7 +579,9 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
       {found && (
         <p className={`finder-outlook${found.outlook === "likely" ? "" : " quiet"}`}>
           {found.outlook === "none" &&
-            (goal === "best" || goal === "position"
+            (goal === "injured"
+              ? "No injured player on another team is worth trading for right now: none would raise your team's strength over the rest of the season with a fair chance of being accepted."
+              : goal === "best" || goal === "position"
               ? "No trade helps your team right now with a fair chance of being accepted."
               : `No offer could be built around ${found.target ?? "that player"} without costing you more than a point a week.`)}
           {found.outlook === "likely" &&
@@ -745,8 +803,17 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
         </p>
         <p>
           Weekly value is what a player is expected to lock in an average week, allowing for games he misses.
-          Rosters keep their size: a team that receives fewer players picks up the free agent who helps it most,
-          and a team that receives more drops its least valuable player.
+          Rosters are run as a manager would run them, before and after the trade alike: a player marked out goes
+          on IR if a slot is free, an open roster spot is filled with the free agent who helps most (for a player
+          on IR, only while he is out), and a team with too many players drops its least valuable one.
+        </p>
+        <p>
+          An injured player counts from the injury report's return date: nothing while he is out, his usual level
+          once back. Dates further away are taken a little later and less exactly, and a "re-evaluated" date is the
+          earliest he could return, not when he will. The card splits the trade into the weeks he is out and the
+          weeks after; the grade covers both. Managers see an injured player's average scaled down by the share of
+          the season he will miss, a little more for the games in front of them, which makes them more willing to
+          trade him.
         </p>
       </div>
     </section>

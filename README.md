@@ -145,7 +145,12 @@ happens to its projected weekly score.
 | Minutes rising or falling | projection | at most 8% either way |
 | Game-to-game spread | strength | his own, blended with the league's typical spread until he has 6 games; kept between 10% and 60% of his level |
 | Scattered missed games | availability | a rate, blended with a typical 90% early on |
-| Long absence (4+ games in a row) | availability | a current one is expected to last as long again; finished ones are not held against him |
+| Long absence (4+ games in a row) | availability | a current one with no return date is expected to last as long again; finished ones are not held against him |
+| Return date buffer (`shared/injury.ts`) | when an injured player is back | none within 7 days; beyond that, 10% of the time away later (4 weeks: about 2 days; 8 weeks: about 5) |
+| Re-evaluation date | when an injured player is back | read as the earliest return; the expected return is 10 days later |
+| Return window spread | when an injured player is back | at least 25% of the time away, centred on the expected day |
+| Injured reserve and waiver pickups | strength, trades | one player per IR slot; open spots filled from the 6 best free agents; the same rule before and after a trade |
+| What they see of an injured player | what they see on averages | his average less the share of weeks he will miss, plus 10% of that; at most 80% off |
 | Reluctance to trade at all | chance they accept | fixed: with the premium below, an even trade comes out at about a third |
 | Own-player premium (managers overvalue their own players) | what they see on averages | fixed: their players count 8% higher (`OWN_PLAYER_PREMIUM`) |
 | What they see on averages (players they would drop subtracted) | chance they accept | +0.8 to -2.0 on the log-odds scale |
@@ -262,6 +267,39 @@ start closed; "Open in builder" loads an idea and opens both. When one team
 has fewer players (an empty bench or IR spot), its list is padded with empty
 slots so the two rosters line up row for row.
 
+### Injuries, IR and waiver pickups
+
+`shared/injury.ts` and `fillRoster` in `shared/strength.ts`. The injury
+report comes from the stats source (balldontlie's player injuries, on the
+ALL-STAR plan). A return date is read as a window, not a day: a few days away
+is taken almost as given; further out, the expected day moves a little later
+and the window widens. A "re-evaluated" date is the earliest he could be
+back, with the expected return 10 days after. "Out for the season" keeps him
+out. A player marked out with no date is expected to miss as long again as
+he has (half a week if just ruled out). A player who has not played this
+season but is on the report with a date is projected at last season's level.
+
+The model's imaginary weeks stand for the real weeks left in the regular
+season, in turn, so an injured player plays none of the weeks he is out and
+his usual share after: his weekly value is the average over the weeks left.
+
+Every roster is run as its manager would: a player marked out goes on IR
+(most out first, one per IR slot) and takes no active spot; open spots are
+filled with the free agent who helps most; too many active players means
+dropping the least valuable. When a player on IR is back, the least valuable
+active player (a pickup or not) plays only until then; nobody goes for a
+player out for the season. Rosters are filled the same way before and after
+a trade, so a trade is credited only with the spots it opens, and a pickup
+the team makes either way is not counted as the trade's.
+
+Trades with an injured player show two numbers under the team effect: the
+weekly change while he is out and after he is back (`tradePhases`). The grade
+and ranking use the whole rest of the season. Managers weighing a trade see
+an injured player's average scaled down by the share of weeks he will miss
+(`seenAverage`, capped), so they part with him more readily. The finder's
+"trade for an injured player" looks only at players out at least about two
+weeks who are due back this season.
+
 ### Top moves (My team)
 
 `topMoves` in `shared/moves.ts`. The My team tab lists the five moves that
@@ -303,6 +341,7 @@ schedule); the header shows it.
 | Box scores otherwise | balldontlie | 6 hours (`STATS_CACHE_HOURS`) | Season numbers barely move within a day |
 | Last season's box scores | balldontlie | Never again | It is over |
 | Team logos | NBA | 30 days | They do not change |
+| Injury report (one or two requests) | balldontlie | 30 min (`INJURY_CACHE_MINUTES`) | Return dates and notes change a few times a day |
 
 Every balldontlie request goes through one queue, at least 1.1 seconds apart
 (at most about 54 a minute; the ALL-STAR plan allows 60). Requests someone is
@@ -404,6 +443,7 @@ changes one (the app restarts).
 | `npm run check:sleeper -- <league_id> --raw-matchup` | Also prints one team's raw matchup entry, to see every field Sleeper sends |
 | `npm run check:sleeper -- <league_id> --raw-rosters` | Also lists every roster, league and transaction field, to look for anything that records a lock |
 | `npm run check:stats -- <league_id> --schedule` | Prints this week's NBA schedule from the stats source |
+| `npm run check:stats -- <league_id> --injuries` | Prints the injury report and how the app reads each return date (add `--player "Name"` for one player's full note) |
 | `npm run db:import` | Copies `.cache/` into the database at `DATABASE_URL` |
 | `npm run check:logos` | Downloads every team logo and writes a preview page |
 | `npm run serve` | Builds the React app and serves everything from :8787 |

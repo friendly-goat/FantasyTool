@@ -1,3 +1,4 @@
+import type { InjuryNews } from "./injury.ts";
 import type { Projection } from "./projection.ts";
 
 // Types shared by the backend (server/) and the React app (src/).
@@ -264,6 +265,10 @@ export interface PlayerStats extends PlayerRef {
   missedStreak: number;
   /** True when that run is long enough to be an injury absence, not rest. */
   longTermOut: boolean;
+  /** His usual share of games when fit, before any allowance for a long absence (`availability` includes one). */
+  playRate: number;
+  /** His entry on the league's injury report, if he is on it (shared/injury.ts). */
+  injury: InjuryNews | null;
   /** Rest-of-season projection with the adjustments behind it. */
   projection: Projection;
   /** Highest single-game fantasy score this season. */

@@ -39,6 +39,19 @@ export interface ScheduledGame {
   statusText: string | null;
 }
 
+/** One player on the league's injury report, as the stats source has it. */
+export interface InjuryReport {
+  /** The stats source's own player ID, as on game lines. */
+  playerId: string;
+  playerName: string;
+  /** The source's availability word, such as "Out" or "Day-To-Day". */
+  status: string;
+  /** Expected return as the source writes it, such as "Nov 17" (often without a year), or null. */
+  returnDate: string | null;
+  /** The source's note on the injury and status. */
+  description: string;
+}
+
 /**
  * A source of NBA box scores. Swapping stats vendors means writing one
  * more of these; nothing else in the app knows which vendor is in use.
@@ -56,4 +69,6 @@ export interface StatsProvider {
   ): Promise<GameLine[]>;
   /** Every game from `startDate` to `endDate` (YYYY-MM-DD, inclusive), played or not. */
   fetchSchedule?(startDate: string, endDate: string): Promise<ScheduledGame[]>;
+  /** Everyone on the league's injury report now. */
+  fetchInjuries?(): Promise<InjuryReport[]>;
 }

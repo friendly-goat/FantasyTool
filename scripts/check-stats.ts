@@ -4,6 +4,8 @@
 //   npm run check:stats -- <league_id>
 //   npm run check:stats -- <league_id> --player "James Harden"   (adds a game log)
 //   npm run check:stats -- <league_id> --schedule   (only this week's NBA schedule)
+//   npm run check:stats -- <league_id> --injuries   (the injury report and how the app reads it)
+//   npm run check:stats -- <league_id> --injuries --player "Lauri Markkanen"   (one player's full note)
 //
 // Needs BALLDONTLIE_API_KEY in .env. The first run downloads the season so
 // far (about a minute); the result is saved in .cache/ and reused by the app.
@@ -16,6 +18,7 @@ import { normalizeName } from "../server/stats/match.ts";
 import { createBalldontlie } from "../server/stats/balldontlie.ts";
 import { createMockStats } from "../server/stats/mock.ts";
 import { weekRange } from "../shared/weeks.ts";
+import { readInjury, returnOutlook } from "../shared/injury.ts";
 import { StatsService } from "../server/stats/service.ts";
 import { storageFromEnv } from "../server/storage.ts";
 
@@ -31,6 +34,7 @@ const playerName = playerFlag >= 0 ? args[playerFlag + 1] : undefined;
 // --mock runs the whole check against the built-in sample league, offline.
 const mock = args.includes("--mock");
 const scheduleOnly = args.includes("--schedule");
+const injuriesOnly = args.includes("--injuries");
 const fetchJson = mock ? fetchFromMock : fetchFromSleeper;
 const leagueId = mock
   ? MOCK_LEAGUE_ID
@@ -52,6 +56,39 @@ async function main() {
   const provider = mock
     ? createMockStats((await fetchFromMock("/players/nba")) as Record<string, unknown>)
     : createBalldontlie(apiKey!);
+  if (injuriesOnly) {
+    if (!provider.fetchInjuries) throw new Error(`${provider.name} has no injury report.`);
+    const report = await provider.fetchInjuries();
+    const today = new Date().toISOString().slice(0, 10);
+    const rostered = new Set(
+      snapshot.teams.flatMap((team) => [...team.starters.flatMap((s) => (s.player ? [s.player] : [])), ...team.bench, ...team.reserve])
+        .map((player) => normalizeName(player.name)),
+    );
+    const wanted = playerName ? normalizeName(playerName) : null;
+    const rows = report
+      .filter((entry) => !wanted || normalizeName(entry.playerName) === wanted)
+      .sort((a, b) => Number(rostered.has(normalizeName(b.playerName))) - Number(rostered.has(normalizeName(a.playerName))));
+    console.log(`\nInjury report: ${report.length} players (rostered in your league first)`);
+    console.table(
+      rows.map((entry) => {
+        const news = readInjury(entry, today);
+        const outlook = returnOutlook(news);
+        return {
+          player: entry.playerName,
+          rostered: rostered.has(normalizeName(entry.playerName)) ? "yes" : "",
+          status: entry.status,
+          "return (raw)": entry.returnDate ?? "",
+          "read as": news.returnDate ?? "",
+          "re-evaluation": news.reevaluation ? "yes" : "",
+          "season over": news.seasonOut ? "yes" : "",
+          "expected back": outlook.kind === "window" ? outlook.window.expected : outlook.kind === "season" ? "not this season" : "no date",
+        };
+      }),
+    );
+    for (const entry of playerName ? rows : rows.slice(0, 5)) console.log(`\n${entry.playerName}: ${entry.description}`);
+    return;
+  }
+
   if (scheduleOnly) {
     if (!snapshot.league.seasonStartDate) throw new Error("Sleeper did not report the season start date.");
     const { start, end } = weekRange(snapshot.league.seasonStartDate, snapshot.week);

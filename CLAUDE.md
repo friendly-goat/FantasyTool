@@ -65,6 +65,13 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   re-running the projection (see `shared/insight.ts`).
 - A missed game is not an injury. Rest days are a rate; only a run of 4+
   missed team games is a long absence (`availabilityOutlook`).
+- Injuries come from the stats source's injury report (`fetchInjuries`),
+  read in `shared/injury.ts` as a return window (buffer, re-evaluation,
+  spread). The model's imaginary weeks stand for the real weeks left (week
+  w is real week w mod the weeks left), so a return date counts week by
+  week. Rosters are always run through `fillRoster` (IR, waiver pickups,
+  who leaves when a player is back) before and after a trade alike; never
+  credit a trade with a pickup the team would make anyway.
 - Team strength (1 to 1000) and trade grades come from the projected weekly
   score in `shared/strength.ts` and `shared/trade.ts`. It is a day-by-day
   lock-in simulation (`simulateWeek`): open slots rotate players daily, so the

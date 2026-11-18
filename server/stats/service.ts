@@ -3,7 +3,13 @@ import { fantasyPoints, ignoredSettings } from "../scoring.ts";
 import type { Storage } from "../storage.ts";
 import { matchPlayers, sameLastName } from "./match.ts";
 import { PLAYER_ID_OVERRIDES } from "./overrides.ts";
-import type { GameLine, StatsProvider } from "./provider.ts";
+import { type InjuryNews, readInjury } from "../../shared/injury.ts";
+import type { GameLine, InjuryReport, StatsProvider } from "./provider.ts";
+
+/** The injury report keyed by stats-source player ID, each entry read (dates, re-evaluations). */
+function injuriesBySource(report: InjuryReport[], today: string): Map<string, InjuryNews> {
+  return new Map(report.map((entry) => [entry.playerId, readInjury(entry, today)]));
+}
 import { counts, lastSeasonLevels, playerLog, RECENT_WINDOW, summarize, type LastSeason } from "./summary.ts";
 
 // Keeps a season of game lines on disk and brings it up to date in the
@@ -61,6 +67,7 @@ export class StatsService {
   async report(
     snapshot: LeagueSnapshot,
     sleeperPlayers: Record<string, PlayerRef>,
+    injuryReport: InjuryReport[] = [],
   ): Promise<StatsReport> {
     const scoring = snapshot.league.scoringSettings;
     const base = {
@@ -114,7 +121,15 @@ export class StatsService {
       unmatchedRostered: lines.length > 0 ? rostered.filter((player) => !matches.has(player.id)) : [],
       lastSeason: prior.syncedAt !== null ? "ready" : "loading",
       lastSeasonPages: prior.pagesFetched,
-      players: summarize(lines, matches, sleeperPlayers, scoring, snapshot.league.seasonStartDate, lastSeason),
+      players: summarize(
+        lines,
+        matches,
+        sleeperPlayers,
+        scoring,
+        snapshot.league.seasonStartDate,
+        lastSeason,
+        injuriesBySource(injuryReport, new Date(this.now()).toISOString().slice(0, 10)),
+      ),
     };
   }
 
@@ -218,6 +233,16 @@ export class StatsService {
     }
     for (const list of Object.values(result)) list.sort((a, b) => a.date.localeCompare(b.date));
     return { lines: result, syncedAt: data.syncedAt ? new Date(data.syncedAt).toISOString() : null };
+  }
+
+  /** Whether the stats source has an injury report. */
+  hasInjuries(): boolean {
+    return Boolean(this.provider?.fetchInjuries);
+  }
+
+  /** The league's injury report now, straight from the source (callers cache it). */
+  async injuries(): Promise<InjuryReport[]> {
+    return this.provider?.fetchInjuries ? this.provider.fetchInjuries() : [];
   }
 
   /** Stats-source players sharing a last name with `name`, for the check script. */

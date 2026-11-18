@@ -1,4 +1,4 @@
-import type { GameLine, ScheduledGame, StatsProvider } from "./provider.ts";
+import type { GameLine, InjuryReport, ScheduledGame, StatsProvider } from "./provider.ts";
 
 // Made-up box scores for the mock league (`npm run dev:mock` and tests).
 // Player names match server/mock.ts so that name matching is exercised.
@@ -115,11 +115,45 @@ export function mockSchedule(startDate: string, endDate: string): ScheduledGame[
   return games;
 }
 
+// The injury report for the players who sit out the latest games, one of
+// each kind the app reads: a few days away, a re-evaluation, weeks away, and
+// out for the season. Dates are written as balldontlie writes them, without
+// a year, counted from `today`.
+const MOCK_INJURIES: { days: number | null; status: string; description: string }[] = [
+  { days: 2, status: "Day-To-Day", description: "Questionable with right ankle soreness." },
+  { days: 25, status: "Out", description: "Diagnosed with a left knee bone bruise and will be re-evaluated in about three weeks." },
+  { days: 45, status: "Out", description: "Expected to miss about six weeks with a fractured left hand." },
+  { days: null, status: "Out", description: "Out for the season after surgery on his right Achilles." },
+];
+
+function monthDay(today: Date, days: number): string {
+  const date = new Date(today.getTime() + days * 86_400_000);
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+}
+
+export function mockInjuries(players: Record<string, unknown>, today = new Date()): InjuryReport[] {
+  return Object.values(players as Record<string, { player_id: string; full_name: string }>)
+    .filter((_, index) => index % LONG_ABSENCE_EVERY === 5 && index % NO_GAMES_EVERY !== NO_GAMES_EVERY - 1)
+    .map((player, order) => {
+      const kind = MOCK_INJURIES[order % MOCK_INJURIES.length]!;
+      return {
+        playerId: `p${player.player_id}`,
+        playerName: player.full_name,
+        status: kind.status,
+        returnDate: kind.days === null ? null : monthDay(today, kind.days),
+        description: kind.description,
+      };
+    });
+}
+
 export function createMockStats(players: Record<string, unknown>): StatsProvider {
   return {
     name: "mock",
     async fetchSchedule(startDate, endDate) {
       return mockSchedule(startDate, endDate);
+    },
+    async fetchInjuries() {
+      return mockInjuries(players);
     },
     async fetchGameLines(season, fromDate, onPage) {
       if (season !== MOCK_SEASON) {

@@ -115,6 +115,8 @@ const TYPICAL_WEIGHT = 5;
 export interface AvailabilityOutlook {
   /** Share of his team's remaining games he is expected to play. */
   rate: number;
+  /** The same before any allowance for a long absence still going on: his usual share when fit. */
+  playRate: number;
   /** Team games missed in a row up to now. */
   missedStreak: number;
   /** True when the current run of missed games is a long absence. */
@@ -148,5 +150,5 @@ export function availabilityOutlook(played: boolean[], remainingGames: number): 
     (considered - scatteredMisses + TYPICAL_PLAY_RATE * TYPICAL_WEIGHT) / (considered + TYPICAL_WEIGHT);
   const longTermOut = missedStreak >= LONG_ABSENCE_GAMES;
   const stillOut = longTermOut ? Math.min(1, missedStreak / Math.max(1, remainingGames)) : 0;
-  return { rate: playRate * (1 - stillOut), missedStreak, longTermOut };
+  return { rate: playRate * (1 - stillOut), playRate, missedStreak, longTermOut };
 }

@@ -8,7 +8,16 @@ import {
   type TeamSituation,
   thinnestSpot,
 } from "./insight.ts";
-import { projectedWeekly, strengthScore, type ModelPlayer, type StrengthModel } from "./strength.ts";
+import {
+  fillRoster,
+  type ModelPlayer,
+  type Pickup,
+  projectByWeek,
+  projectedWeekly,
+  standIn,
+  strengthScore,
+  type StrengthModel,
+} from "./strength.ts";
 import type { LeagueSnapshot } from "./types.ts";
 
 // Trade evaluation. A trade is judged by what it does to each team's
@@ -36,6 +45,15 @@ export interface TradeSide {
   adds: ModelPlayer[];
   /** Players assumed dropped to make room. */
   drops: ModelPlayer[];
+  /** The same pickups, each noting whether he plays only until a player on IR is back. */
+  pickups: Pickup[];
+  /** Players the trade puts on injured reserve. */
+  toReserve: ModelPlayer[];
+  /** Players already on the roster who, after the trade, are dropped when a player on IR is back. */
+  leaving: { player: ModelPlayer; when: ModelPlayer }[];
+  /** The rosters the projection plays before and after (stand-ins by their stand-in IDs). */
+  beforeIds: string[];
+  afterIds: string[];
   /** Team strength, 1 to 1000, before and after. */
   strengthBefore: number;
   strengthAfter: number;
@@ -99,10 +117,6 @@ function players(model: StrengthModel, ids: string[]): ModelPlayer[] {
   return ids.flatMap((id) => model.players.get(id) ?? []);
 }
 
-/** Weeks used when trying out free agents, to keep it quick. */
-const PICKUP_TRIAL_WEEKS = 60;
-const PICKUP_CANDIDATES = 6;
-
 function side(
   model: StrengthModel,
   rosterId: number,
@@ -111,32 +125,27 @@ function side(
   gets: string[],
   claimed: Set<string>,
 ): TradeSide {
-  let after = [...before.filter((id) => !gives.includes(id)), ...gets];
-  const drops: string[] = [];
-  const adds: string[] = [];
+  // Both rosters are run the same way (IR, then waivers), so the trade is
+  // credited only with the spots it opens. See fillRoster.
+  const baseline = fillRoster(model, before, new Set(claimed));
+  const filled = fillRoster(
+    model,
+    [...before.filter((id) => !gives.includes(id)), ...gets],
+    new Set(claimed),
+    baseline.adds.map((add) => add.player.id),
+  );
+  // A pickup the team makes either way is not the trade's doing, even if it
+  // now covers a different player on IR.
+  const key = (add: Pickup) => add.player.id;
+  const already = new Set(baseline.adds.map(key));
+  const pickups = filled.adds.filter((add) => !already.has(key(add)));
+  const drops = filled.drops.filter((player) => !baseline.drops.includes(player)).map((player) => player.id);
+  const adds = pickups.map((add) => add.player.id);
+  const toReserve = filled.reserve.filter((player) => !baseline.reserve.includes(player));
+  const leaving = filled.leaving.filter(({ player }) => !baseline.leaving.some((entry) => entry.player === player));
 
-  while (after.length > before.length) {
-    const weakest = players(model, after).reduce((a, b) => (b.expected < a.expected ? b : a));
-    drops.push(weakest.id);
-    after = after.filter((id) => id !== weakest.id);
-  }
-  while (after.length < before.length) {
-    // Try the most valuable unclaimed free agents and keep the one that fits best.
-    const options = model.freeAgentIds
-      .filter((id) => !claimed.has(id) && !after.includes(id) && !gives.includes(id))
-      .slice(0, PICKUP_CANDIDATES);
-    if (options.length === 0) break;
-    const roster = after;
-    const best = options
-      .map((id) => ({ id, projected: projectedWeekly(model, [...roster, id], PICKUP_TRIAL_WEEKS) }))
-      .reduce((a, b) => (b.projected > a.projected ? b : a));
-    adds.push(best.id);
-    claimed.add(best.id);
-    after = [...after, best.id];
-  }
-
-  const projectedBefore = projectedWeekly(model, before);
-  const projectedAfter = projectedWeekly(model, after);
+  const projectedBefore = projectedWeekly(model, baseline.ids);
+  const projectedAfter = projectedWeekly(model, filled.ids);
   const strengthBefore = strengthScore(model, projectedBefore);
   const strengthAfter = strengthScore(model, projectedAfter);
   const grade = tradeGrade(projectedAfter - projectedBefore);
@@ -155,6 +164,11 @@ function side(
     gets: players(model, gets),
     adds: players(model, adds),
     drops: players(model, drops),
+    pickups,
+    toReserve,
+    leaving,
+    beforeIds: baseline.ids,
+    afterIds: filled.ids,
     strengthBefore,
     strengthAfter,
     strengthChange: strengthAfter - strengthBefore,
@@ -171,9 +185,12 @@ function rosterIds(snapshot: LeagueSnapshot, rosterId: number): string[] {
 }
 
 export function evaluateTrade(model: StrengthModel, snapshot: LeagueSnapshot, offer: TradeOffer): TradeResult {
-  const claimed = new Set<string>();
-  const a = side(model, offer.teamA, rosterIds(snapshot, offer.teamA), offer.aGives, offer.bGives, claimed);
-  const b = side(model, offer.teamB, rosterIds(snapshot, offer.teamB), offer.bGives, offer.aGives, claimed);
+  // Each team looks at the waiver wire as it is: both may want the same free
+  // agent, but only for their own what-if, before and after alike. Players in
+  // the trade are never free agents.
+  const traded = [...offer.aGives, ...offer.bGives];
+  const a = side(model, offer.teamA, rosterIds(snapshot, offer.teamA), offer.aGives, offer.bGives, new Set(traded));
+  const b = side(model, offer.teamB, rosterIds(snapshot, offer.teamB), offer.bGives, offer.aGives, new Set(traded));
   const total = a.valueReceived + b.valueReceived;
   const valueBalance = total > 0 ? Math.min(97, Math.max(3, 50 + (50 * (b.valueReceived - a.valueReceived)) / total)) : 50;
   return { a, b, valueBalance };
@@ -248,6 +265,64 @@ const signed = (value: number) => (value >= 0 ? `+${value.toFixed(2)}` : `\u2212
  * short points in order of importance. `profiles` and `situation` add the
  * roster and team details behind the numbers when they are available.
  */
+/** A traded player's injury in two parts: the weeks he is out and the weeks after he is back. */
+export interface TradePhases {
+  /** The injured player the split is about. */
+  player: ModelPlayer;
+  /** Middle of his return window, YYYY-MM-DD. */
+  backAround: string;
+  /** Real weeks (from the current one) before he is more likely back than not. */
+  weeksOut: number;
+  /** Change in this side's projected weekly score while he is out, and after. */
+  whileOut: number;
+  afterBack: number;
+}
+
+/** Players this out share or more are "injured" for trades (a few days away is not). */
+export const INJURED_SHARE = 0.05;
+
+/** The injured player who matters most in a trade side: received or sent, out the largest share of the weeks left. */
+function injuredIn(side: TradeSide): ModelPlayer | null {
+  const candidates = [...side.gets, ...side.gives].filter(
+    (player) => player.back && player.outShare >= INJURED_SHARE && player.outShare < 0.98,
+  );
+  return candidates.reduce<ModelPlayer | null>((most, player) => (!most || player.outShare > most.outShare ? player : most), null);
+}
+
+/**
+ * The trade's effect on one side split at an injured player's return: the
+ * weeks he is out, then the rest. Null when no traded player is out with a
+ * return date inside the weeks left. An explanation only: the grade uses the
+ * whole rest of the season.
+ */
+export function tradePhases(model: StrengthModel, side: TradeSide): TradePhases | null {
+  const player = injuredIn(side);
+  if (!player?.back || !player.returnExpected || player.returnExpected === "season") return null;
+  const weeksOut = player.back.findIndex((chance) => chance >= 0.5);
+  if (weeksOut <= 0) return null;
+  const before = projectByWeek(model, side.beforeIds);
+  const after = projectByWeek(model, side.afterIds);
+  const change = after.map((value, index) => value - (before[index] ?? 0));
+  const mean = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length);
+  return {
+    player,
+    backAround: player.returnExpected,
+    weeksOut,
+    whileOut: mean(change.slice(0, weeksOut)),
+    afterBack: mean(change.slice(weeksOut)),
+  };
+}
+
+/** One line on a waiver pickup a trade leads to. */
+export function pickupNote(pickup: Pickup): string {
+  return pickup.forInjured
+    ? `You pick up ${pickup.player.name} from waivers until ${pickup.forInjured.name} is back from IR.`
+    : `You pick up ${pickup.player.name} from waivers for the open spot.`;
+}
+
+const shortDate = (date: string) =>
+  new Date(`${date}T12:00:00Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+
 export function tradeStory(
   model: StrengthModel,
   snapshot: LeagueSnapshot,
@@ -272,6 +347,18 @@ export function tradeStory(
   if (b.fit >= NOTABLE_FIT) notes.push(`Worth ${fixed(b.fit)} a week more to ${them} than its player value.`);
   if (b.teamChange >= REAL_CHANGE) notes.push(`${them} get stronger too (${signed(b.teamChange)} a week).`);
   else if (b.teamChange <= -REAL_CHANGE) notes.push(`${them} get weaker (${signed(b.teamChange)} a week).`);
+
+  // An injured player: what he costs while out, what he adds once back, and
+  // the IR spot and pickup that cover the gap.
+  const phases = tradePhases(model, a);
+  if (phases) {
+    const name = phases.player.name;
+    notes.unshift(
+      `${name} is back around ${shortDate(phases.backAround)}: ${signed(phases.whileOut)} a week for you until then, ${signed(phases.afterBack)} a week after.`,
+    );
+  }
+  for (const pickup of a.pickups) notes.push(pickupNote(pickup));
+  for (const { player, when } of a.leaving) notes.push(`${player.name} is dropped when ${when.name} is back from IR.`);
 
   if (profiles) {
     for (const reason of reasonsFor(model, snapshot, result, profiles.mine, profiles.theirs, situation)) {
@@ -300,6 +387,16 @@ export interface FinderOptions {
   givePlayerId?: string;
   /** Only trades that bring back this player (on another team). */
   getPlayerId?: string;
+  /** Only trades that bring back a player who is out now with a return date this season. */
+  getInjured?: boolean;
+}
+
+/** An injured trade target misses at least this share of the weeks left (about two weeks of eighteen). */
+const INJURED_TARGET_SHARE = 0.1;
+
+/** An injured player worth trading for: out a real share of the weeks left, but due back before the season ends. */
+export function isInjuredTarget(player: ModelPlayer): boolean {
+  return Boolean(player.back) && player.outShare >= INJURED_TARGET_SHARE && player.outShare < 0.95 && player.projected > 0;
 }
 
 /**
@@ -344,6 +441,19 @@ const TEAM_GAIN_WEIGHT = 0.75;
 const TEAM_LOSS_WEIGHT = 1.5;
 const TEAM_LIMIT = 1.25;
 const PRESSURE_WEIGHT = 0.6;
+/**
+ * What a manager sees of an injured player: his average, scaled down by the
+ * share of the weeks left he will miss, plus a near-term overreaction (the
+ * zeros are in front of him). At most this much of his average is discounted.
+ */
+const INJURY_OVERREACTION = 0.1;
+const INJURY_SEEN_LIMIT = 0.8;
+
+/** A player's average as a manager weighing a trade sees it: lower while he is out injured. */
+export function seenAverage(player: ModelPlayer): number {
+  const discount = Math.min(INJURY_SEEN_LIMIT, player.outShare * (1 + INJURY_OVERREACTION));
+  return player.average * (1 - discount);
+}
 
 export interface ChancePart {
   label: string;
@@ -382,13 +492,18 @@ export function chanceFrom(theirWeeklyGain: number, receivedAverage: number, sen
   return chanceParts(theirWeeklyGain, receivedAverage, sentAverage, urgency).chance;
 }
 
-const sumAverage = (list: ModelPlayer[]) => list.reduce((total, player) => total + player.average, 0);
+const sumAverage = (list: ModelPlayer[]) => list.reduce((total, player) => total + seenAverage(player), 0);
 
 /** The chance the other side (`theirs`) accepts, with its parts. */
 export function acceptance(theirs: TradeSide, urgency: number): Chance {
   // They know a two-for-one costs them a roster spot, so the player they
-  // would drop is subtracted and any pickup is added.
-  const received = sumAverage(theirs.gets) + sumAverage(theirs.adds) - sumAverage(theirs.drops);
+  // would drop is subtracted and any pickup is added (a stand-in only for
+  // the share of weeks he plays).
+  const pickups = theirs.pickups.reduce(
+    (total, pickup) => total + seenAverage(pickup.player) * (pickup.forInjured ? pickup.forInjured.outShare : 1),
+    0,
+  );
+  const received = sumAverage(theirs.gets) + pickups - sumAverage(theirs.drops);
   return chanceParts(theirs.teamChange, received, sumAverage(theirs.gives), urgency);
 }
 
@@ -513,7 +628,11 @@ export function findTrades(
     if (team.rosterId === rosterId) continue;
     const theirs = rosterPlayers(team).map((player) => player.id);
     const targets = players(model, theirs).filter(
-      (player) => player.games > 0 && at(options.getPosition)(player) && (!options.getPlayerId || player.id === options.getPlayerId),
+      (player) =>
+        (player.games > 0 || isInjuredTarget(player)) &&
+        at(options.getPosition)(player) &&
+        (!options.getPlayerId || player.id === options.getPlayerId) &&
+        (!options.getInjured || isInjuredTarget(player)),
     );
     if (targets.length === 0) continue;
     const theirsBefore = projectedWeekly(model, theirs, screenWeeks);
@@ -523,7 +642,15 @@ export function findTrades(
     const consider = (gives: ModelPlayer[], get: ModelPlayer) => {
       const giveIds = gives.map((player) => player.id);
       const myAfter = [...mine.filter((id) => !giveIds.includes(id)), get.id];
-      // A one-for-two leaves you a spot short; the full evaluation picks the free agent.
+      // An injured player you receive can go on IR while he is out, and the
+      // best free agent stands in: a quick version of what the full
+      // evaluation does (fillRoster). A one-for-two leaves you a spot short;
+      // the full evaluation picks that free agent too.
+      if (get.back && get.irEligible && get.outShare > 0) {
+        const onReserve = players(model, myAfter).filter((player) => player.irEligible).length;
+        const freeAgent = model.players.get(model.freeAgentIds[0] ?? "");
+        if (onReserve <= model.rosterLimits.reserve && freeAgent) myAfter.push(standIn(model, freeAgent, get).id);
+      }
       const gain = projectedWeekly(model, myAfter, screenWeeks) - mineBefore;
       if (gain < minGain - (gives.length - 1) * 2) return;
       // Receiving two for one, they drop their weakest player.
@@ -531,8 +658,8 @@ export function findTrades(
       const dropped = gives.length > 1 ? weakest : null;
       if (dropped) theirAfter = theirAfter.filter((id) => id !== dropped.id);
       const theirGain = projectedWeekly(model, theirAfter, screenWeeks) - theirsBefore;
-      const received = sumAverage(gives) - (dropped?.average ?? 0);
-      const chance = chanceFrom(theirGain, received, get.average, urgency);
+      const received = sumAverage(gives) - (dropped ? seenAverage(dropped) : 0);
+      const chance = chanceFrom(theirGain, received, seenAverage(get), urgency);
       if (chance < SCREEN_FLOOR) return;
       const key = `${team.rosterId}:${[...giveIds].sort().join("+")}:${get.id}`;
       if (seenOffers.has(key)) return;

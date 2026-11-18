@@ -1,6 +1,8 @@
 import { assignSlots, rosterPlayers, slotAccepts, startingSlots } from "./analysis.ts";
 import { lockInValue } from "./lockin.ts";
+import { returnOutlook, weeklyChanceBack } from "./injury.ts";
 import type { LeagueSnapshot, PlayerRef, PlayerStats, StatsReport } from "./types.ts";
+import { weekRange } from "./weeks.ts";
 
 const POSITIONS = ["PG", "SG", "SF", "PF", "C"];
 
@@ -32,6 +34,12 @@ const POSITIONS = ["PG", "SG", "SF", "PF", "C"];
 // Every player sees the same imaginary weeks on any roster, so comparing a
 // roster before and after a trade is not blurred by luck, and results are
 // identical on every run.
+//
+// The imaginary weeks also stand for the real weeks left in the regular
+// season, in turn (imaginary week w is real week w mod the weeks left). That
+// is how an injury with a return date counts: he plays none of the weeks he
+// is out and his usual share once he is back (shared/injury.ts), so a player
+// out four of eighteen weeks is worth about fourteen eighteenths of himself.
 
 export const SIMULATED_WEEKS = 200;
 const DAYS = 7;
@@ -78,6 +86,21 @@ export interface ModelPlayer extends PlayerRef {
   /** Per imaginary week, up to four games: the day (-1 for none) and the score. */
   gameDay: Int8Array;
   gameScore: Float32Array;
+  /** Chance he is back, for each real week left (the model's calendar); null when he is not out with a return date. */
+  back: Float32Array | null;
+  /** Share of the weeks left he is expected to miss through his injury: 0 when he is not out with a date. */
+  outShare: number;
+  /** Middle of his return window (YYYY-MM-DD), "season" when he is out for it, or null. */
+  returnExpected: string | null;
+  /** He may sit in an injured reserve slot: Sleeper or the injury report lists him as out. */
+  irEligible: boolean;
+}
+
+/** The real weeks the imaginary weeks stand for: from the current week to the end of the regular season. */
+export interface ModelCalendar {
+  /** The day the model was built for, YYYY-MM-DD. */
+  today: string;
+  weeks: { week: number; start: string; end: string }[];
 }
 
 export interface StrengthModel {
@@ -93,6 +116,16 @@ export interface StrengthModel {
   idealProjection: number;
   /** Weekly value of a typical pickup: the middle one of the best free agents, one per team. */
   replacementWeekly: number;
+  calendar: ModelCalendar;
+  /** Roster spots: active (starters and bench) and injured reserve. */
+  rosterLimits: { active: number; reserve: number };
+  /** Stand-in pickups made while a player is on injured reserve (see `standIn`), by ID. */
+  extra: Map<string, ModelPlayer>;
+}
+
+/** A player by ID, including stand-ins. */
+export function modelPlayer(model: StrengthModel, id: string): ModelPlayer | undefined {
+  return model.players.get(id) ?? model.extra.get(id);
 }
 
 function hash(text: string): number {
@@ -175,6 +208,10 @@ interface PlayerInputs {
   level: number;
   spread: number;
   availability: number;
+  /** Chance he is back, per real week left; null when he is not out with a return date. */
+  back?: number[] | null;
+  returnExpected?: string | null;
+  irEligible?: boolean;
 }
 
 function finishPlayer(
@@ -186,15 +223,17 @@ function finishPlayer(
   weeks: number,
 ): ModelPlayer {
   const { level, spread, availability } = inputs;
+  const back = inputs.back && inputs.back.length > 0 ? inputs.back : null;
   const seed = hash(ref.id);
   const waitValue = waitValues(level, spread);
   const gameDay = new Int8Array(weeks * MAX_GAMES).fill(-1);
   const gameScore = new Float32Array(weeks * MAX_GAMES);
   for (let week = 0; week < weeks; week++) {
     let slot = 0;
+    const playing = availability * (back ? back[week % back.length]! : 1);
     for (let game = 0; game < MAX_GAMES; game++) {
       const day = schedule[week * MAX_GAMES + game]!;
-      if (day < 0 || uniform(seed, week, 10 + game) >= availability) continue;
+      if (day < 0 || uniform(seed, week, 10 + game) >= playing) continue;
       // A normal draw around his level, never below zero.
       const u1 = Math.max(1e-9, uniform(seed, week, 20 + 2 * game));
       const u2 = uniform(seed, week, 21 + 2 * game);
@@ -204,18 +243,24 @@ function finishPlayer(
       slot++;
     }
   }
-  let healthy = 0;
-  let expected = 0;
-  for (const shape of WEEK_SHAPES) {
-    healthy += shape.share * waitValue[shape.games]!;
-    for (let played = 1; played <= shape.games; played++) {
-      expected += shape.share * binomial(played, shape.games, availability) * waitValue[played]!;
+  const expectedAt = (rate: number) => {
+    let total = 0;
+    for (const shape of WEEK_SHAPES) {
+      for (let played = 1; played <= shape.games; played++) {
+        total += shape.share * binomial(played, shape.games, rate) * waitValue[played]!;
+      }
     }
-  }
+    return total;
+  };
+  let healthy = 0;
+  for (const shape of WEEK_SHAPES) healthy += shape.share * waitValue[shape.games]!;
+  // An average week over the weeks left: with an injury, the weeks he is out count as zero.
+  const meanBack = back ? back.reduce((sum, chance) => sum + chance, 0) / back.length : 1;
+  const expected = back ? back.reduce((sum, chance) => sum + expectedAt(availability * chance), 0) / back.length : expectedAt(availability);
   return {
     ...ref,
     ...base,
-    availability,
+    availability: availability * meanBack,
     spread,
     healthy,
     expected,
@@ -223,6 +268,10 @@ function finishPlayer(
     waitValue,
     gameDay,
     gameScore,
+    back: back ? Float32Array.from(back) : null,
+    outShare: 1 - meanBack,
+    returnExpected: inputs.returnExpected ?? null,
+    irEligible: inputs.irEligible ?? false,
   };
 }
 
@@ -233,11 +282,46 @@ function ownSpread(stats: PlayerStats): number | null {
   return (two - one) / HALF_MEAN_DEVIATION / one;
 }
 
+/**
+ * The real weeks left: the current week to the last week of the regular
+ * season (the week before the playoffs start, from the league's settings).
+ * Without a season start date there is no calendar, and injuries fall back
+ * on how long a player has already been out.
+ */
+export function modelCalendar(snapshot: LeagueSnapshot): ModelCalendar {
+  const today = snapshot.fetchedAt.slice(0, 10);
+  const seasonStart = snapshot.league.seasonStartDate;
+  const playoffStart = snapshot.league.playoffs?.startWeek;
+  if (!seasonStart || !playoffStart || snapshot.week < 1) return { today, weeks: [] };
+  const first = snapshot.week;
+  const last = Math.max(first, playoffStart - 1);
+  const weeks = Array.from({ length: last - first + 1 }, (_, index) => ({
+    week: first + index,
+    ...weekRange(seasonStart, first + index),
+  }));
+  return { today, weeks };
+}
+
+/** Games an NBA team plays in a typical week, to turn missed games into weeks. */
+const GAMES_PER_WEEK = 3.5;
+/** A player just ruled out, with no date and no run of missed games, is taken to miss this much of a week. */
+const JUST_OUT_WEEKS = 0.5;
+
+/** Chance back per week for a player marked out with no return date: out as long again as he has been. */
+function undatedBack(stats: PlayerStats, weeks: number): number[] {
+  const weeksOut = stats.longTermOut ? stats.missedStreak / GAMES_PER_WEEK : JUST_OUT_WEEKS;
+  return Array.from({ length: weeks }, (_, index) => Math.min(1, Math.max(0, index + 1 - weeksOut)));
+}
+
+/** Sleeper's tags that let a player sit in an injured reserve slot. */
+const IR_TAGS = /^(out|ir|inj|sus)/i;
+
 export function buildModel(
   snapshot: LeagueSnapshot,
   report: StatsReport,
   weeks: number = SIMULATED_WEEKS,
 ): StrengthModel {
+  const calendar = modelCalendar(snapshot);
   const slots = startingSlots(snapshot);
   const breadth = (slot: string) => POSITIONS.filter((position) => slotAccepts(slot, [position])).length;
   const slotOrder = slots.map((_, index) => index).sort((a, b) => breadth(slots[a]!) - breadth(slots[b]!));
@@ -274,12 +358,34 @@ export function buildModel(
     const own = ownSpread(stats);
     const weight = own === null ? 0 : stats.games / (stats.games + SPREAD_WEIGHT_GAMES);
     const spread = Math.min(SPREAD_LIMITS[1], Math.max(SPREAD_LIMITS[0], weight * (own ?? 0) + (1 - weight) * typicalSpread));
+    // With a return date, his usual share of games once back, week by week.
+    // Marked out with no date: out as long again as he has been (half a week
+    // if he has only just been ruled out). Otherwise the share that allows
+    // for an absence still going on.
+    // Sleeper allows injured reserve only for players marked out.
+    const irEligible = IR_TAGS.test(stats.injuryStatus ?? "") || /^out/i.test(stats.injury?.status ?? "");
+    const outlook = stats.injury ? returnOutlook(stats.injury) : null;
+    let back = outlook ? weeklyChanceBack(outlook, calendar.weeks, calendar.today) : null;
+    if (!back && irEligible && calendar.weeks.length > 0) back = undatedBack(stats, calendar.weeks.length);
     players.set(
       stats.id,
       finishPlayer(
         stats,
-        { games: stats.games, average: stats.fantasyAvg, projected: stats.projection.perGame, longTermOut: stats.longTermOut },
-        { level, spread, availability: stats.availability },
+        {
+          games: stats.games,
+          // What other managers see: this season's average, or last season's before he has played.
+          average: stats.games > 0 ? stats.fantasyAvg : (stats.projection.lastSeason?.average ?? 0),
+          projected: stats.projection.perGame,
+          longTermOut: stats.longTermOut,
+        },
+        {
+          level,
+          spread,
+          availability: back ? (stats.playRate ?? stats.availability) : stats.availability,
+          back,
+          returnExpected: outlook?.kind === "season" ? "season" : outlook?.kind === "window" ? outlook.window.expected : null,
+          irEligible,
+        },
         slots,
         scheduleFor(stats.team ?? `none:${stats.id}`),
         weeks,
@@ -293,7 +399,7 @@ export function buildModel(
       finishPlayer(
         ref,
         { games: 0, average: 0, projected: 0, longTermOut: false },
-        { level: 0, spread: 0, availability: 0 },
+        { level: 0, spread: 0, availability: 0, irEligible: IR_TAGS.test(ref.injuryStatus ?? "") },
         slots,
         scheduleFor(ref.team ?? `none:${ref.id}`),
         weeks,
@@ -306,9 +412,14 @@ export function buildModel(
     .sort((a, b) => b.expected - a.expected)
     .map((player) => player.id);
 
+  const positions = snapshot.league.rosterPositions;
+  const reserve = positions.filter((slot) => slot === "IR").length;
   const model: StrengthModel = {
     slots, slotOrder, weeks, players, freeAgentIds, replacementProjection: 0, idealProjection: 0,
     replacementWeekly: 0,
+    calendar,
+    rosterLimits: { active: positions.length > 0 ? positions.length - reserve : slots.length, reserve },
+    extra: new Map(),
   };
   const pickups = freeAgentIds.slice(0, Math.max(1, snapshot.teams.length));
   model.replacementWeekly = players.get(pickups[Math.floor(pickups.length / 2)] ?? "")?.expected ?? 0;
@@ -516,7 +627,7 @@ export function projectedWeekly(model: StrengthModel, playerIds: string[], weeks
   if (!cache) memo.set(model, (cache = new Map()));
   const known = cache.get(key);
   if (known !== undefined) return known;
-  const value = projectRoster(model, playerIds.flatMap((id) => model.players.get(id) ?? []), count);
+  const value = projectRoster(model, playerIds.flatMap((id) => modelPlayer(model, id) ?? []), count);
   if (cache.size > 5000) cache.clear();
   cache.set(key, value);
   return value;
@@ -530,6 +641,148 @@ export function projectRoster(model: StrengthModel, roster: ModelPlayer[], weeks
   let total = 0;
   for (let week = 0; week < count; week++) total += simulateWeek(model, roster, week, work).total;
   return total / count;
+}
+
+/** Average weekly score for each real week left (the model's calendar), from the same imaginary weeks. */
+export function projectByWeek(model: StrengthModel, playerIds: string[]): number[] {
+  const count = model.calendar.weeks.length;
+  if (count === 0) return [];
+  const roster = playerIds.flatMap((id) => modelPlayer(model, id) ?? []);
+  const totals = new Array<number>(count).fill(0);
+  const seen = new Array<number>(count).fill(0);
+  if (roster.length === 0) return totals;
+  const work = scratchFor(model, roster);
+  for (let week = 0; week < model.weeks; week++) {
+    totals[week % count]! += simulateWeek(model, roster, week, work).total;
+    seen[week % count]!++;
+  }
+  return totals.map((total, index) => (seen[index] ? total / seen[index]! : 0));
+}
+
+// ---- Injured reserve and waiver pickups ----------------------------------
+//
+// A roster is judged as its manager would run it. A player who may sit on
+// injured reserve goes there (most out first, up to the league's IR slots)
+// and takes no active spot. Open active spots are filled from waivers with
+// the free agent who helps most. Too many active players (after receiving
+// more than you send) means dropping the least valuable.
+//
+// When a player on IR is back, the roster has one player too many, so the
+// least valuable active player (a pickup or not) plays only until then
+// (`standIn`). A player out for the season never comes back, so nobody has
+// to go.
+//
+// Rosters before and after a trade are filled the same way, so a trade is
+// credited only with the spots it opens.
+
+/** Weeks used when trying out free agents, to keep it quick. */
+const PICKUP_TRIAL_WEEKS = 60;
+const PICKUP_CANDIDATES = 6;
+
+/**
+ * A player kept only for as long as `injured` is out: he plays only the
+ * weeks the injured player misses, chosen with the injured player's chances
+ * (the same weeks on any roster, so results stay repeatable).
+ */
+export function standIn(model: StrengthModel, player: ModelPlayer, injured: ModelPlayer): ModelPlayer {
+  const id = `${player.id}~${injured.id}`;
+  const known = model.extra.get(id);
+  if (known) return known;
+  const back = injured.back;
+  const gameDay = Int8Array.from(player.gameDay);
+  const seed = hash(id);
+  if (back) {
+    for (let week = 0; week < model.weeks; week++) {
+      if (uniform(seed, week, 77) >= back[week % back.length]!) continue;
+      for (let game = 0; game < MAX_GAMES; game++) gameDay[week * MAX_GAMES + game] = -1;
+    }
+  }
+  const share = back ? injured.outShare : 1;
+  const made: ModelPlayer = {
+    ...player,
+    id,
+    gameDay,
+    expected: player.expected * share,
+    availability: player.availability * share,
+  };
+  model.extra.set(id, made);
+  return made;
+}
+
+export interface Pickup {
+  player: ModelPlayer;
+  /** He plays only until this player is back from IR (he is the one who makes way), or null when he stays. */
+  forInjured: ModelPlayer | null;
+}
+
+export interface FilledRoster {
+  /** The roster the projection plays: everyone kept, players who leave later by their stand-in IDs. */
+  ids: string[];
+  /** Players put on injured reserve. */
+  reserve: ModelPlayer[];
+  /** Free agents picked up. */
+  adds: Pickup[];
+  /** Players dropped now to make room. */
+  drops: ModelPlayer[];
+  /** Players already on the roster who are dropped when a player on IR is back. */
+  leaving: { player: ModelPlayer; when: ModelPlayer }[];
+}
+
+export function fillRoster(
+  model: StrengthModel,
+  playerIds: string[],
+  /** Free agents not available (taken, or part of a trade). */
+  claimed: Set<string> = new Set(),
+  /** Free agents to keep if they are still wanted: the pickups the roster made before a trade. */
+  prefer: string[] = [],
+): FilledRoster {
+  const roster = playerIds.flatMap((id) => model.players.get(id) ?? []);
+  const reserve = roster
+    .filter((player) => player.irEligible)
+    .sort((a, b) => b.outShare - a.outShare)
+    .slice(0, model.rosterLimits.reserve);
+  let active = roster.filter((player) => !reserve.includes(player));
+  const drops: ModelPlayer[] = [];
+  while (active.length > model.rosterLimits.active) {
+    const weakest = active.reduce((a, b) => (b.expected < a.expected ? b : a));
+    drops.push(weakest);
+    active = active.filter((player) => player !== weakest);
+  }
+
+  // Open spots: pickups who stay.
+  let ids = [...active, ...reserve].map((player) => player.id);
+  const picked: ModelPlayer[] = [];
+  const unavailable = (id: string) => claimed.has(id) || ids.includes(id) || playerIds.includes(id);
+  for (let open = model.rosterLimits.active - active.length; open > 0; open--) {
+    const kept = prefer.map((id) => model.players.get(id)).find((player): player is ModelPlayer => !!player && !unavailable(player.id));
+    const options = model.freeAgentIds.filter((id) => !unavailable(id)).slice(0, PICKUP_CANDIDATES);
+    if (!kept && options.length === 0) break;
+    const best =
+      kept ??
+      options
+        .map((id) => ({ id, projected: projectedWeekly(model, [...ids, id], PICKUP_TRIAL_WEEKS) }))
+        .reduce((a, b) => (b.projected > a.projected ? b : a)).id;
+    const player = model.players.get(typeof best === "string" ? best : best.id)!;
+    picked.push(player);
+    ids = [...ids, player.id];
+  }
+
+  // Each player on IR who is back this season pushes out the least valuable active player then.
+  const adds: Pickup[] = picked.map((player) => ({ player, forInjured: null }));
+  const leaving: FilledRoster["leaving"] = [];
+  const going = new Set<string>();
+  const returning = reserve.filter((player) => player.back && player.outShare > 0 && player.outShare < 1);
+  for (const injured of returning) {
+    const candidates = [...active, ...picked].filter((player) => !going.has(player.id));
+    if (candidates.length === 0) break;
+    const weakest = candidates.reduce((low, player) => (player.expected < low.expected ? player : low));
+    going.add(weakest.id);
+    ids = ids.map((id) => (id === weakest.id ? standIn(model, weakest, injured).id : id));
+    const pickup = adds.find((add) => add.player === weakest);
+    if (pickup) pickup.forInjured = injured;
+    else leaving.push({ player: weakest, when: injured });
+  }
+  return { ids, reserve, adds, drops, leaving };
 }
 
 /** Converts a projected weekly score to the 1 to 1000 scale. */
@@ -580,7 +833,8 @@ export function rosterStrength(model: StrengthModel, playerIds: string[]): Omit<
   const roster = playerIds.flatMap((id) => model.players.get(id) ?? []);
   const lineup = bestNinePicks(model, roster);
   const starters = lineup.picks.filter((index) => index >= 0).map((index) => roster[index]!);
-  const projected = projectedWeekly(model, playerIds);
+  // Run as its manager would: injured players on IR, open spots filled from waivers.
+  const projected = projectedWeekly(model, fillRoster(model, playerIds).ids);
   const bestNine = projectedWeekly(model, starters.map((player) => player.id));
   return {
     score: strengthScore(model, projected),

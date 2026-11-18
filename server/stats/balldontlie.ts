@@ -1,4 +1,4 @@
-import type { GameLine, ScheduledGame, StatsProvider } from "./provider.ts";
+import type { GameLine, InjuryReport, ScheduledGame, StatsProvider } from "./provider.ts";
 
 // balldontlie (https://docs.balldontlie.io). Game stats need the ALL-STAR
 // plan, which allows 60 requests per minute. Every request goes through one
@@ -41,6 +41,26 @@ interface RawRow {
     home_team?: RawTeam | null;
     visitor_team?: RawTeam | null;
   } | null;
+}
+
+interface RawInjury {
+  player?: { id?: number; first_name?: string; last_name?: string } | null;
+  return_date?: string | null;
+  description?: string | null;
+  status?: string | null;
+}
+
+/** One injury record, or null when it names no player. */
+export function toInjuryReport(raw: RawInjury): InjuryReport | null {
+  const id = raw.player?.id;
+  if (id == null) return null;
+  return {
+    playerId: String(id),
+    playerName: [raw.player?.first_name, raw.player?.last_name].filter(Boolean).join(" "),
+    status: raw.status?.trim() || "Out",
+    returnDate: raw.return_date?.trim() || null,
+    description: raw.description?.trim() ?? "",
+  };
 }
 
 interface RawTeam {
@@ -272,6 +292,31 @@ export function createBalldontlie(
         if (cursor == null || (body.data ?? []).length === 0) break;
       }
       return games;
+    },
+    async fetchInjuries() {
+      // The whole league's report is a page or two. The NBA path is tried
+      // first; the docs also list it without "/nba".
+      const injuries: InjuryReport[] = [];
+      for (const base of [BASE_URL, BASE_URL.replace("/nba/v1", "/v1")]) {
+        let cursor: number | null = null;
+        try {
+          for (let page = 1; page <= 10; page++) {
+            const params = new URLSearchParams({ per_page: "100" });
+            if (cursor != null) params.set("cursor", String(cursor));
+            const body = await getPage<RawInjury>(`${base}/player_injuries?${params}`);
+            for (const raw of body.data ?? []) {
+              const report = toInjuryReport(raw);
+              if (report) injuries.push(report);
+            }
+            cursor = body.meta?.next_cursor ?? null;
+            if (cursor == null || (body.data ?? []).length === 0) break;
+          }
+          return injuries;
+        } catch (error) {
+          if (!(error instanceof Error && error.message.includes("returned 404")) || base !== BASE_URL) throw error;
+        }
+      }
+      return injuries;
     },
   };
 }

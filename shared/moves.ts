@@ -6,7 +6,7 @@
 
 import { freeAgentPickups, type TeamSituation } from "./insight.ts";
 import { rosterPlayers } from "./analysis.ts";
-import { type ModelPlayer, projectedWeekly, type StrengthModel, strengthScore } from "./strength.ts";
+import { fillRoster, type ModelPlayer, projectedWeekly, type StrengthModel, strengthScore } from "./strength.ts";
 import { findTrades, type Likelihood, type TradeIdea } from "./trade.ts";
 import type { LeagueSnapshot } from "./types.ts";
 
@@ -27,6 +27,8 @@ export interface Move {
   likelihood: Likelihood | null;
   /** The trade idea, to open it in the builder. */
   idea: TradeIdea | null;
+  /** A short note for some players, by ID: a waiver pickup, a player going on IR. */
+  notes: Record<string, string>;
 }
 
 /** How many trade ideas the search returns before they are mixed with pickups. */
@@ -54,6 +56,13 @@ export function topMoves(
     .ideas.filter((idea) => idea.likelihood !== "long shot")
     .map((idea) => ({
       kind: "trade",
+      notes: Object.fromEntries([
+        ...idea.result.a.toReserve.map((player) => [player.id, "Goes on IR while out"]),
+        ...idea.result.a.pickups.map(({ player, forInjured }) => [
+          player.id,
+          forInjured ? `Waiver pickup until ${forInjured.name} is back` : "Waiver pickup",
+        ]),
+      ]),
       gets: [...idea.result.a.gets, ...idea.result.a.adds],
       gives: [...idea.result.a.gives, ...idea.result.a.drops],
       partner: idea.offer.teamB,
@@ -64,11 +73,17 @@ export function topMoves(
       idea,
     }));
 
-  // Pickups are shortlisted on fewer weeks, then measured on all of them, as trades are.
-  const before = projectedWeekly(model, mine);
+  // Pickups are shortlisted on fewer weeks, then measured on all of them as
+  // trades are: the roster run with IR and waivers before and after.
+  const baseline = fillRoster(model, mine);
+  const before = projectedWeekly(model, baseline.ids);
   const strengthBefore = strengthScore(model, before);
   const pickups: Move[] = freeAgentPickups(model, mine).map((pickup) => {
-    const after = projectedWeekly(model, [...mine.filter((id) => id !== pickup.drop.id), pickup.player.id]);
+    const swapped = [...mine.filter((id) => id !== pickup.drop.id), pickup.player.id];
+    const after = projectedWeekly(
+      model,
+      fillRoster(model, swapped, new Set([pickup.drop.id]), baseline.adds.map((add) => add.player.id)).ids,
+    );
     return {
       kind: "pickup",
       gets: [pickup.player],
@@ -79,6 +94,7 @@ export function topMoves(
       chance: null,
       likelihood: null,
       idea: null,
+      notes: {},
     };
   });
 

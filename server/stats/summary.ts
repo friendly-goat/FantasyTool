@@ -1,3 +1,4 @@
+import type { InjuryNews } from "../../shared/injury.ts";
 import type { PlayerGame, PlayerRef, PlayerStats, StatLine } from "../../shared/types.ts";
 import { lockInValue, lockInValues } from "../../shared/lockin.ts";
 import { availabilityOutlook, projectPlayer } from "../../shared/projection.ts";
@@ -70,6 +71,51 @@ export function lastSeasonLevels(lines: GameLine[], scoring: Record<string, numb
 interface Context {
   teamDates: Map<string, string[]>;
   lastSeason?: { games: number; average: number } | null;
+  injury?: InjuryNews | null;
+}
+
+/** A player is projected at last season's level, with no games this season, only with this many last season. */
+const NO_GAMES_MIN_LAST_SEASON = 10;
+/** His usual share of games when fit, for a player with no games yet this season. */
+const NO_GAMES_PLAY_RATE = 0.9;
+
+/**
+ * A player on the injury report who has not played this season but is due
+ * back (or has a date at all) is projected at last season's level, so a
+ * star out since opening night still counts once he returns. When he will
+ * play comes from the report (shared/injury.ts).
+ */
+function injuredWithoutGames(
+  player: PlayerRef,
+  injury: InjuryNews,
+  lastSeason: { games: number; average: number },
+): PlayerStats {
+  const empty = Object.fromEntries(STAT_KEYS.map((key) => [key, 0])) as unknown as StatLine;
+  return {
+    ...player,
+    games: 0,
+    minutes: 0,
+    fantasyAvg: 0,
+    sleeperAvg: 0,
+    lockInValue: 0,
+    lockInByGames: [],
+    teamGames: 0,
+    availability: 0,
+    playRate: NO_GAMES_PLAY_RATE,
+    missedStreak: 0,
+    longTermOut: true,
+    injury,
+    projection: {
+      perGame: lastSeason.average,
+      factors: [{ label: "Last season's level (no games yet this season)", effect: lastSeason.average }],
+      trend: "steady",
+      lastSeason,
+    },
+    bestGame: 0,
+    recentAvg: null,
+    recentGames: 0,
+    averages: empty,
+  };
 }
 
 function summarizePlayer(
@@ -108,8 +154,10 @@ function summarizePlayer(
     lockInByGames: lockInValues(fantasy),
     teamGames,
     availability: outlook.rate,
+    playRate: outlook.playRate,
     missedStreak: outlook.missedStreak,
     longTermOut: outlook.longTermOut,
+    injury: context.injury ?? null,
     projection: projectPlayer(fantasy, games.map((game) => game.minutes), context.lastSeason ?? null),
     bestGame: Math.max(...fantasy),
     recentAvg: recent.length > 0 ? mean(recent) : null,
@@ -126,17 +174,28 @@ export function summarize(
   scoring: Record<string, number>,
   seasonStart: string | null = null,
   lastSeason: LastSeason = new Map(),
+  /** The injury report, by stats-source player ID. */
+  injuries: Map<string, InjuryNews> = new Map(),
 ): Record<string, PlayerStats> {
   const bySource = countedGames(lines, seasonStart);
   const teamDates = teamGameDates(lines, seasonStart);
   const result: Record<string, PlayerStats> = {};
   for (const [sleeperId, sourceId] of matches) {
     const player = sleeperPlayers[sleeperId];
+    if (!player) continue;
     const games = bySource.get(sourceId);
-    if (!player || !games || games.length === 0) continue;
+    const injury = injuries.get(sourceId) ?? null;
+    if (!games || games.length === 0) {
+      const prior = lastSeason.get(sourceId);
+      if (injury && (injury.returnDate || injury.seasonOut) && prior && prior.games >= NO_GAMES_MIN_LAST_SEASON) {
+        result[sleeperId] = injuredWithoutGames(player, injury, prior);
+      }
+      continue;
+    }
     result[sleeperId] = summarizePlayer(player, games, scoring, {
       teamDates,
       lastSeason: lastSeason.get(sourceId),
+      injury,
     });
   }
   return result;

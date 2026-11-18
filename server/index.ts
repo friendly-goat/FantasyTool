@@ -59,6 +59,9 @@ const liveWeekStatsMs = minutes("LIVE_WEEK_STATS_MINUTES", 10);
 const statsTtl = (Number(process.env.STATS_CACHE_HOURS) || 6) * 60 * MINUTE;
 // A finished draft never changes.
 const finishedDraftTtl = 7 * 24 * 60 * MINUTE;
+// The injury report: one or two requests. Return dates and notes change a
+// few times a day, mostly before games.
+const injuriesTtl = minutes("INJURY_CACHE_MINUTES", 30);
 // A finished week's matchups only change with Sleeper's stat corrections in
 // the days after it, so last week is checked a few times a day and older
 // weeks weekly. A finished week's schedule never changes.
@@ -222,6 +225,17 @@ async function getWeekMatchups(leagueId: string, snapshot: LeagueSnapshot, week:
   return result.value;
 }
 
+/** The league's injury report, saved; an empty list when the source has none or it cannot be had yet. */
+async function getInjuries() {
+  if (!stats.hasInjuries()) return [];
+  try {
+    return (await cache.get("injuries-v1", injuriesTtl, () => stats.injuries(), { background: true })).value;
+  } catch (error) {
+    console.error("[injuries]", error instanceof Error ? error.message : error);
+    return [];
+  }
+}
+
 function sendError(res: express.Response, error: unknown): void {
   const status = error instanceof SleeperError && error.status === 429 ? 429 : 502;
   const message = error instanceof Error ? error.message : "Unknown error";
@@ -275,7 +289,7 @@ app.get("/api/league/:leagueId/stats", async (req, res) => {
       getPlayers(),
     ]);
     if (req.query.retry === "1") stats.retry(snapshot.value.league.season);
-    res.json(await stats.report(snapshot.value, players.value));
+    res.json(await stats.report(snapshot.value, players.value, await getInjuries()));
   } catch (error) {
     sendError(res, error);
   }

@@ -145,10 +145,12 @@ export interface Pickup {
 /** Free agents worth picking up, with who to drop for each, biggest gain first. */
 export function freeAgentPickups(model: StrengthModel, playerIds: string[], limit = 5): Pickup[] {
   const roster = playerIds.flatMap((id) => model.players.get(id) ?? []);
-  if (roster.length === 0) return [];
+  if (roster.filter((player) => !player.irEligible).length === 0) return [];
   const base = projectedWeekly(model, playerIds, WHAT_IF_WEEKS);
-  // The player the roster misses least, measured, among its five least valuable.
-  const drop = [...roster]
+  // The player the roster misses least, measured, among its five least
+  // valuable. A player who can sit on IR takes no roster spot, so he is not dropped.
+  const drop = roster
+    .filter((player) => !player.irEligible)
     .sort((a, b) => a.expected - b.expected)
     .slice(0, 5)
     .map((player) => ({ player, cost: base - projectedWeekly(model, playerIds.filter((id) => id !== player.id), WHAT_IF_WEEKS) }))

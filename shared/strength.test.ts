@@ -170,13 +170,16 @@ describe("team strength and trades (against the mock league)", async () => {
 
   it("values a roster higher with a strong player added and lower with one removed", () => {
     const roster = ids(strengths[5]!.rosterId);
-    const base = rosterStrength(model, roster);
+    // The roster as it stands (rosterStrength also fills open spots from waivers, which would hide this).
+    const base = projectedWeekly(model, roster);
     const best = model.freeAgentIds[0]!;
-    expect(rosterStrength(model, [...roster, best]).projected).toBeGreaterThanOrEqual(base.projected);
+    expect(projectedWeekly(model, [...roster, best])).toBeGreaterThanOrEqual(base);
     const star = roster
       .map((id) => model.players.get(id)!)
       .reduce((a, b) => (b.expected > a.expected ? b : a));
-    expect(projectedWeekly(model, roster.filter((id) => id !== star.id))).toBeLessThan(base.projected);
+    expect(projectedWeekly(model, roster.filter((id) => id !== star.id))).toBeLessThan(base);
+    // Strength runs the roster as a manager would: never below the roster as it stands.
+    expect(rosterStrength(model, roster).projected).toBeGreaterThanOrEqual(base);
   });
 
   it("grades a lopsided trade well for one side and badly for the other", () => {
@@ -550,6 +553,9 @@ describe("a lock-in week, on made-up players", () => {
     replacementProjection: 0,
     idealProjection: 0,
     replacementWeekly: 0,
+    calendar: { today: "2026-11-17", weeks: [] },
+    rosterLimits: { active: 1, reserve: 0 },
+    extra: new Map(),
   };
   const player = (id: string, games: [number, number][]) => {
     const made = steadyPlayer(model, id, ["SF"], 30);
