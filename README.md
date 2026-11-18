@@ -302,6 +302,27 @@ Box scores lack technical and flagrant fouls, so a score a few foul
 deductions (from the league's `tf` and `ff` settings) below a game still
 matches it. A game his team played without him counts as zero.
 
+The header labels each team's numbers:
+
+- **Expected final**: where the team should end the week (below).
+- **Locked or final**: scores we can tell are settled. A latest-game score
+  with games still to come may also be locked, but Sleeper does not say, so
+  Sleeper's own app can show a higher locked total for the other team.
+- **Sleeper's live total**: what Sleeper's API reports, each starter's latest
+  game whether locked or not. Mid-week it is not a real score.
+
+"Yet to play" counts starters whose score is not settled and who still have
+a game, as Sleeper does. A latest game a player sat out leaves nothing to
+lock, so he shows as yet to play.
+
+Injury tags count this week only, by fixed amounts: **out** means he misses
+his next game and is half as likely to play later this week; **day-to-day**
+makes his next game 40% less likely (`INJURY_EFFECT`). Each card shows his
+projected score per game and the slot's expected final.
+
+Sleeper's projected totals are its per-game projections; ours also count the
+lock-in choice (keeping the best of several games), so they run higher.
+
 For your starters who can lock, the view says **Lock now** or **Wait**: lock
 when the score in hand beats what waiting is expected to bring, which is his
 expected locked score from his remaining games, weighted by his chance of

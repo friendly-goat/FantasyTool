@@ -2,9 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import {
   forecastMatchup,
   foulDeductions,
+  injuryKind,
   isFixed,
   lockAdvice,
+  settledPoints,
   slotStatus,
+  stillToPlay,
   teamWeek,
   type LockAdvice,
   type SimSlot,
@@ -134,13 +137,17 @@ function PlayerCard({
   entry,
   status,
   projection,
+  perGame,
   advice,
   side,
   bench,
 }: {
   entry: MatchupSlot | undefined;
   status: SlotStatus | null;
+  /** Expected final score for the slot. */
   projection: number | null;
+  /** His projected score for one game. */
+  perGame: number | null;
   advice: LockAdvice | null;
   side: "left" | "right";
   bench: boolean;
@@ -156,6 +163,9 @@ function PlayerCard({
   const next = status?.nextGame ?? null;
   const benchPoints = bench ? games.reduce<number | null>((best, game) => (game.line ? Math.max(best ?? 0, game.line.points) : best), null) : null;
   const shown = bench ? benchPoints : entry.points;
+  const injury = injuryKind(entry.player.injuryStatus);
+  // A settled score needs no projection: it is the final number.
+  const settled = !bench && status !== null && isFixed(status.state);
   return (
     <div className={`mx-card mx-${side}${status && !bench ? ` mx-${status.state}` : ""}`}>
       <PlayerCell player={entry.player} />
@@ -165,7 +175,12 @@ function PlayerCard({
             <StatusIcon state={status.state} />
             {STATE_LABEL[status.state]}
           </span>
-          <span className={`mx-points num${shown ? "" : " quiet"}`}>{shown ? formatPoints(shown) : "–"}</span>
+          <span
+            className={`mx-points num${shown ? "" : " quiet"}`}
+            title="The score Sleeper is counting for him right now: his latest game unless one was locked"
+          >
+            {shown ? formatPoints(shown) : "–"}
+          </span>
         </div>
       )}
       {bench && (
@@ -186,12 +201,29 @@ function PlayerCard({
                 ? "Schedule unavailable"
                 : ""}
         </span>
-        {projection !== null && !bench && (
-          <span className="mx-proj" title="Expected final score for this slot, if locks are made at the right time">
-            Proj {formatPoints(projection)}
+        {perGame !== null && next && !settled && (
+          <span className="mx-figure" title="His projected score for one game, before any injury">
+            Per game <strong>{formatPoints(perGame)}</strong>
           </span>
         )}
       </div>
+      {projection !== null && !bench && !settled && (
+        <div className="mx-final-row">
+          {injury === "out" && next ? (
+            <span className="mx-injury">Out: next game counted as missed</span>
+          ) : injury === "day-to-day" && next ? (
+            <span className="mx-injury">Day-to-day: next game less likely</span>
+          ) : (
+            <span />
+          )}
+          <span
+            className="mx-figure"
+            title="What this slot is expected to end the week with: the score in hand if worth keeping, otherwise his remaining games, locked at the right time"
+          >
+            Expected final <strong>{formatPoints(projection)}</strong>
+          </span>
+        </div>
+      )}
       {games.length > 0 && (
         <ol className="mx-games" aria-label="Games this week">
           {games.map((game, index) => (
@@ -217,6 +249,7 @@ function TeamHead({
   align,
   chance,
   projected,
+  settled,
   onOpenTeam,
 }: {
   team: Team | undefined;
@@ -224,6 +257,7 @@ function TeamHead({
   align: "left" | "right";
   chance: number | null;
   projected: number | null;
+  settled: number | null;
   onOpenTeam: (id: number) => void;
 }) {
   const ahead = chance !== null && chance > 0.5;
@@ -240,19 +274,30 @@ function TeamHead({
       </div>
       {chance !== null && (
         <div className="mx-chance">
-          <span className={`mx-chance-label${ahead ? " up" : ""}`}>{percent.format(chance)} win</span>
+          <span className={`mx-chance-label${ahead ? " up" : ""}`}>{percent.format(chance)} chance to win</span>
           <span className="mx-chance-bar" aria-hidden="true">
             <span className={`mx-chance-fill${ahead ? " ahead" : ""}`} style={{ width: `${chance * 100}%` }} />
           </span>
         </div>
       )}
-      <div className="mx-scores">
-        {projected !== null && <span className="mx-projected num">{formatPoints(projected)}</span>}
-        <span className="quiet mx-now">
-          {projected !== null ? "Counted now " : ""}
-          {formatPoints(side.points)}
-        </span>
-      </div>
+      <dl className="mx-figures">
+        {projected !== null && (
+          <div className="mx-figure-main">
+            <dt>Expected final</dt>
+            <dd className="num">{formatPoints(projected)}</dd>
+          </div>
+        )}
+        {settled !== null && (
+          <div>
+            <dt>Locked or final</dt>
+            <dd className="num">{formatPoints(settled)}</dd>
+          </div>
+        )}
+        <div>
+          <dt>Sleeper's live total</dt>
+          <dd className="num">{formatPoints(side.points)}</dd>
+        </div>
+      </dl>
     </div>
   );
 }
@@ -293,6 +338,7 @@ export function MatchupDetail({ snapshot, model, matchup, myRosterId, onBack, on
           points: entry.points ?? 0,
           gamesLeft: status?.gamesLeft ?? 0,
           player: player ?? null,
+          injury: injuryKind(entry.player?.injuryStatus),
         };
       }),
     ) as [SimSlot[], SimSlot[]];
@@ -309,11 +355,15 @@ export function MatchupDetail({ snapshot, model, matchup, myRosterId, onBack, on
     if (!model || !side || side.rosterId !== myRosterId || !entry?.player || !status) return null;
     if ((status.state !== "open" && status.state !== "unclear") || !status.gamesLeft) return null;
     const player = model.players.get(entry.player.id);
-    return player ? lockAdvice(entry.points ?? 0, status.gamesLeft, player) : null;
+    return player ? lockAdvice(entry.points ?? 0, status.gamesLeft, player, injuryKind(entry.player.injuryStatus)) : null;
   };
 
-  const yetToPlay = (s: number) => starterStatus[s]?.filter((status) => status?.state === "waiting").length ?? 0;
-  const settled = (s: number) => starterStatus[s]?.filter((status) => status && isFixed(status.state)).length ?? 0;
+  const yetToPlay = (s: number) => stillToPlay(starterStatus[s] ?? []);
+  const settledTotal = (s: number) =>
+    week ? settledPoints(starterStatus[s] ?? [], sides[s]?.starters.map((entry) => entry.points) ?? []) : null;
+
+  const perGameOf = (entry: MatchupSlot | undefined) =>
+    entry?.player && model ? (model.players.get(entry.player.id)?.projected ?? null) : null;
 
   const rows = (pick: (side: MatchupSide) => MatchupSlot[]) => {
     const a = pick(left);
@@ -340,6 +390,7 @@ export function MatchupDetail({ snapshot, model, matchup, myRosterId, onBack, on
             align="left"
             chance={forecast?.winChance[0] ?? null}
             projected={forecast?.projected[0] ?? null}
+            settled={settledTotal(0)}
             onOpenTeam={onOpenTeam}
           />
           <span className="mx-vs">vs</span>
@@ -350,6 +401,7 @@ export function MatchupDetail({ snapshot, model, matchup, myRosterId, onBack, on
               align="right"
               chance={forecast?.winChance[1] ?? null}
               projected={forecast?.projected[1] ?? null}
+              settled={settledTotal(1)}
               onOpenTeam={onOpenTeam}
             />
           ) : (
@@ -358,17 +410,57 @@ export function MatchupDetail({ snapshot, model, matchup, myRosterId, onBack, on
         </div>
 
         <div className="mx-strip">
-          <span className="quiet">
-            Yet to play ({yetToPlay(0)}) · Settled ({settled(0)})
-          </span>
+          <span className="quiet">Yet to play ({yetToPlay(0)})</span>
           <span className="mx-week">
             Week {snapshot.week}
             {week && <span className="quiet"> · {formatWeekRange(week.start, week.end)}</span>}
           </span>
-          <span className="quiet">
-            Settled ({settled(1)}) · Yet to play ({yetToPlay(1)})
-          </span>
+          <span className="quiet">Yet to play ({yetToPlay(1)})</span>
         </div>
+
+        <details className="mx-help">
+          <summary>What these numbers mean</summary>
+          <dl>
+            <div>
+              <dt>Expected final</dt>
+              <dd>
+                Where each team should end the week. Locked and final scores stay; every other starter plays his remaining
+                games and locks a score when it beats what waiting is expected to bring. Your opponent is assumed to lock
+                the same way.
+              </dd>
+            </div>
+            <div>
+              <dt>Locked or final</dt>
+              <dd>
+                Scores we can tell are settled: an earlier game this week (so it was locked), or his last game of the week.
+                A score from a player's latest game with games still to come may also be locked; Sleeper does not share
+                that, so it is not counted here. Sleeper's own app shows locked totals that include those.
+              </dd>
+            </div>
+            <div>
+              <dt>Sleeper's live total</dt>
+              <dd>
+                The total Sleeper reports: each starter's latest game, locked or not. It drops or rises as players play
+                again, so mid-week it is not a real score.
+              </dd>
+            </div>
+            <div>
+              <dt>Per game</dt>
+              <dd>His projected score for one game, from his season, recent form and last season.</dd>
+            </div>
+            <div>
+              <dt>Chance to win</dt>
+              <dd>
+                The share of 4,000 played-out weeks each team wins. Injury tags count: out means he misses his next game
+                and is half as likely to play later this week; day-to-day makes his next game 40% less likely.
+              </dd>
+            </div>
+            <div>
+              <dt>Yet to play</dt>
+              <dd>Starters whose score is not settled and who still have a game this week, as Sleeper counts them.</dd>
+            </div>
+          </dl>
+        </details>
 
         {error && (
           <p className="notice notice-error" role="alert">
@@ -401,6 +493,7 @@ export function MatchupDetail({ snapshot, model, matchup, myRosterId, onBack, on
                         entry={row.left}
                         status={leftStatus}
                         projection={group.bench ? null : (forecast?.slotProjections[0][row.index] ?? null)}
+                        perGame={perGameOf(row.left)}
                         advice={group.bench ? null : adviceFor(0, row.left, leftStatus)}
                         side="left"
                         bench={group.bench}
@@ -412,6 +505,7 @@ export function MatchupDetail({ snapshot, model, matchup, myRosterId, onBack, on
                         entry={row.right}
                         status={rightStatus}
                         projection={group.bench ? null : (forecast?.slotProjections[1][row.index] ?? null)}
+                        perGame={perGameOf(row.right)}
                         advice={group.bench ? null : adviceFor(1, row.right, rightStatus)}
                         side="right"
                         bench={group.bench}
@@ -424,12 +518,8 @@ export function MatchupDetail({ snapshot, model, matchup, myRosterId, onBack, on
           ))}
 
         <p className="quiet legend">
-          Sleeper does not say which scores are locked, so each starter's status is worked out from his games: a score
-          from an earlier game this week is locked; his latest game "can lock" until his next game starts (you know if
-          you already did). Win chances play out the rest of the week 4,000 times, assuming each manager locks a score
-          when it beats what waiting is expected to bring, with starters staying in their slots.
-          {week?.linesSyncedAt && ` Box scores updated ${formatAgo(week.linesSyncedAt)}.`} Sleeper's scores update when
-          you press Refresh.
+          {week?.linesSyncedAt && `Box scores updated ${formatAgo(week.linesSyncedAt)}. `}Sleeper's scores update when you
+          press Refresh.
         </p>
       </div>
     </section>

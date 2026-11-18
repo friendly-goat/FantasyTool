@@ -146,8 +146,24 @@ export function slotStatus(
   const counted = played[match]!.index;
   if (match < played.length - 1) return { ...base, state: "locked", counted };
   if (played[match]!.entry.game.state === "in_progress") return { ...base, state: "live", counted };
+  // A latest game he sat out leaves nothing to lock: he is waiting for his next one.
+  const sat = !played[match]!.entry.line || played[match]!.entry.line!.minutes <= 0;
+  if (sat && sleeperPoints === 0) return { ...base, state: gamesLeft === 0 ? "done" : "waiting", counted: null };
   if (gamesLeft === 0) return { ...base, state: "final", counted };
   return { ...base, state: "open", counted };
+}
+
+/**
+ * Starters whose score is not settled and who still have a game to come:
+ * Sleeper's "yet to play" count.
+ */
+export function stillToPlay(statuses: (SlotStatus | null)[]): number {
+  return statuses.filter((status) => status && !isFixed(status.state) && (status.gamesLeft ?? 0) > 0).length;
+}
+
+/** Points that are settled for the week: locked, final, or nothing to come. */
+export function settledPoints(statuses: (SlotStatus | null)[], points: (number | null)[]): number {
+  return statuses.reduce((sum, status, index) => sum + (status && isFixed(status.state) ? (points[index] ?? 0) : 0), 0);
 }
 
 /** Whether a starter's score is settled for the week. */
@@ -185,10 +201,40 @@ export function lockAdvice(
   current: number,
   gamesLeft: number,
   player: { waitValue: ArrayLike<number>; availability: number },
+  injury: InjuryKind = null,
 ): LockAdvice {
-  const waiting = waitWorth(player.waitValue, player.availability, gamesLeft);
+  const waiting = waitWorth(player.waitValue, mean(gameChances(player.availability, gamesLeft, injury)), gamesLeft);
   return { lock: current >= waiting, current, waiting };
 }
+
+/**
+ * Injury tags from Sleeper, applied to this week's remaining games only.
+ * Out: misses his next game; later games this week at half his usual rate.
+ * Day-to-day: next game at 60% of his usual rate. Fixed sizes, so a tag
+ * cannot outweigh the rest of the forecast.
+ */
+export const INJURY_EFFECT = { outNext: 0, outLater: 0.5, dayToDayNext: 0.6 } as const;
+
+export type InjuryKind = "out" | "day-to-day" | null;
+
+export function injuryKind(tag: string | null | undefined): InjuryKind {
+  const value = (tag ?? "").trim().toUpperCase();
+  if (!value) return null;
+  if (["OUT", "O", "IR", "SUS", "SUSP", "SUSPENDED", "INJURED RESERVE"].includes(value)) return "out";
+  if (["DTD", "GTD", "Q", "QUESTIONABLE", "D", "DOUBTFUL", "DAY-TO-DAY", "GAME TIME DECISION"].includes(value)) return "day-to-day";
+  return null;
+}
+
+/** His chance of playing each of his remaining games this week. */
+export function gameChances(availability: number, gamesLeft: number, injury: InjuryKind): number[] {
+  return Array.from({ length: Math.max(0, gamesLeft) }, (_, index) => {
+    if (injury === "out") return availability * (index === 0 ? INJURY_EFFECT.outNext : INJURY_EFFECT.outLater);
+    if (injury === "day-to-day" && index === 0) return availability * INJURY_EFFECT.dayToDayNext;
+    return availability;
+  });
+}
+
+const mean = (values: number[]) => (values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0);
 
 /** A starter as the win-chance simulation sees him. */
 export interface SimSlot {
@@ -198,6 +244,7 @@ export interface SimSlot {
   gamesLeft: number;
   /** His model numbers, or null when he has no stats (his score then stays as it is). */
   player: { projected: number; spread: number; availability: number; waitValue: ArrayLike<number> } | null;
+  injury?: InjuryKind;
 }
 
 /** Deterministic random numbers, so the same matchup always shows the same chance. */
@@ -218,18 +265,22 @@ function finishSlot(slot: SimSlot, random: () => number): number {
     // Nothing left to play: the score stands (a waiting player with no games scores 0).
     return slot.state === "waiting" ? 0 : slot.points;
   }
+  const chances = gameChances(player.availability, slot.gamesLeft, slot.injury ?? null);
+  const worth = (fromGame: number) =>
+    waitWorth(player.waitValue, mean(chances.slice(fromGame)), slot.gamesLeft - fromGame);
   const holding = slot.state === "open" || slot.state === "live" || slot.state === "unclear";
   // Lock the score in hand if waiting is not expected to beat it.
-  if (holding && slot.points >= waitWorth(player.waitValue, player.availability, slot.gamesLeft)) return slot.points;
-  for (let left = slot.gamesLeft - 1; left >= 0; left--) {
-    if (random() >= player.availability) {
-      if (left === 0) return 0; // Missed his last game: Sleeper counts nothing.
+  if (holding && slot.points >= worth(0)) return slot.points;
+  for (let game = 0; game < slot.gamesLeft; game++) {
+    const last = game === slot.gamesLeft - 1;
+    if (random() >= chances[game]!) {
+      if (last) return 0; // Missed his last game: Sleeper counts nothing.
       continue;
     }
     const u1 = Math.max(1e-9, random());
     const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * random());
     const score = Math.max(0, player.projected * (1 + player.spread * z));
-    if (left === 0 || score >= waitWorth(player.waitValue, player.availability, left)) return score;
+    if (last || score >= worth(game + 1)) return score;
   }
   return 0;
 }

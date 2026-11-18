@@ -2,8 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   forecastMatchup,
   foulDeductions,
+  gameChances,
+  injuryKind,
   lockAdvice,
+  settledPoints,
   slotStatus,
+  stillToPlay,
   teamWeek,
   waitWorth,
   type SimSlot,
@@ -60,11 +64,25 @@ describe("slotStatus", () => {
     });
   });
 
-  it("treats a missed game as zero, so a zero after it is his latest game", () => {
+  it("leaves nothing to lock after a game he sat out: he is waiting for his next one", () => {
     expect(slotStatus(0, week(["final", "final", "scheduled"], [30, null, null]), true, deductions)).toMatchObject({
-      state: "open",
-      counted: 1,
+      state: "waiting",
+      counted: null,
     });
+    expect(slotStatus(0, week(["final", "final"], [30, null]), true, deductions).state).toBe("done");
+    // An earlier game still counts as locked even if he sat out the latest one.
+    expect(slotStatus(30, week(["final", "final", "scheduled"], [30, null, null]), true, deductions).state).toBe("locked");
+  });
+
+  it("counts Sleeper's yet-to-play starters and the settled points", () => {
+    const statuses = [
+      slotStatus(40, week(["final", "final", "scheduled"], [40, 25, null]), true, deductions), // locked
+      slotStatus(25, week(["final", "final", "scheduled"], [40, 25, null]), true, deductions), // open
+      slotStatus(0, week(["scheduled"], [null]), true, deductions), // waiting
+      slotStatus(25, week(["final", "final"], [40, 25]), true, deductions), // final
+    ];
+    expect(stillToPlay(statuses)).toBe(2);
+    expect(settledPoints(statuses, [40, 25, 0, 25])).toBe(65);
   });
 
   it("knows waiting, live, done and unclear starters", () => {
@@ -95,6 +113,30 @@ describe("lock advice", () => {
   });
 });
 
+describe("injuries", () => {
+  it("reads Sleeper's tags", () => {
+    expect(injuryKind("OUT")).toBe("out");
+    expect(injuryKind("Sus")).toBe("out");
+    expect(injuryKind("DTD")).toBe("day-to-day");
+    expect(injuryKind("GTD")).toBe("day-to-day");
+    expect(injuryKind(null)).toBeNull();
+    expect(injuryKind("NA")).toBeNull();
+  });
+
+  it("lowers his chance of playing this week's games by fixed amounts", () => {
+    expect(gameChances(0.9, 3, null)).toEqual([0.9, 0.9, 0.9]);
+    expect(gameChances(0.9, 3, "out")).toEqual([0, 0.45, 0.45]);
+    expect(gameChances(1, 2, "day-to-day")).toEqual([0.6, 1]);
+  });
+
+  it("makes locking more attractive for a hurt player", () => {
+    const player = { waitValue: [0, 30, 36, 40, 43], availability: 1 };
+    // One game left: a healthy player is worth waiting for (30), a doubtful one is not (0.6 x 30).
+    expect(lockAdvice(29, 1, player).lock).toBe(false);
+    expect(lockAdvice(29, 1, player, "day-to-day")).toMatchObject({ lock: true, waiting: 18 });
+  });
+});
+
 describe("forecastMatchup", () => {
   const settled = (points: number): SimSlot => ({ state: "locked", points, gamesLeft: 0, player: null });
   const waiting = (projected: number, games: number): SimSlot => ({
@@ -102,6 +144,12 @@ describe("forecastMatchup", () => {
     points: 0,
     gamesLeft: games,
     player: { projected, spread: 0.3, availability: 1, waitValue: [0, projected, projected * 1.15, projected * 1.25, projected * 1.3] },
+  });
+
+  it("projects an out player well below a healthy one", () => {
+    const healthy = forecastMatchup([[waiting(40, 2)], [settled(0)]], 2000);
+    const out = forecastMatchup([[{ ...waiting(40, 2), injury: "out" }], [settled(0)]], 2000);
+    expect(out.projected[0]).toBeLessThan(healthy.projected[0] * 0.6);
   });
 
   it("keeps settled scores and is certain when nothing is left to play", () => {
