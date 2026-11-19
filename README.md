@@ -261,7 +261,12 @@ word in seven steps, colored red through yellow to green: Never (under 8%),
 Unlikely (under 22%), Probably not (under 40%), Toss-up (under 55%), Maybe
 (under 70%), Likely (under 88%) and For sure (`chanceWord`; display only, the
 three bands above still sort the ideas). Likely ideas come first; possible ones fill out a short list or
-are shown when nothing is likely; long shots appear only when there is
+are shown when nothing is likely. For variety, "see the best trades for my
+team" always includes at least one plain one-for-one when one has a
+realistic chance (40% or better) and is worth it for you, never a package
+already shown with a player taken out; it takes the last place if the list
+is full (display only: it changes which ideas are shown, not how any is
+measured or ranked); long shots appear only when there is
 nothing better, at most three, with a plain note saying so. Versions of one offer
 (the same team, the same players back and the same main piece sent, with
 only the filler changed) count as one idea: only the best version is shown.

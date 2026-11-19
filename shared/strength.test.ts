@@ -453,6 +453,21 @@ describe("team strength and trades (against the mock league)", async () => {
   it("explains every suggested trade from the user's side, reporting its progress as it goes", () => {
     const reports: { share: number; stage: string }[] = [];
     const { ideas } = findTrades(model, snapshot, strengths[4]!.rosterId, situations, {}, 8, (share, stage) => reports.push({ share, stage }));
+    // Variety: the open search shows at least one plain one-for-one (when one is realistic), never a
+    // package already shown with a player taken out.
+    const ones = ideas.filter((idea) => idea.offer.aGives.length === 1 && idea.offer.bGives.length === 1);
+    expect(ones.length).toBeGreaterThan(0);
+    for (const one of ones) {
+      const copied = ideas.some(
+        (idea) =>
+          idea !== one &&
+          idea.offer.teamB === one.offer.teamB &&
+          one.offer.aGives.every((id) => idea.offer.aGives.includes(id)) &&
+          one.offer.bGives.every((id) => idea.offer.bGives.includes(id)),
+      );
+      expect(copied).toBe(false);
+      expect(one.chance).toBeGreaterThanOrEqual(0.4);
+    }
     // Progress only goes up, starts with the rosters and gets most of the way before the ideas come back.
     expect(reports[0]!.stage).toBe("setup");
     expect(reports.every((entry, index) => index === 0 || entry.share >= reports[index - 1]!.share)).toBe(true);

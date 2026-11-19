@@ -777,6 +777,8 @@ const FIRST_LOOK_WEEKS = 68;
 const FIRST_LOOK_SLACK = 0.5;
 /** How many first looks, per idea shown, are measured on all the weeks. */
 const FINALISTS = 8;
+/** One-for-ones measured in full to find one for the open search's list (see findTrades). */
+const ONE_FOR_ONE_LOOKS = 60;
 /** Fewer realistic ideas (40% or better) than this once measured, and the next best are measured too. */
 const ENOUGH_IDEAS = 6;
 /** But no more than this many per idea shown are measured in full in all. */
@@ -1396,6 +1398,46 @@ export function findTrades(
     grow(depth);
     if (candidates.length === before && misses.every((miss) => miss.depth < depth)) break;
     ({ chosen, outlook } = choose(depth, 0.97, 0.99));
+  }
+
+  // Variety, in the open search: at least one plain one-for-one when one has a realistic chance
+  // (40% or better), is worth it for you, and is not a package already shown with a player
+  // taken out. It takes the last place if the list is full. Display only: it changes
+  // which ideas are shown, never how any is measured or ranked.
+  const openSearch = !options.getPosition && !options.givePosition && !options.givePlayerId && !options.getPlayerId && !options.getInjured;
+  const oneForOne = (offer: TradeOffer) => offer.aGives.length === 1 && offer.bGives.length === 1;
+  if (openSearch && (outlook === "likely" || outlook === "possible") && !chosen.some((idea) => oneForOne(idea.offer))) {
+    const shown = chosen;
+    const copies = (offer: TradeOffer) =>
+      shown.some(
+        (idea) =>
+          idea.offer.teamB === offer.teamB &&
+          offer.aGives.every((id) => idea.offer.aGives.includes(id)) &&
+          offer.bGives.every((id) => idea.offer.bGives.includes(id)),
+      );
+    const appearances = new Map<string, number>();
+    for (const idea of shown) for (const id of [...idea.offer.aGives, ...idea.offer.bGives]) appearances.set(id, (appearances.get(id) ?? 0) + 1);
+    const floor = POSSIBLE;
+    const swap = candidates
+      .filter((candidate) => oneForOne(candidate.offer) && !copies(candidate.offer) && candidate.chance >= SCREEN_FLOOR)
+      .sort((a, b) => b.quick - a.quick)
+      .slice(0, ONE_FOR_ONE_LOOKS)
+      .map((candidate) => measure(candidate))
+      .filter(
+        (idea) =>
+          gain(idea.result.a) >= minGain &&
+          idea.chance >= floor &&
+          idea.result.b.grade >= BIG_LOSS &&
+          !droppedOnArrival(idea.result.a) &&
+          !droppedOnArrival(idea.result.b) &&
+          [...idea.offer.aGives, ...idea.offer.bGives].every((id) => (appearances.get(id) ?? 0) < 2),
+      )
+      .sort((a, b) => rank(gain(b.result.a), b.chance) - rank(gain(a.result.a), a.chance))[0];
+    if (swap) {
+      chosen = [...shown.slice(0, Math.max(0, limit - 1)), swap].sort(
+        (a, b) => order.indexOf(a.likelihood) - order.indexOf(b.likelihood) || rank(gain(b.result.a), b.chance) - rank(gain(a.result.a), a.chance),
+      );
+    }
   }
 
   const myProfile = profileOf(rosterId);
