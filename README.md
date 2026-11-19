@@ -310,8 +310,7 @@ the brute-force value for two teams, in 6 to 9 seconds a search.
 While it runs, a progress bar (`SearchProgress.tsx`) fills from the search's
 own reports (`onProgress` in `findTrades`, sent back from the worker a few
 times a second), eased between them so it never sits still, with the step it
-is on and five steps ticked off below; stand-in cards hold the place of the
-ideas. Display only: the reports never feed back into the search.
+is on above it; stand-in cards hold the place of the ideas. Display only: the reports never feed back into the search.
 
 The search runs in a web worker (`src/search.ts`, `src/searchWorker.ts`),
 which builds the same model from the same league and stats, so the page

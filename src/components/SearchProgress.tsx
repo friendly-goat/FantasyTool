@@ -3,15 +3,7 @@ import type { SearchStage } from "../../shared/trade.ts";
 
 // The trade search's progress: a bar that fills smoothly from the search's
 // own reports (eased between them, and creeping a little while a step runs,
-// so it never sits still), the step it is on, and the steps ticked off.
-
-const STEPS: { label: string; stages: SearchStage[] }[] = [
-  { label: "Rosters", stages: ["setup"] },
-  { label: "Every trade", stages: ["swaps", "estimates"] },
-  { label: "Closer look", stages: ["closer", "screening"] },
-  { label: "Test run", stages: ["first-look"] },
-  { label: "Full season", stages: ["measuring", "packages"] },
-];
+// so it never sits still), with the step it is on above it.
 
 const WORDS: Record<SearchStage | "done", string> = {
   setup: "Getting every roster ready",
@@ -48,7 +40,6 @@ export function SearchProgress({ share, stage }: { share: number; stage: SearchS
     return () => cancelAnimationFrame(frame);
   }, []);
 
-  const current = stage === "done" ? STEPS.length : STEPS.findIndex((step) => step.stages.includes(stage));
   const percent = Math.round(shown * 100);
   return (
     <div className={`search-progress${stage === "done" ? " is-done" : ""}`}>
@@ -68,20 +59,6 @@ export function SearchProgress({ share, stage }: { share: number; stage: SearchS
       >
         <div className="search-progress-fill" style={{ width: `${shown * 100}%` }} />
       </div>
-      <ol className="search-progress-steps">
-        {STEPS.map((step, index) => (
-          <li key={step.label} className={index < current ? "is-done" : index === current ? "is-current" : ""}>
-            <span className="search-progress-dot" aria-hidden="true">
-              {index < current && (
-                <svg viewBox="0 0 12 12" width="8" height="8">
-                  <path d="M2.5 6.2 5 8.6 9.6 3.6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              )}
-            </span>
-            {step.label}
-          </li>
-        ))}
-      </ol>
     </div>
   );
 }
