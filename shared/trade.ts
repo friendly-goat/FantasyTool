@@ -16,7 +16,6 @@ import {
   type Pickup,
   projectByWeek,
   projectedWeekly,
-  standIn,
   strengthScore,
   type StrengthModel,
 } from "./strength.ts";
@@ -186,12 +185,21 @@ export function measureSide(
   gives: string[],
   gets: string[],
   claimed: Set<string>,
+  /** Imaginary weeks for the change: all of them unless given (fewer for a first look at many trades). */
+  weeks?: number,
 ): TradeSide {
   // The trade is made on the roster after the free upgrades (see baselineEntry), and both
   // rosters are run the same way (IR, then waivers), so the trade is credited only with what
   // it changes, never with a pickup the team would make anyway. See fillRoster.
   const baseline = baselineEntry(model, before, freeUpgrades(gives.length, gets.length));
-  const filled = fillRoster(model, [...baseline.kept.filter((id) => !gives.includes(id)), ...gets], new Set(claimed));
+  const filled = fillRoster(
+    model,
+    [...baseline.kept.filter((id) => !gives.includes(id)), ...gets],
+    new Set(claimed),
+    [],
+    0,
+    weeks === undefined ? undefined : Math.min(weeks, 60),
+  );
   // A pickup the team makes either way is not the trade's doing, even if it
   // now covers a different player on IR.
   const key = (add: Pickup) => add.player.id;
@@ -208,7 +216,7 @@ export function measureSide(
 
   // The team as it is now (as Rankings shows it), plus what the trade changes.
   const projectedBefore = currentFor(model, before);
-  const projectedAfter = projectedBefore + projectedWeekly(model, filled.ids) - projectedWeekly(model, baseline.filled.ids);
+  const projectedAfter = projectedBefore + projectedWeekly(model, filled.ids, weeks) - projectedWeekly(model, baseline.filled.ids, weeks);
   const strengthBefore = strengthScore(model, projectedBefore);
   const strengthAfter = strengthScore(model, projectedAfter);
   const grade = tradeGrade(projectedAfter - projectedBefore);
@@ -249,13 +257,13 @@ export function rosterIds(snapshot: LeagueSnapshot, rosterId: number): string[] 
   return team ? rosterPlayers(team).map((player) => player.id) : [];
 }
 
-export function evaluateTrade(model: StrengthModel, snapshot: LeagueSnapshot, offer: TradeOffer): TradeResult {
+export function evaluateTrade(model: StrengthModel, snapshot: LeagueSnapshot, offer: TradeOffer, weeks?: number): TradeResult {
   // Each team looks at the waiver wire as it is: both may want the same free
   // agent, but only for their own what-if, before and after alike. Players in
   // the trade are never free agents.
   const traded = [...offer.aGives, ...offer.bGives];
-  const a = measureSide(model, offer.teamA, rosterIds(snapshot, offer.teamA), offer.aGives, offer.bGives, new Set(traded));
-  const b = measureSide(model, offer.teamB, rosterIds(snapshot, offer.teamB), offer.bGives, offer.aGives, new Set(traded));
+  const a = measureSide(model, offer.teamA, rosterIds(snapshot, offer.teamA), offer.aGives, offer.bGives, new Set(traded), weeks);
+  const b = measureSide(model, offer.teamB, rosterIds(snapshot, offer.teamB), offer.bGives, offer.aGives, new Set(traded), weeks);
   const total = a.valueReceived + b.valueReceived;
   const valueBalance = total > 0 ? Math.min(97, Math.max(3, 50 + (50 * (b.valueReceived - a.valueReceived)) / total)) : 50;
   return { a, b, valueBalance };
@@ -753,6 +761,14 @@ const SCREENED = 500;
 const SHORTLIST = 6;
 /** Extra places on that list for the best packages (two players on a side). */
 const SHORTLIST_PACKAGES = 12;
+/** How many of the screened trades get a first look: measured in full on fewer weeks. */
+const FIRST_LOOK = 400;
+/** Weeks for the first look (the first of the same imaginary weeks). */
+const FIRST_LOOK_WEEKS = 40;
+/** A first look may fall this short of the gain needed (points a week) and still go on. */
+const FIRST_LOOK_SLACK = 0.5;
+/** How many first looks, per idea shown, are measured on all the weeks. */
+const FINALISTS = 4;
 /** Fewer realistic ideas (40% or better) than this once measured, and the next best are measured too. */
 const ENOUGH_IDEAS = 6;
 /** But no more than this many per idea shown are measured in full in all. */
@@ -760,53 +776,27 @@ const MEASURED_AT_MOST = 24;
 /** How many of the best estimates get a closer look (the whole trade on the same few weeks) before screening. */
 const CLOSER_LOOK = 1500;
 /** Weeks simulated for the first layer's estimates: few, since they only rank; the same weeks for every roster. */
-const ESTIMATE_WEEKS = 8;
+const ESTIMATE_WEEKS = 12;
 /** Estimates may fall this far (points a week) short of the gain needed and still be screened. */
 const ESTIMATE_SLACK = 1.5;
 /** An offer that grades below this for the other team (a "big loss", F) is never suggested. */
 export const BIG_LOSS = 20;
 
-// A quick read of a roster after a trade: too many players drops the least
-// valuable, too few takes the best free agents; an injured player received
-// can go on IR with the best free agent standing in. The full evaluation
-// (fillRoster) does this properly for the ideas that make the shortlist.
-/** The quick read of a roster before a trade: its weakest healthy players swapped for better free agents, `upgrades` times. */
-export function quickRosterBefore(model: StrengthModel, before: string[], upgrades: number, unavailable: string[] = []): string[] {
-  let base = [...before];
-  const freeAgents = model.freeAgentIds.filter((id) => !before.includes(id) && !unavailable.includes(id));
-  for (let swap = 0; swap < upgrades; swap++) {
-    const freeAgent = model.players.get(freeAgents[0] ?? "");
-    const weakest = players(model, base)
-      .filter((player) => !player.irEligible)
-      .reduce<ModelPlayer | null>((low, player) => (!low || player.expected < low.expected ? player : low), null);
-    if (!freeAgent || !weakest || freeAgent.expected <= weakest.expected) break;
-    base = [...base.filter((id) => id !== weakest.id), freeAgent.id];
-    freeAgents.shift();
-  }
-  return base;
+// A quick read of a roster before and after a trade, the same way the full
+// evaluation runs it (the free upgrades, IR and who leaves when a player is
+// back, open spots from waivers), only with open spots going to the best free
+// agent on his own rather than tried out. The full evaluation measures the
+// ideas that make the shortlist.
+
+/** The quick read of a roster before a trade that opens `upgrades` roster spots for it (see freeUpgrades). */
+export function quickRosterBefore(model: StrengthModel, before: string[], upgrades: number): string[] {
+  return baselineEntry(model, before, upgrades).filled.ids;
 }
 
 export function quickRosterAfter(model: StrengthModel, before: string[], gives: string[], gets: ModelPlayer[]): string[] {
-  // The trade is made on the roster after its free upgrades (as a trade's what-if does; see freeUpgrades).
   const getIds = gets.map((player) => player.id);
-  const base = quickRosterBefore(model, before, freeUpgrades(gives.length, gets.length), getIds);
-  const freeAgents = model.freeAgentIds.filter((id) => !base.includes(id) && !before.includes(id) && !getIds.includes(id));
-  let after = [...base.filter((id) => !gives.includes(id)), ...getIds];
-  while (after.length > before.length) {
-    const weakest = players(model, after)
-      .filter((player) => !gets.includes(player))
-      .reduce<ModelPlayer | null>((low, player) => (!low || player.expected < low.expected ? player : low), null);
-    if (!weakest) break;
-    after = after.filter((id) => id !== weakest.id);
-  }
-  while (after.length < before.length && freeAgents.length > 0) after = [...after, freeAgents.shift()!];
-  for (const get of gets) {
-    if (!(get.back && get.irEligible && get.outShare > 0)) continue;
-    const onReserve = players(model, after).filter((player) => player.irEligible).length;
-    const freeAgent = model.players.get(freeAgents[0] ?? "");
-    if (onReserve <= model.rosterLimits.reserve && freeAgent) after = [...after, standIn(model, freeAgent, get).id];
-  }
-  return after;
+  const baseline = baselineEntry(model, before, freeUpgrades(gives.length, gets.length));
+  return fillRoster(model, [...baseline.kept.filter((id) => !gives.includes(id)), ...getIds], new Set([...gives, ...getIds]), [], 0, 0).ids;
 }
 
 /** Every set of one or two from a list. */
@@ -1234,14 +1224,16 @@ export function findTrades(
   const gain = (side: TradeSide) => side.projectedAfter - side.projectedBefore;
   const order: Likelihood[] = ["likely", "possible", "long shot"];
   const measured = new Map<string, { offer: TradeOffer; result: TradeResult; chance: number; likelihood: Likelihood; depth: number }>();
-  const measure = (candidate: Candidate) => {
+  const firstLooks = new Map<string, { offer: TradeOffer; result: TradeResult; chance: number; likelihood: Likelihood; depth: number }>();
+  const measure = (candidate: Candidate, weeks?: number) => {
     const key = `${candidate.offer.teamB}:${candidate.offer.aGives.join("+")}:${candidate.offer.bGives.join("+")}`;
-    let idea = measured.get(key);
+    const store = weeks === undefined ? measured : firstLooks;
+    let idea = store.get(key);
     if (!idea) {
-      const result = evaluateTrade(model, snapshot, candidate.offer);
+      const result = evaluateTrade(model, snapshot, candidate.offer, weeks);
       const chance = acceptanceChance(result.b, situations.get(candidate.offer.teamB)?.urgency ?? 0);
       idea = { offer: candidate.offer, result, chance, likelihood: likelihood(chance), depth: candidate.depth };
-      measured.set(key, idea);
+      store.set(key, idea);
     }
     return idea;
   };
@@ -1271,8 +1263,33 @@ export function findTrades(
       ...byQuick.filter((candidate) => candidate.gives.length + candidate.gets.length > 2).slice(0, SHORTLIST_PACKAGES),
       ...byQuick.filter((candidate) => candidate.depth === newest).slice(0, limit * 2),
     ]);
+    // A first look, measured the same way on fewer weeks, at many more of them than can be measured
+    // in full: a quick read can be far off (players out, open roster spots, strong waivers).
+    // The best by the same rules and order go on to the full measure.
+    const passes = ({ result }: { result: TradeResult }) =>
+      gain(result.a) >= minGain - FIRST_LOOK_SLACK &&
+      result.b.grade >= BIG_LOSS &&
+      !droppedOnArrival(result.a) &&
+      !droppedOnArrival(result.b);
+    const firstLook = [...new Set([...byQuick.slice(0, FIRST_LOOK), ...shortlist])]
+      .map((candidate) => ({ candidate, idea: measure(candidate, FIRST_LOOK_WEEKS) }))
+      .filter(({ idea }) => passes(idea))
+      .sort(
+        (a, b) =>
+          order.indexOf(a.idea.likelihood) - order.indexOf(b.idea.likelihood) ||
+          rank(gain(b.idea.result.a), b.idea.chance) - rank(gain(a.idea.result.a), a.idea.chance),
+      );
+    const finalistVersions = new Map<string, number>();
+    const finalists = firstLook
+      .filter(({ idea }) => {
+        const key = similarityKey(idea.offer, idea.result, options.givePlayerId);
+        if ((finalistVersions.get(key) ?? 0) >= 2) return false;
+        finalistVersions.set(key, (finalistVersions.get(key) ?? 0) + 1);
+        return true;
+      })
+      .map(({ candidate }) => candidate);
     const rankIdeas = (list: Candidate[]) => list
-      .map(measure)
+      .map((candidate) => measure(candidate))
       // Worth it for you, and not a big loss for them: an offer they would see as robbery is no idea at any chance.
       .filter(({ result }) => gain(result.a) >= minGain && result.b.grade >= BIG_LOSS)
       // A player either side would drop as soon as he arrives is not really part of the offer:
@@ -1303,11 +1320,11 @@ export function findTrades(
     // A quick read can be far off (a team with players out, or strong waivers), so when too few
     // of the shortlist hold up once measured in full, the next best by the quick read are
     // measured too, a batch at a time, up to a limit.
-    const looked = new Set(shortlist);
+    const looked = new Set(finalists.slice(0, limit * FINALISTS));
     let evaluated = rankIdeas([...looked]);
     const realistic = () => evaluated.filter((idea) => idea.chance >= POSSIBLE).length;
     while (realistic() < ENOUGH_IDEAS && looked.size < limit * MEASURED_AT_MOST) {
-      const batch = byQuick.filter((candidate) => !looked.has(candidate)).slice(0, limit * SHORTLIST);
+      const batch = finalists.filter((candidate) => !looked.has(candidate)).slice(0, limit * FINALISTS);
       if (batch.length === 0) break;
       for (const candidate of batch) looked.add(candidate);
       evaluated = rankIdeas([...looked]);

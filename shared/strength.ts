@@ -774,6 +774,8 @@ export function fillRoster(
    * agent (FREE_UPGRADES for the roster a trade is made on; none for the roster as it is).
    */
   upgrades = 0,
+  /** Weeks for trying out free agents (fewer for a first look at many trades). */
+  trialWeeks = PICKUP_TRIAL_WEEKS,
 ): FilledRoster {
   const roster = playerIds.flatMap((id) => model.players.get(id) ?? []);
   const reserve = roster
@@ -799,7 +801,7 @@ export function fillRoster(
     const best =
       kept ??
       options
-        .map((id) => ({ id, projected: projectedWeekly(model, [...ids, id], PICKUP_TRIAL_WEEKS) }))
+        .map((id) => ({ id, projected: projectedWeekly(model, [...ids, id], trialWeeks) }))
         .reduce((a, b) => (b.projected > a.projected ? b : a)).id;
     const player = model.players.get(typeof best === "string" ? best : best.id)!;
     picked.push(player);
@@ -821,9 +823,9 @@ export function fillRoster(
     ];
     if (options.length === 0) break;
     const without = ids.filter((id) => id !== weakest.id);
-    const current = projectedWeekly(model, ids, PICKUP_TRIAL_WEEKS);
+    const current = projectedWeekly(model, ids, trialWeeks);
     const best = options
-      .map((id) => ({ id, projected: projectedWeekly(model, [...without, id], PICKUP_TRIAL_WEEKS) }))
+      .map((id) => ({ id, projected: projectedWeekly(model, [...without, id], trialWeeks) }))
       .reduce((a, b) => (b.projected > a.projected ? b : a));
     // He is better on his own (see options); the swap is made unless it makes the roster worse,
     // so the roster a trade is made on is the best the team can make freely.

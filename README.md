@@ -273,7 +273,7 @@ The search runs in layers, like a tree, and goes deeper only when it has to:
    a named or injured target), packages that fill another team's need, and an
    estimate of every two-team trade of up to two players a side: one-for-two,
    two-for-one and two-for-two with every team. Each estimate pairs the
-   players up by what each swap does to both rosters (a short run of 8
+   players up by what each swap does to both rosters (a short run of 12
    imaginary weeks), so it is cheap enough to cover all of them. The best
    1,500 get a closer look (the whole trade on the same few weeks, both
    sides, since pairing cannot see how two players fit together), and every
@@ -287,20 +287,25 @@ The search runs in layers, like a tree, and goes deeper only when it has to:
 3. Still nothing likely: the best of layer 2 grow again (a second sweetener,
    or one of their least valuable players coming back as well).
 
-The best of all that are then measured in full, on all 200 weeks, in the
-order the list uses (likely first by the quick read, then gain times
-chance): 6 per idea shown (at most two versions of one idea, so the list
-holds many different ideas), plus 12 places for the best packages. A quick
-read can be far off for some rosters (players out with more of them than IR
-slots, or strong waivers), so when fewer than 6 of those hold up as
-realistic (40% or better) once measured, the next best are measured too, 48
-at a time, up to 24 per idea shown. A dev script, `npx tsx scripts/audit-trades.ts`, checks the
-finder against a brute-force search of every trade of up to two players a
-side on the sample league (`--save` and `--load` keep the slow reference
-between runs); with these settings the finder gets about 86% of the
-brute-force value in a fraction of the time. It also runs on a real league:
-signed in, save `/api/league/<id>` and `/api/league/<id>/stats` as JSON and
-pass them with `--snapshot league.json --stats stats.json --team "<name>"`.
+Every quick read (estimates, closer look, screening) runs a roster through
+the same steps as the full measure (`fillRoster`: free upgrades, IR, who
+leaves when a player is back, open spots from waivers), only with fewer
+weeks and open spots going to the best free agent on his own.
+
+The best of all that, in the order the list uses (likely first by the quick
+read, then gain times chance), get a first look: measured in full on the
+first 40 weeks, the best 400, plus 6 per idea shown and 12 places for
+packages. The best first looks by the same rules (at most two versions of
+one idea) are measured on all 200 weeks, 4 per idea shown. When fewer than 6
+of those hold up as realistic (40% or better), the next best first looks are
+measured too, up to 24 per idea shown. A dev script,
+`npx tsx scripts/audit-trades.ts`, checks the finder against a brute-force
+search of every trade of up to two players a side (`--save` and `--load`
+keep the slow reference between runs). It runs on the sample league or on a
+real one: signed in, save `/api/league/<id>` and `/api/league/<id>/stats` as
+JSON and pass them with `--snapshot league.json --stats stats.json --team
+"<name>"`. On the real league (Nov 2026) the finder got about 72% and 90% of
+the brute-force value for two teams, in 6 to 9 seconds a search.
 
 The search runs in a web worker (`src/search.ts`, `src/searchWorker.ts`),
 which builds the same model from the same league and stats, so the page
@@ -320,7 +325,10 @@ or buy-low gap, and the other team's situation. The chance of acceptance is a
 reasoned estimate, not a measured probability.
 
 The Trades tab reads top to bottom: the search ("I want to") and its ideas,
-then the builder, then your best nine and position needs. Both builder rosters
+then the builder, then your best nine and position needs. Each idea card
+names the other team at the top right (avatar, team, manager, record; a
+header line on a phone) and lists what you send in red and what you get in
+green, joined with "+". Both builder rosters
 start closed; "Open in builder" loads an idea and opens both. When one team
 has fewer players (an empty bench or IR spot), its list is padded with empty
 slots so the two rosters line up row for row.

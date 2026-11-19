@@ -53,13 +53,35 @@ const formatBackDate = (date: string) =>
 const percent = new Intl.NumberFormat("en-US", { style: "percent", maximumFractionDigits: 0 });
 const tone = (grade: number) => (grade >= 57 ? "up" : grade <= 43 ? "down" : "");
 
-function names(players: ModelPlayer[]) {
+/** Players in a trade idea, joined with a quiet "+". */
+function joined(players: ModelPlayer[]) {
   return players.map((player, index) => (
-    <span key={player.id}>
-      {index > 0 && ", "}
+    <span key={player.id} className="idea-player">
+      {index > 0 && (
+        <span className="idea-plus" aria-hidden="true">
+          +
+        </span>
+      )}
       <PlayerName player={player} />
     </span>
   ));
+}
+
+/** Who the trade is with: the other team's avatar, name, manager and record. */
+function IdeaPartner({ team }: { team: Team | undefined }) {
+  if (!team) return null;
+  return (
+    <div className="idea-partner">
+      <Avatar url={team.avatarUrl} name={team.teamName} size="sm" />
+      <span className="idea-partner-text">
+        <span className="idea-partner-name">{team.teamName}</span>
+        <span className="idea-partner-manager">
+          {team.managerName}
+          <RecordTag team={team} />
+        </span>
+      </span>
+    </div>
+  );
 }
 
 /** Whether the screen is wide enough to show both rosters open by default. */
@@ -652,10 +674,18 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
         <ul className="ideas">
           {found.ideas.map((idea) => (
             <li key={`${idea.offer.aGives.join("+")}-${idea.offer.bGives.join("+")}`} className="card idea">
+              <IdeaPartner team={team(idea.offer.teamB)} />
+              <dl className="idea-deal">
+                <div className="idea-deal-row idea-out">
+                  <dt>You send</dt>
+                  <dd>{joined(idea.result.a.gives)}</dd>
+                </div>
+                <div className="idea-deal-row idea-in">
+                  <dt>You get</dt>
+                  <dd>{joined(idea.result.a.gets)}</dd>
+                </div>
+              </dl>
               <div className="idea-main">
-                <p className="idea-deal">
-                  Send {names(idea.result.a.gives)} to {team(idea.offer.teamB)?.teamName} for {names(idea.result.a.gets)}
-                </p>
                 <StoryBlock story={idea.story} />
               </div>
               <div className="idea-side">
