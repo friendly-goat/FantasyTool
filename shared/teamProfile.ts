@@ -63,8 +63,9 @@ export interface TeamProfile {
   ahead: { average: number; rank: number } | null;
   /**
    * How much of its projection the team really scores (shared/realisation.ts), and the league's
-   * rate. Projected points on the charts (weeks ahead, ceiling, floor, depth) are scaled by the
-   * team's rate; `weeks` is how many finished weeks it rests on.
+   * rate. The weeks ahead are scaled by the team's rate; the shape's points (ceiling, floor,
+   * depth) by the league's, so its placings stay a comparison of rosters. `weeks` is how many
+   * finished weeks the rates rest on.
    */
   rate: { team: number; league: number; weeks: number };
   /** Rank by the standings' points for (1: most), over the weeks settled, or null before any has. */
@@ -233,12 +234,14 @@ export function leagueProfiles(
     weekRows.set(team.rosterId, byWeek.map((total, index) => (counts[index] ? total / counts[index]! : 0)));
   }
 
-  // Projected points as this league really scores them: each team's by its own rate.
+  // Projected points as this league really scores them. The shape compares rosters, so its
+  // points are scaled by the league's rate alike (values a team can expect, placings untouched
+  // by how well each team has been managed); the weeks ahead forecast each team's own scores,
+  // so they take the team's rate.
   const today = new Map([...weekRows.entries()].map(([id, row]) => [id, row.reduce((sum, value) => sum + value, 0) / Math.max(1, row.length)]));
   const rates = realisation(extras.history, { weeks: extras.history?.projections ?? {} }, today);
-  for (const [id, row] of shapeRows) {
-    const rate = rates.teams.get(id) ?? 1;
-    for (const key of ["ceiling", "floor", "depth"]) row[key] = (row[key] ?? 0) * rate;
+  for (const row of shapeRows.values()) {
+    for (const key of ["ceiling", "floor", "depth"]) row[key] = (row[key] ?? 0) * rates.league;
   }
   for (const [id, row] of weekRows) {
     const rate = rates.teams.get(id) ?? 1;

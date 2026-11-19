@@ -158,7 +158,7 @@ happens to its projected weekly score.
 | What they see on averages (players they would drop subtracted) | chance they accept | +0.8 to -2.0 on the log-odds scale |
 | What the trade does to their team (a gain counts 0.75, a loss 1.5) | chance they accept | +1.25 to -2.0 on the log-odds scale |
 | Pressure on the other team (absences, record, this week's matchup) | chance they accept | 0 to +0.6 on the log-odds scale |
-| How much of its projection a team really scores (`shared/realisation.ts`) | team charts only (projected weeks, ceiling, floor, depth); never strength, grades or trade ideas | between 70% and 110%; a team's own record counts like its weeks (weeks compared with today's projection at half weight) against 2 weeks of the league's rate |
+| How much of its projection a team really scores (`shared/realisation.ts`) | team charts only: each team's projected weeks by its own rate; ceiling, floor and depth by the league's rate alike, so their placings stay a comparison of rosters; never strength, grades or trade ideas | between 70% and 110%; a team's own record counts like its weeks (weeks compared with today's projection at half weight) against 2 weeks of the league's rate |
 
 ### Projections
 
@@ -480,10 +480,14 @@ strength, grades or trade ideas.
 The lock-in simulation plays every team as a manager who rotates the bench
 into each open slot every day and locks well. That is what a team can score,
 not what most do: over weeks 1 to 4 the owner's league scored about 87% of it
-(the owner's team about 97%). So the team charts scale each team's projected
-points (projected weeks, ceiling, floor, depth) by how much of its projection
-it really scores (`shared/realisation.ts`): each finished week's real score
-against the projection for that week. The server saves every team's
+(the owner's team about 97%). So the team charts scale projected points by
+how much of its projection a team really scores (`shared/realisation.ts`):
+each finished week's real score against the projection for that week. The
+weeks ahead take the team's own rate (a forecast of its scores). The shape's
+ceiling, floor and depth take the league's rate, the same for everyone: the
+shape compares rosters, and a team's own rate would move it past teams with
+better rosters (a 5% rate is as wide as the league's whole spread of
+ceilings). The server saves every team's
 projection once a week (`projections-v1-<league>`, with the same model the
 page builds); weeks before it began use today's projection at half weight. A
 team's rate starts from the league's as if it had 2 weeks of its own and

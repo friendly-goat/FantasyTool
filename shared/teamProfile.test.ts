@@ -142,6 +142,27 @@ describe("team profiles (against the mock league)", async () => {
     expect(leagueProfiles(snapshot, model, strengths, report.players, { schedule: { status: "unavailable", games: [] } }).get(rosterId)!.shape.find((entry) => entry.key === "schedule")!.schedule).toBeUndefined();
   });
 
+  it("scales the shape by the league's rate and the weeks ahead by each team's own", () => {
+    const first = model.calendar.weeks[0]!.week;
+    // The first team scored all of its projection, every other team 80%.
+    const leader = strengths[0]!.rosterId;
+    const points = Object.fromEntries(
+      [...profiles.values()].map((profile) => [profile.rosterId, (profile.rosterId === leader ? 1 : 0.8) * profile.ahead!.average]),
+    );
+    const history = { weeks: [first - 2, first - 1].map((week) => ({ week, points, source: "recorded" as const })) };
+    const scaled = leagueProfiles(snapshot, model, strengths, report.players, { history });
+    const after = scaled.get(leader)!;
+    const before = profiles.get(leader)!;
+    expect(after.rate.team).toBeGreaterThan(after.rate.league);
+    const axis = (profile: typeof before, key: string) => profile.shape.find((entry) => entry.key === key)!;
+    for (const key of ["ceiling", "floor", "depth"]) {
+      expect(axis(after, key).value).toBeCloseTo(after.rate.league * axis(before, key).value);
+      // How well a team has been managed does not move its place among the rosters.
+      for (const other of scaled.values()) expect(axis(other, key).rank).toBe(axis(profiles.get(other.rosterId)!, key).rank);
+    }
+    expect(after.ahead!.average).toBeCloseTo(after.rate.team * before.ahead!.average);
+  });
+
   it("scales projected points by how much of its projection each team really scores", () => {
     const first = model.calendar.weeks[0]!.week;
     // Every team scored 80% of its projection in the two weeks before.
@@ -155,7 +176,7 @@ describe("team profiles (against the mock league)", async () => {
     expect(after.rate.team).toBeCloseTo(0.8);
     expect(after.rate.league).toBeCloseTo(0.8);
     const value = (profile: typeof before, key: string) => profile.shape.find((axis) => axis.key === key)!.value;
-    for (const key of ["ceiling", "floor", "depth"]) expect(value(after, key)).toBeCloseTo(0.8 * value(before, key));
+    for (const key of ["ceiling", "floor", "depth"]) expect(value(after, key)).toBeCloseTo(after.rate.league * value(before, key));
     // Player values are not team totals: the top three stay as they are.
     expect(value(after, "stars")).toBeCloseTo(value(before, "stars"));
     expect(after.ahead!.average).toBeCloseTo(0.8 * before.ahead!.average);

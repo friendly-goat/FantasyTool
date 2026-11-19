@@ -102,7 +102,7 @@ const percent = (rate: number) => `${Math.round(100 * rate)}%`;
 
 /** What a shape axis's figure means, short enough to fit the note under the chart. */
 function shapeNote(axis: ProfileAxis, rate: number): string {
-  const scaled = `, at the ${percent(rate)} of projections you really score`;
+  const scaled = rate === 1 ? "" : `, at the ${percent(rate)} of projections this league really scores`;
   switch (axis.key) {
     case "ceiling":
       return `${formatPoints(axis.value)} in a good week (better than 9 in 10)${scaled}`;
@@ -214,7 +214,7 @@ export function TeamCharts({
             <Radar
               axes={profile.shape}
               onFocus={(axis) =>
-                onFocus(axis && `${axis.label}: ${shapeNote(axis, profile.rate.team)}. ${ordinal(axis.rank)} of ${teams}.`)
+                onFocus(axis && `${axis.label}: ${shapeNote(axis, profile.rate.league)}. ${ordinal(axis.rank)} of ${teams}.`)
               }
             />
           )}

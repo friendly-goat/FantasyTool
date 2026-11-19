@@ -137,9 +137,11 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   leaves out locks and drifts after the week): they are the change in the
   standings' points for (`shared/weekScores.ts`, ledger in storage), or weeks
   recorded from Sleeper's app (`server/recordedWeeks.ts`, checked against
-  points for and against). Projected points on the charts are scaled by
-  each team's rate of real scores to projections (`shared/realisation.ts`,
-  projections saved weekly by the server); display only. Cards
+  points for and against). Projected weeks on the charts are scaled by
+  each team's rate of real scores to projections, the shape's points by the
+  league's rate only (`shared/realisation.ts`, projections saved weekly by
+  the server); display only, never strength (the 1-1000 scale is relative,
+  so a league-wide rate changes nothing there). Cards
   keep their full size while loading (no layout shift).
 - The Draft tab's rising and falling marks (`shared/draft.ts`) are a display
   label only: rank by weekly value now against pick order, one round either
