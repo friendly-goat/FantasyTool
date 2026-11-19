@@ -437,8 +437,12 @@ tapping part of a chart gives that figure and its rank.
   run for every team: ceiling and floor (a week better than 9 in 10, and
   worse than 9 in 10), top three (your three best players' expected locked
   scores), depth (what the bench adds over the best nine), games (games a
-  week your ten main players are expected to play), health (share of their
-  value not lost to injuries) and trend (projection against their averages).
+  week your ten main players are expected to play), health (share of the
+  value of your ten best players when fit that is on hand over the next four
+  weeks, injuries only, so a star out for three weeks counts now) and trend
+  (projection against their averages). A range narrower than the axis's
+  minimum (health: 25 points, ceiling and floor: 10 points a week) is widened
+  to it, so a tiny gap between teams does not fill the whole scale.
 - **Scoring mix** (radar): where your ten main players' fantasy points come
   from (scoring, threes, boards, playmaking, defense, bonuses), each counted
   as often as he is expected to play, plus what turnovers and fouls cost. The

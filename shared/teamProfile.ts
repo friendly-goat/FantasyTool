@@ -4,14 +4,15 @@
 //
 //   Shape:  how the team scores, from the same lock-in simulation as team
 //           strength: its good weeks (ceiling), its bad weeks (floor), its
-//           top three, what the bench adds, games played a week, health and
-//           where its players are heading.
+//           top three, what the bench adds, games played a week, health now
+//           (the next HEALTH_WEEKS weeks) and where its players are heading.
 //   Mix:    where its fantasy points come from (scoring, threes, boards,
 //           playmaking, defense, bonuses), from the players who play most.
 //   Weeks:  its projected score in each real week left, against the league.
 //
 // Radar values are placed on the league's own range: 0 is the lowest team,
-// 10 the highest. Display only: none of this feeds strength, grades or trade
+// 10 the highest. A range narrower than the axis's MIN_RANGE is widened to
+// it, so a tiny gap between teams does not look like the whole scale. Display only: none of this feeds strength, grades or trade
 // ideas.
 import { rosterPlayers } from "./analysis.ts";
 import { fillRoster, type ModelPlayer, type StrengthModel, type TeamStrength, weeklyTotals } from "./strength.ts";
@@ -51,17 +52,31 @@ export interface TeamProfile {
   weeks: WeekPoint[];
 }
 
-/** Players counted for the mix: the ones who play most. */
+/** Players counted for the mix and for health: the ones who play most. */
 const MIX_PLAYERS = 10;
-const SHAPE_AXES: { key: string; label: string; unit: ProfileAxis["unit"] }[] = [
-  { key: "ceiling", label: "Ceiling", unit: "points" },
-  { key: "stars", label: "Top three", unit: "points" },
-  { key: "depth", label: "Depth", unit: "points" },
-  { key: "games", label: "Games", unit: "games" },
-  { key: "health", label: "Health", unit: "percent" },
-  { key: "trend", label: "Trend", unit: "percent" },
-  { key: "floor", label: "Floor", unit: "points" },
+/** Health is about now: the share of value on hand over this many real weeks. */
+export const HEALTH_WEEKS = 4;
+
+interface AxisDef {
+  key: string;
+  label: string;
+  unit: ProfileAxis["unit"];
+  /** The narrowest range the league is placed on, in the axis's unit. */
+  minRange: number;
+  /** Widen a narrow range downward from the best team (health: the healthiest is the edge), not around the middle. */
+  fromTop?: boolean;
+}
+const SHAPE_AXES: AxisDef[] = [
+  { key: "ceiling", label: "Ceiling", unit: "points", minRange: 10 },
+  { key: "stars", label: "Top three", unit: "points", minRange: 6 },
+  { key: "depth", label: "Depth", unit: "points", minRange: 5 },
+  { key: "games", label: "Games", unit: "games", minRange: 0.3 },
+  { key: "health", label: "Health", unit: "percent", minRange: 25, fromTop: true },
+  { key: "trend", label: "Trend", unit: "percent", minRange: 6 },
+  { key: "floor", label: "Floor", unit: "points", minRange: 10 },
 ];
+/** Points a game: the narrowest range for a source in the mix. */
+const MIX_MIN_RANGE = 2;
 const MIX_LABELS: Record<Exclude<FantasySource, "mistakes">, string> = {
   scoring: "Scoring",
   threes: "Threes",
@@ -78,25 +93,28 @@ function quantile(sorted: number[], share: number): number {
 }
 
 /** Each team's figure placed on the league's range (0 to 10), its rank, and the league's average on that scale. */
-function place(raw: Map<number, number>): Map<number, { scaled: number; rank: number; league: number }> {
+function place(raw: Map<number, number>, def: AxisDef): Map<number, { scaled: number; rank: number; league: number }> {
   const values = [...raw.values()];
-  const low = Math.min(...values);
-  const high = Math.max(...values);
+  let low = Math.min(...values);
+  let high = Math.max(...values);
+  if (high - low < def.minRange) {
+    if (def.fromTop) low = high - def.minRange;
+    else {
+      const middle = (low + high) / 2;
+      [low, high] = [middle - def.minRange / 2, middle + def.minRange / 2];
+    }
+  }
   const scale = (value: number) => (high - low < 1e-9 ? 5 : (10 * (value - low)) / (high - low));
   const order = [...raw.entries()].sort((a, b) => b[1] - a[1]).map(([rosterId]) => rosterId);
   const league = values.reduce((sum, value) => sum + scale(value), 0) / Math.max(1, values.length);
   return new Map([...raw.entries()].map(([rosterId, value]) => [rosterId, { scaled: scale(value), rank: order.indexOf(rosterId) + 1, league }]));
 }
 
-function axes(
-  rows: Map<number, Record<string, number>>,
-  defs: { key: string; label: string; unit: ProfileAxis["unit"] }[],
-  rosterId: number,
-): ProfileAxis[] {
+function axes(rows: Map<number, Record<string, number>>, defs: AxisDef[], rosterId: number): ProfileAxis[] {
   return defs.map((def) => {
     const raw = new Map([...rows.entries()].map(([id, row]) => [id, row[def.key] ?? 0]));
-    const placed = place(raw).get(rosterId)!;
-    return { ...def, value: raw.get(rosterId) ?? 0, ...placed };
+    const placed = place(raw, def).get(rosterId)!;
+    return { key: def.key, label: def.label, unit: def.unit, value: raw.get(rosterId) ?? 0, ...placed };
   });
 }
 
@@ -123,8 +141,14 @@ export function leagueProfiles(
     const main = byValue.slice(0, MIX_PLAYERS);
     const strength = strengths.find((entry) => entry.rosterId === team.rosterId);
 
-    const healthy = main.reduce((sum, player) => sum + player.healthy, 0);
-    const injuredAway = main.reduce((sum, player) => sum + player.healthy * player.outShare, 0);
+    // Health now: each main player's chance of being back, week by week, over the next few weeks.
+    const soon = Math.min(HEALTH_WEEKS, realWeeks);
+    const onHand = (player: ModelPlayer) =>
+      player.back ? Array.from(player.back.slice(0, soon)).reduce((sum, chance) => sum + chance, 0) / soon : 1;
+    // Chosen by what they are worth when fit, so an injured star is not left out of his own team's health.
+    const core = [...players].sort((a, b) => b.healthy - a.healthy).slice(0, MIX_PLAYERS);
+    const healthy = core.reduce((sum, player) => sum + player.healthy, 0);
+    const injuredAway = core.reduce((sum, player) => sum + player.healthy * (1 - onHand(player)), 0);
     const seen = main.filter((player) => player.games > 0);
     const average = seen.reduce((sum, player) => sum + player.average, 0);
     shapeRows.set(team.rosterId, {
@@ -161,7 +185,7 @@ export function leagueProfiles(
   // A source the league does not score (threes, in a league that gives nothing for them) is left out.
   const mixDefs = (Object.keys(MIX_LABELS) as (keyof typeof MIX_LABELS)[])
     .filter((key) => [...mixRows.values()].some((row) => Math.abs(row[key] ?? 0) > 0.01))
-    .map((key) => ({ key, label: MIX_LABELS[key], unit: "points" as const }));
+    .map((key): AxisDef => ({ key, label: MIX_LABELS[key], unit: "points", minRange: MIX_MIN_RANGE }));
 
   const profiles = new Map<number, TeamProfile>();
   for (const team of snapshot.teams) {

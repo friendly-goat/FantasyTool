@@ -28,8 +28,10 @@ describe("team profiles (against the mock league)", async () => {
         expect(column.every((entry) => entry.key === axis.key)).toBe(true);
         expect(column.every((entry) => entry.scaled >= 0 && entry.scaled <= 10)).toBe(true);
         expect(column.filter((entry) => entry.rank === 1).length).toBeGreaterThanOrEqual(1);
-        expect(Math.max(...column.map((entry) => entry.scaled))).toBeCloseTo(10);
-        expect(Math.min(...column.map((entry) => entry.scaled))).toBeCloseTo(0);
+        // The best team sits at the top of the scale used (10, or below when the league is close).
+        const best = column.reduce((top, entry) => (entry.rank < top.rank ? entry : top));
+        expect(best.scaled).toBeCloseTo(Math.max(...column.map((entry) => entry.scaled)));
+        expect(best.scaled).toBeGreaterThanOrEqual(5);
         // The league's average is the same for every team.
         expect(new Set(column.map((entry) => entry.league.toFixed(6))).size).toBe(1);
       });
@@ -58,6 +60,22 @@ describe("team profiles (against the mock league)", async () => {
     expect(highlights.best.length).toBeGreaterThan(0);
     const best = extremes(profile.shape)!;
     expect(best.best.rank).toBeLessThanOrEqual(best.worst.rank);
+  });
+
+  it("counts an injured star in his team's health, over the next few weeks", () => {
+    const rosterId = strengths[0]!.rosterId;
+    const team = snapshot.teams.find((entry) => entry.rosterId === rosterId)!;
+    const star = [...team.starters.flatMap((slot) => (slot.player ? [slot.player.id] : [])), ...team.bench.map((player) => player.id)]
+      .flatMap((id) => model.players.get(id) ?? [])
+      .sort((a, b) => b.healthy - a.healthy)[0]!;
+    // Out for the next three weeks, back after.
+    const back = new Float32Array(model.calendar.weeks.length).fill(1);
+    back.fill(0, 0, 3);
+    const players = new Map(model.players);
+    players.set(star.id, { ...star, back, outShare: 3 / back.length, expected: star.expected * (1 - 3 / back.length) });
+    const hurt = leagueProfiles(snapshot, { ...model, players }, strengths, report.players);
+    const health = (map: typeof profiles) => map.get(rosterId)!.shape.find((axis) => axis.key === "health")!.value;
+    expect(health(hurt)).toBeLessThan(health(profiles) - 5);
   });
 
   it("splits the mix only by what the league scores, and ranks fewest mistakes first", () => {

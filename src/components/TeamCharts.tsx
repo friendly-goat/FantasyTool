@@ -42,7 +42,7 @@ const AXIS_NOTES: Record<string, string> = {
   stars: "your three best players' locked scores",
   depth: "what the bench adds over the best nine",
   games: "your ten main players",
-  health: "of your main players' value not lost to injuries",
+  health: "of your main players' value on hand over the next four weeks (injuries only)",
   trend: "where your players are projected to head",
 };
 
