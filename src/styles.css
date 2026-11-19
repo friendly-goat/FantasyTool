@@ -2794,7 +2794,6 @@ th[aria-sort] .sort-button {
   width: 100%;
   height: auto;
   max-height: 15.5rem;
-  overflow: visible;
 }
 
 .team-chart-empty {
@@ -2805,9 +2804,14 @@ th[aria-sort] .sort-button {
   opacity: 0.5;
 }
 
+/* Three lines, always: a longer note never resizes the card or the chart. */
 .team-chart-note {
-  min-height: 2.6em;
+  display: -webkit-box;
+  height: 3.9em;
   margin: 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
   color: var(--muted);
   font-size: 0.8125rem;
   line-height: 1.3;
@@ -2821,6 +2825,15 @@ th[aria-sort] .sort-button {
 .chart-hit {
   fill: transparent;
   cursor: pointer;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.radar,
+.week-chart {
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .radar-ring,

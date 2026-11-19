@@ -28,23 +28,27 @@ function useProfiles(
   }, [snapshot, model, strengths, stats]);
 }
 
-function axisFigure(axis: ProfileAxis, per: "week" | "game"): string {
-  if (axis.unit === "percent") {
-    return axis.key === "trend" ? `${axis.value >= 0 ? "+" : "−"}${Math.abs(axis.value).toFixed(1)}% on their averages` : `${axis.value.toFixed(0)}%`;
+/** What a shape axis's figure means, short enough to fit the note under the chart. */
+function shapeNote(axis: ProfileAxis): string {
+  switch (axis.key) {
+    case "ceiling":
+      return `${formatPoints(axis.value)} in a good week (better than 9 in 10)`;
+    case "floor":
+      return `${formatPoints(axis.value)} in a bad week (worse than 9 in 10)`;
+    case "stars":
+      return `${formatPoints(axis.value)} a week from your best three`;
+    case "depth":
+      return `${formatPoints(axis.value)} a week added by the bench`;
+    case "games":
+      return `${axis.value.toFixed(1)} games a week per main player`;
+    case "health":
+      return `${axis.value.toFixed(0)}% of your top ten on hand, next four weeks`;
+    case "trend":
+      return `${axis.value >= 0 ? "+" : "−"}${Math.abs(axis.value).toFixed(1)}%, projections against averages`;
+    default:
+      return formatPoints(axis.value);
   }
-  if (axis.unit === "games") return `${axis.value.toFixed(1)} games a week each`;
-  return `${formatPoints(axis.value)} a ${per}`;
 }
-
-const AXIS_NOTES: Record<string, string> = {
-  ceiling: "a good week (1 in 10 is better)",
-  floor: "a bad week (1 in 10 is worse)",
-  stars: "your three best players' locked scores",
-  depth: "what the bench adds over the best nine",
-  games: "your ten main players",
-  health: "of your main players' value on hand over the next four weeks (injuries only)",
-  trend: "where your players are projected to head",
-};
 
 export function TeamCharts({
   snapshot,
@@ -98,7 +102,7 @@ export function TeamCharts({
             <Radar
               axes={profile.shape}
               onFocus={(axis) =>
-                onFocus(axis && `${axis.label}: ${axisFigure(axis, "week")}, ${AXIS_NOTES[axis.key] ?? ""}. ${ordinal(axis.rank)} of ${teams}.`)
+                onFocus(axis && `${axis.label}: ${shapeNote(axis)}. ${ordinal(axis.rank)} of ${teams}.`)
               }
             />
           )}
@@ -121,7 +125,7 @@ export function TeamCharts({
               <Radar
                 axes={profile.mix}
                 onFocus={(axis) =>
-                  onFocus(axis && `${axis.label}: ${axisFigure(axis, "game")} from your ten main players. ${ordinal(axis.rank)} of ${teams}.`)
+                  onFocus(axis && `${axis.label}: ${formatPoints(axis.value)} a game from your main players. ${ordinal(axis.rank)} of ${teams}.`)
                 }
               />
             ) : (
@@ -221,6 +225,35 @@ function point(index: number, count: number, value: number): [number, number] {
   return [CX + radius * Math.cos(angle), CY + radius * Math.sin(angle)];
 }
 
+/**
+ * Pointer handling for a part of a chart: a mouse picks it on the way in (and the chart lets go
+ * on the way out); a tap picks it, and a tap on the chart's empty space lets go. A tap also sends
+ * mouse events, so only a real mouse may pick on entering, or the tap would undo itself.
+ */
+function pointing(index: number, pick: (index: number | null) => void) {
+  return {
+    onPointerEnter: (event: React.PointerEvent) => {
+      if (event.pointerType === "mouse") pick(index);
+    },
+    onClick: () => pick(index),
+  };
+}
+
+/** Where an axis label sits, and which way it runs from there. */
+function labelAt(index: number, count: number): { x: number; y: number; anchor: "start" | "middle" | "end" } {
+  const [x, y] = point(index, count, 12.2);
+  const anchor = Math.abs(x - CX) < 8 ? "middle" : x > CX ? "start" : "end";
+  return { x: x + (anchor === "start" ? 5 : anchor === "end" ? -5 : 0), y, anchor };
+}
+
+/** A box around an axis label, a little larger than the text (11px labels are about 6.4px a letter). */
+function labelBox(label: string, index: number, count: number) {
+  const { x, y, anchor } = labelAt(index, count);
+  const width = label.length * 6.4 + 16;
+  const left = anchor === "start" ? x - 8 : anchor === "end" ? x - width + 8 : x - width / 2;
+  return { x: left, y: y - 10, width, height: 22 };
+}
+
 const path = (points: [number, number][]) => points.map(([x, y], index) => `${index ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`).join("") + "Z";
 
 function Radar({ axes, onFocus }: { axes: ProfileAxis[]; onFocus: (axis: ProfileAxis | null) => void }) {
@@ -233,7 +266,7 @@ function Radar({ axes, onFocus }: { axes: ProfileAxis[]; onFocus: (axis: Profile
   const team = axes.map((axis, index) => point(index, count, axis.scaled));
   const league = axes.map((axis, index) => point(index, count, axis.league));
   return (
-    <svg className="radar" viewBox="0 0 300 236" role="img" aria-label={axes.map((axis) => `${axis.label} ${axis.rank} of the league`).join(", ")} onMouseLeave={() => pick(null)}>
+    <svg className="radar" viewBox="-30 0 360 236" role="img" aria-label={axes.map((axis) => `${axis.label} ${axis.rank} of the league`).join(", ")} onPointerLeave={(event) => event.pointerType === "mouse" && pick(null)} onClick={(event) => event.target === event.currentTarget && pick(null)}>
       {[2.5, 5, 7.5, 10].map((ring) => (
         <path key={ring} className="radar-ring" d={path(axes.map((_, index) => point(index, count, ring)))} />
       ))}
@@ -249,29 +282,42 @@ function Radar({ axes, onFocus }: { axes: ProfileAxis[]; onFocus: (axis: Profile
         ))}
       </g>
       {axes.map((axis, index) => {
-        const [x, y] = point(index, count, 12.2);
-        const anchor = Math.abs(x - CX) < 8 ? "middle" : x > CX ? "start" : "end";
-        const nudge = anchor === "start" ? 5 : anchor === "end" ? -5 : 0;
+        const { x, y, anchor } = labelAt(index, count);
         return (
-          <text key={axis.key} className={`radar-label${active === index ? " is-active" : ""}`} x={x + nudge} y={y + 4} textAnchor={anchor}>
+          <text key={axis.key} className={`radar-label${active === index ? " is-active" : ""}`} x={x} y={y + 4} textAnchor={anchor}>
             {axis.label}
           </text>
         );
       })}
-      {/* A slice per axis catches the pointer anywhere near it. */}
+      {/* Each axis catches the pointer over a triangle from the middle out past its dot to the
+          outer ring, and over a box around its label (drawn last, so a label always picks its own axis). */}
       {axes.map((axis, index) => {
         const half = Math.PI / count;
         const angle = -Math.PI / 2 + (2 * Math.PI * index) / count;
-        const reach = R + 30;
+        const reach = R + 12;
         const a = [CX + reach * Math.cos(angle - half), CY + reach * Math.sin(angle - half)];
         const b = [CX + reach * Math.cos(angle + half), CY + reach * Math.sin(angle + half)];
         return (
           <path
             key={axis.key}
             className="chart-hit"
-            d={`M${CX},${CY}L${a[0]},${a[1]}L${b[0]},${b[1]}Z`}
-            onMouseEnter={() => pick(index)}
-            onClick={() => pick(active === index ? null : index)}
+            d={`M${CX},${CY}L${a[0]!.toFixed(1)},${a[1]!.toFixed(1)}L${b[0]!.toFixed(1)},${b[1]!.toFixed(1)}Z`}
+            {...pointing(index, pick)}
+          />
+        );
+      })}
+      {axes.map((axis, index) => {
+        const box = labelBox(axis.label, index, count);
+        return (
+          <rect
+            key={axis.key}
+            className="chart-hit"
+            x={box.x}
+            y={box.y}
+            width={box.width}
+            height={box.height}
+            rx={4}
+            {...pointing(index, pick)}
           />
         );
       })}
@@ -313,7 +359,7 @@ function WeekChart({ weeks, onFocus }: { weeks: WeekPoint[]; onFocus: (point: We
   const labelEvery = Math.ceil(weeks.length / 6);
   const slot = plotWidth / Math.max(1, weeks.length - 1);
   return (
-    <svg className="week-chart" viewBox={`0 0 ${W.width} ${W.height}`} role="img" aria-label="Projected score each week left, against the league" onMouseLeave={() => pick(null)}>
+    <svg className="week-chart" viewBox={`0 0 ${W.width} ${W.height}`} role="img" aria-label="Projected score each week left, against the league" onPointerLeave={(event) => event.pointerType === "mouse" && pick(null)} onClick={(event) => event.target === event.currentTarget && pick(null)}>
       {niceTicks(y0, y1).map((tick) => (
         <g key={tick}>
           <line className="week-grid" x1={W.left} x2={W.width - W.right} y1={y(tick)} y2={y(tick)} />
@@ -344,8 +390,7 @@ function WeekChart({ weeks, onFocus }: { weeks: WeekPoint[]; onFocus: (point: We
           y={W.top}
           width={slot}
           height={plotHeight}
-          onMouseEnter={() => pick(index)}
-          onClick={() => pick(active === index ? null : index)}
+          {...pointing(index, pick)}
         />
       ))}
     </svg>
