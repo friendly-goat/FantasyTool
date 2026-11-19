@@ -134,20 +134,22 @@ export function players(model: StrengthModel, ids: string[]): ModelPlayer[] {
 // A team's roster before a trade is the same whatever is offered (the
 // players in a trade are never free agents), so it is worked out once: the
 // free upgrades the manager can make anyway (his weakest players for better
-// free agents, as many as the trade opens spots), then IR and waivers as
+// free agents, when the trade opens a roster spot), then IR and waivers as
 // usual. The trade is made on that roster.
 
 /**
- * How many free upgrades a team's roster gets before a trade: one per roster
- * spot the trade opens for it. A spot the trade opens is filled from waivers,
- * so the team gets the same number of waiver moves without the trade, and the
- * trade is not credited with them (sending away a player worth less than a
- * free agent gains nothing). A team that sends as many as it gets, or fewer,
- * gets none: every team reaching for the same few free agents at once would
- * be no truer than none of them doing it.
+ * How many free upgrades a team's roster gets before a trade. A team the trade
+ * opens a roster spot for fills it from waivers, so it first makes every swap
+ * of its weakest player for a better free agent that is worth making (up to
+ * FREE_UPGRADES): it could make them without the trade, so the trade is not
+ * credited with them, and the open spot gets only the free agent left after
+ * them. (One swap per spot was not enough: a two-for-one then got credit for
+ * the second swap.) A team that sends as many as it gets, or fewer, gets none:
+ * every team reaching for the same few free agents at once would be no truer
+ * than none of them doing it.
  */
 export function freeUpgrades(sent: number, received: number): number {
-  return Math.min(FREE_UPGRADES, Math.max(0, sent - received));
+  return sent > received ? FREE_UPGRADES : 0;
 }
 const baselines = new WeakMap<StrengthModel, Map<string, { kept: string[]; filled: FilledRoster; current: number }>>();
 function baselineEntry(model: StrengthModel, before: string[], upgrades = 0) {
@@ -1053,7 +1055,7 @@ export function findTrades(
   // Every roster as the trades are made on it (worked out once per model, so the first search pays).
   for (const [teamIndex, team] of snapshot.teams.entries()) {
     report("setup", 0, 0.1, teamIndex, snapshot.teams.length);
-    for (let upgrades = 0; upgrades <= 1; upgrades++) quickRosterBefore(model, rosterIds(snapshot, team.rosterId), upgrades);
+    for (const upgrades of [0, FREE_UPGRADES]) quickRosterBefore(model, rosterIds(snapshot, team.rosterId), upgrades);
   }
 
   // ---- Layer 1: swaps ----

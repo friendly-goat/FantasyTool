@@ -151,7 +151,7 @@ happens to its projected weekly score.
 | Re-evaluation date | when an injured player is back | read as the earliest return; the expected return is 40% of the time from the report to the re-evaluation later, at least 7 days (2 weeks off: back in about 3; 8 weeks: about 11) |
 | Return window spread | when an injured player is back | at least 25% of the time away, centred on the expected day |
 | Injured reserve and waiver pickups | strength, trades | one player per IR slot; open spots filled from the 6 best free agents; the same rule before and after a trade |
-| Free upgrades (a trade's what-if only) | trades | one swap of the weakest player for a better free agent per roster spot the trade opens (none for a team that gets as many players as it sends), unless it makes the roster worse; made once, on the roster before the trade, and the trade is made on that roster; never below the team as it stands |
+| Free upgrades (a trade's what-if only) | trades | for a team the trade opens a roster spot for, every swap of its weakest player for a better free agent worth making (up to 5); none for a team that gets as many players as it sends; made once, on the roster before the trade, and the trade is made on that roster; never below the team as it stands |
 | What they see of an injured player | what they see on averages | his average less the share of weeks he will miss, plus 10% of that; at most 80% off |
 | Reluctance to trade at all | chance they accept | fixed: with the premium below, an even trade comes out at about a third |
 | Own-player premium (managers overvalue their own players) | what they see on averages | fixed: their players count 8% higher (`OWN_PLAYER_PREMIUM`) |
@@ -382,9 +382,11 @@ active player (a pickup or not) plays only until then; nobody goes for a
 player out for the season. Rosters are filled the same way before and after
 a trade, so a trade is credited only with the spots it opens, and a pickup
 the team makes either way is not counted as the trade's. For the same reason
-a trade is made on the roster after the team's free upgrades: one for each
-roster spot the trade opens, its weakest player swapped for a better free
-agent, as long as the roster gets no worse. A team that gets as many players
+a trade that opens a roster spot for a team is made on its roster after
+its free upgrades: every swap of its weakest player for a better free agent
+that is worth making (up to five), so the open spot gets only the free agent
+left after them. (One swap per spot was not enough: a two-for-one then got
+credit for the second swap, about 2 points a week in Nov 2026.) A team that gets as many players
 as it sends gets none: every team in the league reaching for the same few
 free agents at once is no truer than none of them doing it, and it would
 make every bench look as good as the best free agent. A team could make those moves anyway, so a two-for-one that

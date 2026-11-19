@@ -91,9 +91,9 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   near-misses grown into packages (up to 3), deeper only when nothing is
   likely. Check search changes with `scripts/audit-trades.ts` (brute force on
   the sample league). The search runs in a web worker (`src/search.ts`);
-  a trade is made on the roster after its free upgrades (one per roster
-  spot it opens, `freeUpgrades`; decided once before the trade, never below
-  the team as it stands); never suggest an offer that is a big
+  a trade is made on the roster after its free upgrades (every worthwhile
+  one for a team the trade opens a spot for, none otherwise, `freeUpgrades`;
+  decided once before the trade, never below the team as it stands); never suggest an offer that is a big
   loss (F) for the other team, or one where either side drops a player it
   receives (`droppedOnArrival`). IR slots come from Sleeper's
   `settings.reserve_slots`, not `roster_positions`.
