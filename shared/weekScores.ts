@@ -40,6 +40,8 @@ export const CORRECTION_LIMIT = 15;
 
 /** Points are shown to two decimals; anything closer than this is the same score. */
 const SAME = 0.005;
+/** Sleeper's season totals can be a cent off the sum of the weeks (1,417.99 for 1,418.00). */
+const CHECK_TOLERANCE = 0.02;
 
 const round2 = (value: number) => Math.round(value * 100) / 100;
 
@@ -134,8 +136,8 @@ export function checkRecorded(ledger: StandingsLedger, recorded: RecordedWeek[])
         return sum + (opponent === undefined ? 0 : (entry.points[opponent] ?? 0));
       }, 0),
     );
-    if (Math.abs(scored - mark.pointsFor[id]!) > SAME) problems.push({ rosterId: id, total: "points for", recorded: scored, standings: mark.pointsFor[id]! });
-    if (Math.abs(allowed - (mark.pointsAgainst[id] ?? 0)) > SAME)
+    if (Math.abs(scored - mark.pointsFor[id]!) > CHECK_TOLERANCE) problems.push({ rosterId: id, total: "points for", recorded: scored, standings: mark.pointsFor[id]! });
+    if (Math.abs(allowed - (mark.pointsAgainst[id] ?? 0)) > CHECK_TOLERANCE)
       problems.push({ rosterId: id, total: "points against", recorded: allowed, standings: mark.pointsAgainst[id] ?? 0 });
   }
   return problems;
