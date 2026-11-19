@@ -252,6 +252,14 @@ export interface StatLine {
   pf: number;
 }
 
+/**
+ * Where fantasy points come from, by scoring setting: points and shooting, threes, rebounds,
+ * assists, steals and blocks, bonuses (double-doubles, triple-doubles, thresholds), and what
+ * costs points (turnovers, fouls). Worked out in server/scoring.ts.
+ */
+export const FANTASY_SOURCES = ["scoring", "threes", "boards", "playmaking", "defense", "bonuses", "mistakes"] as const;
+export type FantasySource = (typeof FANTASY_SOURCES)[number];
+
 export interface PlayerStats extends PlayerRef {
   games: number;
   /** Average minutes per game played. */
@@ -290,6 +298,11 @@ export interface PlayerStats extends PlayerRef {
   recentAvg: number | null;
   recentGames: number;
   averages: StatLine;
+  /**
+   * Fantasy points per game by where they come from (shared/teamProfile.ts). Missing from
+   * reports saved before it was added.
+   */
+  sources?: Record<FantasySource, number>;
 }
 
 export interface StatsReport {

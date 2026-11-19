@@ -668,6 +668,14 @@ export function projectRoster(model: StrengthModel, roster: ModelPlayer[], weeks
 }
 
 /** Average weekly score for each real week left (the model's calendar), from the same imaginary weeks. */
+/** The roster's simulated score in each imaginary week (imaginary week w is real week w mod the weeks left). */
+export function weeklyTotals(model: StrengthModel, playerIds: string[]): number[] {
+  const roster = playerIds.flatMap((id) => modelPlayer(model, id) ?? []);
+  if (roster.length === 0) return new Array<number>(model.weeks).fill(0);
+  const work = scratchFor(model, roster);
+  return Array.from({ length: model.weeks }, (_, week) => simulateWeek(model, roster, week, work).total);
+}
+
 export function projectByWeek(model: StrengthModel, playerIds: string[]): number[] {
   const count = model.calendar.weeks.length;
   if (count === 0) return [];

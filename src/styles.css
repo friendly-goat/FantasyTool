@@ -2714,6 +2714,267 @@ th[aria-sort] .sort-button {
   font-variant-numeric: tabular-nums;
 }
 
+/* ---- Team charts (My team, above the roster) ---- */
+
+/* Three square-ish cards side by side; on a phone they slide sideways, one
+   at a time, with dots for where you are. */
+.team-charts-wrap {
+  margin: 1.25rem 0 0.5rem;
+}
+
+.team-charts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.team-charts-dots {
+  display: none;
+}
+
+.team-chart {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0.9rem 1rem 0.85rem;
+  min-width: 0;
+}
+
+.team-chart-head {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.team-chart-title {
+  font-weight: 700;
+}
+
+.team-chart-legend {
+  display: flex;
+  gap: 0.65rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.team-chart-legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.team-chart-key {
+  display: inline-block;
+  width: 0.85rem;
+  height: 0;
+  border-top: 2px solid var(--accent);
+}
+
+.team-chart-key.key-league {
+  border-top: 2px dashed var(--muted);
+}
+
+.team-chart-key.key-range {
+  height: 0.55rem;
+  border: 0;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--muted) 22%, transparent);
+}
+
+.team-chart-plot {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+}
+
+.team-chart-plot svg {
+  width: 100%;
+  height: auto;
+  max-height: 15.5rem;
+  overflow: visible;
+}
+
+.team-chart-empty {
+  width: 100%;
+  aspect-ratio: 300 / 236;
+  border-radius: var(--radius-small);
+  background: var(--surface-raised);
+  opacity: 0.5;
+}
+
+.team-chart-note {
+  min-height: 2.6em;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  line-height: 1.3;
+  transition: color 160ms ease;
+}
+
+.team-chart-note.is-focus {
+  color: var(--text);
+}
+
+.chart-hit {
+  fill: transparent;
+  cursor: pointer;
+}
+
+.radar-ring,
+.radar-spoke {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.radar-league {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+  opacity: 0.8;
+}
+
+.radar-team {
+  transform-origin: 150px 118px;
+  animation: radar-grow 650ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.radar-team-area {
+  fill: color-mix(in srgb, var(--accent) 22%, transparent);
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.radar-dot,
+.week-dot {
+  fill: var(--accent);
+  stroke: var(--surface);
+  stroke-width: 2;
+  transition: r 150ms ease;
+}
+
+.radar-label {
+  fill: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.radar-label.is-active,
+.week-axis.is-active {
+  fill: var(--text);
+}
+
+.week-grid {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.week-axis {
+  fill: var(--muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.week-band {
+  fill: color-mix(in srgb, var(--muted) 16%, transparent);
+}
+
+.week-league {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+
+.week-team {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.week-team {
+  animation: week-rise 650ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.week-guide {
+  stroke: var(--muted);
+  stroke-width: 1;
+  opacity: 0.6;
+}
+
+@keyframes radar-grow {
+  from {
+    transform: scale(0.2);
+    opacity: 0;
+  }
+}
+
+@keyframes week-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .radar-team,
+  .week-team {
+    animation: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .team-charts {
+    display: flex;
+    gap: 0.75rem;
+    margin: 0 -1rem;
+    padding: 0 1rem;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scroll-padding: 0 1rem;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .team-charts::-webkit-scrollbar {
+    display: none;
+  }
+
+  .team-chart {
+    flex: 0 0 86%;
+    scroll-snap-align: start;
+  }
+
+  .team-charts-dots {
+    display: flex;
+    justify-content: center;
+    gap: 0.4rem;
+    margin-top: 0.6rem;
+  }
+
+  .team-charts-dots span {
+    width: 0.4rem;
+    height: 0.4rem;
+    border-radius: 999px;
+    background: var(--line);
+    transition:
+      width 200ms ease,
+      background-color 200ms ease;
+  }
+
+  .team-charts-dots span.is-current {
+    width: 1.1rem;
+    background: var(--accent);
+  }
+}
+
 /* ---- Trade search progress ---- */
 
 /* A bar that fills smoothly while the search runs (eased between its

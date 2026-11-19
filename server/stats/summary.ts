@@ -1,8 +1,8 @@
 import type { InjuryNews } from "../../shared/injury.ts";
-import type { PlayerGame, PlayerRef, PlayerStats, StatLine } from "../../shared/types.ts";
+import { FANTASY_SOURCES, type FantasySource, type PlayerGame, type PlayerRef, type PlayerStats, type StatLine } from "../../shared/types.ts";
 import { lockInValue, lockInValues } from "../../shared/lockin.ts";
 import { availabilityOutlook, projectPlayer } from "../../shared/projection.ts";
-import { fantasyPoints, sleeperDisplayedAverage } from "../scoring.ts";
+import { fantasyPoints, fantasySources, sleeperDisplayedAverage } from "../scoring.ts";
 import type { GameLine } from "./provider.ts";
 
 /** Number of most recent games behind each player's "recent" average. */
@@ -129,6 +129,10 @@ function summarizePlayer(
   const averages = Object.fromEntries(
     STAT_KEYS.map((key) => [key, mean(games.map((game) => game.stats[key]))]),
   ) as unknown as StatLine;
+  const split = games.map((game) => fantasySources(game.stats, scoring));
+  const sources = Object.fromEntries(
+    FANTASY_SOURCES.map((source) => [source, mean(split.map((parts) => parts[source]))]),
+  ) as Record<FantasySource, number>;
 
   // Which of his current team's games he played. If he changed teams, only
   // the games since he joined count, so the move does not look like an absence.
@@ -163,6 +167,7 @@ function summarizePlayer(
     recentAvg: recent.length > 0 ? mean(recent) : null,
     recentGames: recent.length,
     averages,
+    sources,
   };
 }
 

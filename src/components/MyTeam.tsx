@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from "react";
 import type { TeamSituation } from "../../shared/insight.ts";
 import type { Move } from "../../shared/moves.ts";
 import { searchMoves } from "../search.ts";
+import { TeamCharts } from "./TeamCharts.tsx";
 import type { StrengthModel, TeamStrength } from "../../shared/strength.ts";
 import type { TradeOffer } from "../../shared/trade.ts";
 import type { LeagueSnapshot, PlayerRef, StatsReport, Team } from "../../shared/types.ts";
@@ -113,6 +114,8 @@ export function MyTeam({ snapshot, stats, model, strengths, team, onChangeTeam, 
           Change<span className="hide-narrow"> my team</span>
         </button>
       </div>
+
+      <TeamCharts snapshot={snapshot} model={model} strengths={strengths} stats={players} rosterId={team.rosterId} />
 
       <h3 className="panel-heading">Roster</h3>
       <div className="roster-card">

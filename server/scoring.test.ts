@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { StatLine } from "../shared/types.ts";
-import { fantasyPoints, ignoredSettings, sleeperDisplayedAverage } from "./scoring.ts";
+import { fantasyPoints, fantasySources, ignoredSettings, sleeperDisplayedAverage } from "./scoring.ts";
 
 const EMPTY: StatLine = {
   pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tov: 0, tpm: 0, tpa: 0,
@@ -97,5 +97,22 @@ describe("sleeperDisplayedAverage", () => {
 
   it("is zero for a player with no games", () => {
     expect(sleeperDisplayedAverage([], LEAGUE)).toBe(0);
+  });
+});
+
+describe("fantasySources", () => {
+  it("splits a game's points by where they come from, adding up to the total", () => {
+    const game = line({ pts: 41, reb: 12, ast: 6, stl: 2, blk: 1, tov: 4, tpm: 5 });
+    const parts = fantasySources(game, LEAGUE);
+    expect(parts.scoring).toBeCloseTo(41);
+    expect(parts.boards).toBeCloseTo(14.4);
+    expect(parts.playmaking).toBeCloseTo(9);
+    expect(parts.defense).toBeCloseTo(7);
+    // Double-double (3) and 40+ points (5).
+    expect(parts.bonuses).toBeCloseTo(8);
+    expect(parts.mistakes).toBeCloseTo(-4);
+    // This league gives nothing for threes.
+    expect(parts.threes).toBe(0);
+    expect(Object.values(parts).reduce((sum, value) => sum + value, 0)).toBeCloseTo(fantasyPoints(game, LEAGUE));
   });
 });

@@ -1,4 +1,4 @@
-import type { StatLine } from "../shared/types.ts";
+import { FANTASY_SOURCES, type FantasySource, type StatLine } from "../shared/types.ts";
 
 // Turns a box-score line into fantasy points using a league's Sleeper
 // scoring settings (the `scoring_settings` object on the league).
@@ -73,6 +73,42 @@ export function fantasyPoints(line: StatLine, settings: Record<string, number>):
     if (rule) total += rule(line) * weight;
   }
   return total;
+}
+
+/** Which source each scoring setting's points count toward (bonus_* settings are bonuses). */
+const SOURCE_OF: Record<string, FantasySource> = {
+  pts: "scoring",
+  fgm: "scoring",
+  fga: "scoring",
+  fgmi: "scoring",
+  ftm: "scoring",
+  fta: "scoring",
+  ftmi: "scoring",
+  tpm: "threes",
+  tpa: "threes",
+  tpmi: "threes",
+  reb: "boards",
+  oreb: "boards",
+  dreb: "boards",
+  ast: "playmaking",
+  stl: "defense",
+  blk: "defense",
+  dd: "bonuses",
+  td: "bonuses",
+  to: "mistakes",
+  pf: "mistakes",
+};
+
+/** A stat line's fantasy points split by where they come from; the parts add up to fantasyPoints. */
+export function fantasySources(line: StatLine, settings: Record<string, number>): Record<FantasySource, number> {
+  const parts = Object.fromEntries(FANTASY_SOURCES.map((source) => [source, 0])) as Record<FantasySource, number>;
+  for (const [setting, weight] of Object.entries(settings)) {
+    if (!weight) continue;
+    const rule = ruleFor(setting);
+    if (!rule) continue;
+    parts[SOURCE_OF[setting] ?? (setting.startsWith("bonus_") ? "bonuses" : "scoring")] += rule(line) * weight;
+  }
+  return parts;
 }
 
 /**

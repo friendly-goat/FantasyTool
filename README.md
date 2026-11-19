@@ -426,6 +426,34 @@ what the team locks in an average week, what its best nine alone would lock,
 and what the bench adds by rotating in. The week's matchup is no longer shown
 here (see [Live matchup](#live-matchup)).
 
+### Team charts (My team)
+
+Above the roster, three cards place your team against the league
+(`shared/teamProfile.ts`, `src/components/TeamCharts.tsx`); on a phone they
+slide sideways. Each says in one line what stands out, and hovering or
+tapping part of a chart gives that figure and its rank.
+
+- **Team shape** (radar): from the same lock-in simulation as team strength,
+  run for every team: ceiling and floor (a week better than 9 in 10, and
+  worse than 9 in 10), top three (your three best players' expected locked
+  scores), depth (what the bench adds over the best nine), games (games a
+  week your ten main players are expected to play), health (share of their
+  value not lost to injuries) and trend (projection against their averages).
+- **Scoring mix** (radar): where your ten main players' fantasy points come
+  from (scoring, threes, boards, playmaking, defense, bonuses), each counted
+  as often as he is expected to play, plus what turnovers and fouls cost. The
+  split by source is worked out on the server (`fantasySources` in
+  `server/scoring.ts`, saved on each player's stats as `sources`); a source
+  the league does not score, such as threes in the owner's league, is left
+  out.
+- **Week by week** (line): your projected score in each real week left,
+  against the league's average and range, with your best three-week
+  stretch and toughest week.
+
+On the radars 0 is the league's lowest team and 10 its highest, and the
+dashed shape is the league average. Display only: nothing here feeds
+strength, grades or trade ideas.
+
 ### Top moves (My team)
 
 `topMoves` in `shared/moves.ts`. The My team tab lists the five moves that

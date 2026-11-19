@@ -128,6 +128,9 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
 - The Activity tab's team effect (`moveEffect` in `shared/activity.ts`)
   measures each move on today's roster, with and without it; display only,
   never fed into strength, grades or trade ideas.
+- The team charts on My team (`shared/teamProfile.ts`, `TeamCharts.tsx`)
+  place a team on the league's range (0 lowest team, 10 highest); display
+  only, never fed into strength, grades or trade ideas.
 - The Draft tab's rising and falling marks (`shared/draft.ts`) are a display
   label only: rank by weekly value now against pick order, one round either
   way. Never feed them into strength, grades or trade ideas.
