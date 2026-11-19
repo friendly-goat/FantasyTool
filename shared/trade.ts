@@ -725,6 +725,12 @@ export function similarityKey(offer: TradeOffer, result: TradeResult, namedGive?
   return `${offer.teamB}|${[...offer.bGives].sort().join("+")}|${main?.id ?? ""}`;
 }
 
+/** The steps of a trade search, in order, for a progress bar. */
+export type SearchStage = "setup" | "swaps" | "estimates" | "closer" | "screening" | "first-look" | "measuring" | "packages";
+
+/** Reports how far a search has got: 0 to 1 overall, and the step it is on. */
+export type SearchProgress = (share: number, stage: SearchStage) => void;
+
 export interface FinderResult {
   ideas: TradeIdea[];
   /**
@@ -918,7 +924,20 @@ export function findTrades(
   situations: Map<number, TeamSituation>,
   options: FinderOptions = {},
   limit = 8,
+  /** Told how far the search has got, for a progress bar (never fed back into it). */
+  onProgress?: SearchProgress,
 ): FinderResult {
+  // Progress, as shares of the whole search; small steps are not reported.
+  let reported = -1;
+  let reportedStage: SearchStage | null = null;
+  const report = (stage: SearchStage, from: number, to: number, done: number, total: number) => {
+    if (!onProgress) return;
+    const share = from + (to - from) * Math.min(1, total > 0 ? done / total : 1);
+    if (stage === reportedStage && share - reported < 0.005) return;
+    reported = Math.max(reported, share);
+    reportedStage = stage;
+    onProgress(reported, stage);
+  };
   const targeted = Boolean(options.givePlayerId || options.getPlayerId);
   const minGain = targeted ? -MAX_PRICE : MIN_GAIN;
   const screenWeeks = targeted ? SCREEN_WEEKS : OPEN_SCREEN_WEEKS;
@@ -1025,8 +1044,15 @@ export function findTrades(
     if (chance >= SCREEN_FLOOR) candidates.push(candidate);
   };
 
+  // Every roster as the trades are made on it (worked out once per model, so the first search pays).
+  for (const [teamIndex, team] of snapshot.teams.entries()) {
+    report("setup", 0, 0.1, teamIndex, snapshot.teams.length);
+    for (let upgrades = 0; upgrades <= 1; upgrades++) quickRosterBefore(model, rosterIds(snapshot, team.rosterId), upgrades);
+  }
+
   // ---- Layer 1: swaps ----
-  for (const team of snapshot.teams) {
+  for (const [teamIndex, team] of snapshot.teams.entries()) {
+    report("swaps", 0.1, 0.14, teamIndex, snapshot.teams.length);
     if (team.rosterId === rosterId) continue;
     const theirs = rosterPlayers(team).map((player) => player.id);
     const targets = players(model, theirs).filter(
@@ -1134,7 +1160,7 @@ export function findTrades(
   const tradable = myPlayers.filter((player) => player.games > 0);
   const giveSets = setsOfUpTo2(tradable).filter((set) => set.some((player) => givers.includes(player)));
   const estimates: { teamId: number; gives: ModelPlayer[]; gets: ModelPlayer[]; band: number; score: number }[] = [];
-  for (const team of snapshot.teams) {
+  for (const [teamIndex, team] of snapshot.teams.entries()) {
     if (team.rosterId === rosterId) continue;
     const info = infoFor(team.rosterId);
     const available = players(model, info.theirs).filter((player) => player.games > 0 || isInjuredTarget(player));
@@ -1144,7 +1170,8 @@ export function findTrades(
       (!options.getInjured || isInjuredTarget(player));
     const getSets = setsOfUpTo2(available).filter((set) => set.some(wanted));
     if (getSets.length === 0) continue;
-    for (const gets of getSets) {
+    for (const [setIndex, gets] of getSets.entries()) {
+      report("estimates", 0.14, 0.34, teamIndex + setIndex / getSets.length, snapshot.teams.length);
       const sent = sumAverage(gets);
       for (const gives of giveSets) {
         if (gives.length === 1 && gets.length === 1) continue; // swaps: screened above
@@ -1169,7 +1196,8 @@ export function findTrades(
   estimates.sort((x, y) => x.band - y.band || y.score - x.score);
   // A second, closer look at the best few thousand: the whole trade on the same few weeks, both
   // sides (the pairing above cannot see how two players fit together, or a player too many).
-  const closer = estimates.slice(0, CLOSER_LOOK).flatMap((estimate) => {
+  const closer = estimates.slice(0, CLOSER_LOOK).flatMap((estimate, index, all) => {
+    report("closer", 0.34, 0.42, index, all.length);
     const info = infoFor(estimate.teamId);
     const myAfter = quickRoster(mine, estimate.gives.map((player) => player.id), estimate.gets);
     const theirAfter = quickRoster(info.theirs, estimate.gets.map((player) => player.id), estimate.gives);
@@ -1188,7 +1216,8 @@ export function findTrades(
   });
   closer.sort((x, y) => x.band - y.band || y.score - x.score);
   // Every trade that holds up on the closer look is screened, best first, up to a limit.
-  for (const estimate of closer.slice(0, SCREENED)) {
+  for (const [index, estimate] of closer.slice(0, SCREENED).entries()) {
+    report("screening", 0.42, 0.5, index, Math.min(SCREENED, closer.length));
     consider(estimate.teamId, estimate.gives, estimate.gets, 1);
   }
 
@@ -1238,7 +1267,9 @@ export function findTrades(
     return idea;
   };
 
-  const choose = (newest: number) => {
+  /** Measures the best and chooses the ideas; `from` and `to` are its share of the progress bar. */
+  const choose = (newest: number, from: number, to: number) => {
+    const middle = from + (to - from) * 0.6;
     // The best of every layer so far, plus the best of the newest layer, so
     // packages (often less gain for you, more chance) get measured too.
     // At most two versions of one idea (same team, same players for you, same main piece) go
@@ -1272,7 +1303,10 @@ export function findTrades(
       !droppedOnArrival(result.a) &&
       !droppedOnArrival(result.b);
     const firstLook = [...new Set([...byQuick.slice(0, FIRST_LOOK), ...shortlist])]
-      .map((candidate) => ({ candidate, idea: measure(candidate, FIRST_LOOK_WEEKS) }))
+      .map((candidate, index, all) => {
+        report("first-look", from, middle, index, all.length);
+        return { candidate, idea: measure(candidate, FIRST_LOOK_WEEKS) };
+      })
       .filter(({ idea }) => passes(idea))
       .sort(
         (a, b) =>
@@ -1288,8 +1322,14 @@ export function findTrades(
         return true;
       })
       .map(({ candidate }) => candidate);
+    let fullyMeasured = 0;
     const rankIdeas = (list: Candidate[]) => list
-      .map((candidate) => measure(candidate))
+      .map((candidate) => {
+        if (!measured.has(`${candidate.offer.teamB}:${candidate.offer.aGives.join("+")}:${candidate.offer.bGives.join("+")}`)) {
+          report("measuring", middle, to, fullyMeasured++, limit * FINALISTS);
+        }
+        return measure(candidate);
+      })
       // Worth it for you, and not a big loss for them: an offer they would see as robbery is no idea at any chance.
       .filter(({ result }) => gain(result.a) >= minGain && result.b.grade >= BIG_LOSS)
       // A player either side would drop as soon as he arrives is not really part of the offer:
@@ -1337,16 +1377,17 @@ export function findTrades(
     });
   };
 
-  let { chosen, outlook } = choose(1);
+  let { chosen, outlook } = choose(1, 0.5, 0.97);
   let depth = 1;
   while (outlook !== "likely" && depth < Math.min(MAX_DEPTH, options.maxDepth ?? MAX_DEPTH)) {
     depth++;
     // Make room for the new layer's ideas on the shortlist: they are measured
     // alongside the best of the layers before.
     const before = candidates.length;
+    report("packages", 0.97, 0.99, depth - 2, 2);
     grow(depth);
     if (candidates.length === before && misses.every((miss) => miss.depth < depth)) break;
-    ({ chosen, outlook } = choose(depth));
+    ({ chosen, outlook } = choose(depth, 0.97, 0.99));
   }
 
   const myProfile = profileOf(rosterId);

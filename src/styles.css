@@ -2714,6 +2714,244 @@ th[aria-sort] .sort-button {
   font-variant-numeric: tabular-nums;
 }
 
+/* ---- Trade search progress ---- */
+
+/* A bar that fills smoothly while the search runs (eased between its
+   reports), the step it is on, and the steps ticked off below; stand-in
+   cards hint at the ideas to come. */
+.search-progress {
+  margin: 1rem 0 0.75rem;
+  padding: 1rem 1.25rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius, 14px);
+  background: var(--surface);
+  animation: search-progress-in 260ms ease-out;
+  transition: opacity 300ms ease 150ms;
+}
+
+.search-progress.is-done {
+  opacity: 0.85;
+}
+
+.search-progress-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.search-progress-stage {
+  margin: 0;
+  font-weight: 650;
+  animation: search-progress-word 320ms ease-out;
+}
+
+.search-progress-percent {
+  color: var(--muted);
+  font-size: 0.875rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.search-progress-track {
+  position: relative;
+  height: 0.5rem;
+  margin: 0.75rem 0 0.9rem;
+  border-radius: 999px;
+  background: var(--surface-raised);
+  overflow: hidden;
+}
+
+.search-progress-fill {
+  position: relative;
+  height: 100%;
+  min-width: 0.5rem;
+  border-radius: inherit;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 45%, var(--surface-raised)), var(--accent));
+  box-shadow: 0 0 14px color-mix(in srgb, var(--accent) 55%, transparent);
+  overflow: hidden;
+}
+
+/* A soft highlight sweeping along the filled part. */
+.search-progress-fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+  transform: translateX(-120%);
+  animation: search-progress-glint 1.8s ease-in-out infinite;
+}
+
+.search-progress.is-done .search-progress-fill::after {
+  animation: none;
+  opacity: 0;
+}
+
+.search-progress-steps {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.search-progress-steps li {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 0.35rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-align: center;
+  transition: color 300ms ease;
+}
+
+/* A thin line joins each step to the one before, lit once the step is reached. */
+.search-progress-steps li:not(:first-child)::before {
+  content: "";
+  position: absolute;
+  top: calc(0.475rem - 1px);
+  right: calc(50% + 0.6rem);
+  width: calc(100% - 0.7rem);
+  height: 2px;
+  border-radius: 2px;
+  background: var(--line);
+  transition: background-color 400ms ease;
+}
+
+.search-progress-steps li.is-done:not(:first-child)::before,
+.search-progress-steps li.is-current:not(:first-child)::before {
+  background: var(--accent);
+}
+
+.search-progress-dot {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 0.95rem;
+  height: 0.95rem;
+  border: 2px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  transition:
+    background-color 300ms ease,
+    border-color 300ms ease,
+    transform 300ms ease;
+}
+
+.search-progress-steps li.is-current {
+  color: var(--text);
+}
+
+.search-progress-steps li.is-current .search-progress-dot {
+  border-color: var(--accent);
+  animation: search-progress-pulse 1.4s ease-in-out infinite;
+}
+
+.search-progress-steps li.is-done {
+  color: var(--text);
+}
+
+.search-progress-steps li.is-done .search-progress-dot {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.idea-skeletons {
+  margin-top: 0.75rem;
+}
+
+.idea-skeleton {
+  display: grid;
+  gap: 0.6rem;
+  padding: 1.1rem 1.25rem;
+  animation: search-progress-in 400ms ease-out both;
+}
+
+.idea-skeleton-line {
+  display: block;
+  width: 55%;
+  height: 0.8rem;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--surface-raised) 0%, color-mix(in srgb, var(--surface-raised) 55%, var(--surface)) 50%, var(--surface-raised) 100%);
+  background-size: 200% 100%;
+  animation: search-progress-sheen 1.6s ease-in-out infinite;
+}
+
+.idea-skeleton-line.wide {
+  width: 75%;
+  height: 1rem;
+}
+
+.idea-skeleton-line.short {
+  width: 35%;
+}
+
+@keyframes search-progress-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@keyframes search-progress-word {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+}
+
+@keyframes search-progress-glint {
+  to {
+    transform: translateX(320%);
+  }
+}
+
+@keyframes search-progress-pulse {
+  50% {
+    transform: scale(1.18);
+    box-shadow: 0 0 0 4px var(--accent-soft);
+  }
+}
+
+@keyframes search-progress-sheen {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .search-progress,
+  .search-progress-stage,
+  .idea-skeleton {
+    animation: none;
+  }
+
+  .search-progress-fill::after,
+  .search-progress-steps li.is-current .search-progress-dot,
+  .idea-skeleton-line {
+    animation: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .search-progress {
+    padding: 0.9rem 1rem 0.8rem;
+  }
+
+  .search-progress-steps li {
+    font-size: 0.6875rem;
+  }
+}
+
 /* ---- Trade balance and grades ---- */
 
 .balance-card {

@@ -2,7 +2,7 @@
 import { teamSituations } from "../shared/insight.ts";
 import { topMoves } from "../shared/moves.ts";
 import { buildModel, leagueStrength } from "../shared/strength.ts";
-import { findTrades } from "../shared/trade.ts";
+import { findTrades, type SearchStage } from "../shared/trade.ts";
 import type { FromWorker, ToWorker } from "./search.ts";
 
 const scope = globalThis as unknown as {
@@ -28,12 +28,25 @@ scope.onmessage = (event) => {
   }
   try {
     if (!current || current.source !== message.source) throw new Error("no data for this model");
-    if (!prepared || prepared.source !== current.source) prepared = { source: current.source, data: current.build() };
+    if (!prepared || prepared.source !== current.source) {
+      if (message.request.kind === "trades") scope.postMessage({ id: message.id, progress: 0, stage: "setup" });
+      prepared = { source: current.source, data: current.build() };
+    }
     const { snapshot, model, situations } = prepared.data;
     const { request } = message;
+    // Progress goes back a few times a second at most, and at every new step.
+    let sentAt = 0;
+    let sentStage = "";
+    const progress = (share: number, stage: SearchStage) => {
+      const now = Date.now();
+      if (stage === sentStage && now - sentAt < 60) return;
+      sentAt = now;
+      sentStage = stage;
+      scope.postMessage({ id: message.id, progress: share, stage });
+    };
     const result =
       request.kind === "trades"
-        ? findTrades(model, snapshot, request.rosterId, situations, request.options)
+        ? findTrades(model, snapshot, request.rosterId, situations, request.options, undefined, progress)
         : topMoves(model, snapshot, request.rosterId, situations);
     scope.postMessage({ id: message.id, result });
   } catch (error) {

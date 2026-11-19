@@ -4,7 +4,7 @@
 // from the same league and stats; the model is deterministic, so its answers
 // match what this thread would work out. Without workers (tests, old
 // browsers) the work runs here instead, after the page has painted.
-import type { FinderOptions, FinderResult } from "../shared/trade.ts";
+import type { FinderOptions, FinderResult, SearchProgress, SearchStage } from "../shared/trade.ts";
 import { findTrades } from "../shared/trade.ts";
 import { type Move, topMoves } from "../shared/moves.ts";
 import type { TeamSituation } from "../shared/insight.ts";
@@ -20,8 +20,11 @@ export type ToWorker =
   | { type: "data"; source: number; snapshot: LeagueSnapshot; report: StatsReport }
   | { type: "search"; id: number; source: number; request: SearchRequest };
 
-/** Messages back: a search's answer, or why it failed. */
-export type FromWorker = { id: number; result: FinderResult | Move[] } | { id: number; error: string };
+/** Messages back: how far a search has got, its answer, or why it failed. */
+export type FromWorker =
+  | { id: number; progress: number; stage: SearchStage }
+  | { id: number; result: FinderResult | Move[] }
+  | { id: number; error: string };
 
 interface Source {
   id: number;
@@ -40,7 +43,10 @@ export function registerModel(model: StrengthModel, snapshot: LeagueSnapshot, re
 let worker: Worker | null | undefined;
 let sent = 0;
 let nextId = 0;
-const waiting = new Map<number, { resolve: (value: FinderResult | Move[]) => void; reject: (reason: Error) => void }>();
+const waiting = new Map<
+  number,
+  { resolve: (value: FinderResult | Move[]) => void; reject: (reason: Error) => void; progress?: SearchProgress }
+>();
 
 function getWorker(): Worker | null {
   if (worker !== undefined) return worker;
@@ -54,6 +60,10 @@ function getWorker(): Worker | null {
       const reply = event.data;
       const entry = waiting.get(reply.id);
       if (!entry) return;
+      if ("progress" in reply) {
+        entry.progress?.(reply.progress, reply.stage);
+        return;
+      }
       waiting.delete(reply.id);
       if ("error" in reply) entry.reject(new Error(reply.error));
       else entry.resolve(reply.result);
@@ -74,13 +84,14 @@ function here(
   snapshot: LeagueSnapshot,
   situations: Map<number, TeamSituation>,
   request: SearchRequest,
+  progress?: SearchProgress,
 ): Promise<FinderResult | Move[]> {
   return new Promise((resolve) => {
     // Let a "Searching" label paint first.
     setTimeout(() => {
       resolve(
         request.kind === "trades"
-          ? findTrades(model, snapshot, request.rosterId, situations, request.options)
+          ? findTrades(model, snapshot, request.rosterId, situations, request.options, undefined, progress)
           : topMoves(model, snapshot, request.rosterId, situations),
       );
     }, 30);
@@ -92,19 +103,20 @@ function run(
   snapshot: LeagueSnapshot,
   situations: Map<number, TeamSituation>,
   request: SearchRequest,
+  progress?: SearchProgress,
 ): Promise<FinderResult | Move[]> {
   const source = sources.get(model);
   const target = source ? getWorker() : null;
-  if (!source || !target) return here(model, snapshot, situations, request);
+  if (!source || !target) return here(model, snapshot, situations, request, progress);
   if (sent !== source.id) {
     target.postMessage({ type: "data", source: source.id, snapshot: source.snapshot, report: source.report } satisfies ToWorker);
     sent = source.id;
   }
   const id = ++nextId;
   return new Promise<FinderResult | Move[]>((resolve, reject) => {
-    waiting.set(id, { resolve, reject });
+    waiting.set(id, { resolve, reject, progress });
     target.postMessage({ type: "search", id, source: source.id, request } satisfies ToWorker);
-  }).catch(() => here(model, snapshot, situations, request));
+  }).catch(() => here(model, snapshot, situations, request, progress));
 }
 
 /** findTrades, off the page's thread when it can be. */
@@ -114,8 +126,10 @@ export function searchTrades(
   situations: Map<number, TeamSituation>,
   rosterId: number,
   options: FinderOptions,
+  /** Told how far the search has got (0 to 1, and its step), for a progress bar. */
+  progress?: SearchProgress,
 ): Promise<FinderResult> {
-  return run(model, snapshot, situations, { kind: "trades", rosterId, options }) as Promise<FinderResult>;
+  return run(model, snapshot, situations, { kind: "trades", rosterId, options }, progress) as Promise<FinderResult>;
 }
 
 /** topMoves, off the page's thread when it can be. */

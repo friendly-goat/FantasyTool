@@ -11,6 +11,7 @@ import {
   gradeWord,
   type FinderOptions,
   type FinderResult,
+  type SearchStage,
   type TradeIdea,
   type TradeOffer,
   reserveMoves,
@@ -23,6 +24,7 @@ import {
 } from "../../shared/trade.ts";
 import type { LeagueSnapshot, Team } from "../../shared/types.ts";
 import { searchTrades } from "../search.ts";
+import { IdeaSkeletons, SearchProgress } from "./SearchProgress.tsx";
 import { formatPoints, formatRecord, formatSigned, formatWholeChange as whole, ordinal } from "../format.ts";
 import { Avatar } from "./Avatar.tsx";
 import { ChanceTag, EffectBar, RecordTag } from "./TeamEffect.tsx";
@@ -445,6 +447,7 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
   const [bGives, setBGives] = useState<Set<string>>(new Set());
   const [found, setFound] = useState<(FinderResult & { model: StrengthModel; target: string | null }) | null>(null);
   const [searching, setSearching] = useState(false);
+  const [progress, setProgress] = useState<{ share: number; stage: SearchStage | "done" } | null>(null);
   const [goal, setGoal] = useState<Goal>("best");
   const [position, setPosition] = useState("SF");
   const [sendId, setSendId] = useState("");
@@ -540,6 +543,8 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
 
   function findIdeas() {
     setSearching(true);
+    setFound(null);
+    setProgress({ share: 0, stage: "setup" });
     const options: FinderOptions =
       goal === "position"
         ? { getPosition: position }
@@ -553,9 +558,16 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
     const target =
       goal === "get" ? (model!.players.get(getId)?.name ?? null) : goal === "send" ? (model!.players.get(sendId)?.name ?? null) : null;
     const searchedWith = model!;
-    void searchTrades(searchedWith, snapshot, situations!, myRosterId, options).then((result) => {
-      setFound({ ...result, model: searchedWith, target });
-      setSearching(false);
+    void searchTrades(searchedWith, snapshot, situations!, myRosterId, options, (share, stage) =>
+      setProgress((current) => (current && current.stage !== "done" ? { share: Math.max(current.share, share), stage } : current)),
+    ).then((result) => {
+      // Let the bar fill before the ideas appear.
+      setProgress({ share: 1, stage: "done" });
+      window.setTimeout(() => {
+        setFound({ ...result, model: searchedWith, target });
+        setSearching(false);
+        setProgress(null);
+      }, 450);
     });
   }
 
@@ -636,10 +648,16 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
           </label>
         )}
         <button type="button" className="button" disabled={searching || !ready} onClick={findIdeas}>
-          {searching ? "Searching…" : "Find trades"}
+          Find trades
         </button>
       </div>
 
+      {progress && (
+        <>
+          <SearchProgress share={progress.share} stage={progress.stage} />
+          <IdeaSkeletons />
+        </>
+      )}
       {found && found.model !== model && (
         <p className="notice">
           Projections have been updated since this search (for example, last season's stats arrived). Search

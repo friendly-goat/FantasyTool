@@ -450,8 +450,14 @@ describe("team strength and trades (against the mock league)", async () => {
     expect(model.replacementWeekly).toBeGreaterThan(0);
   });
 
-  it("explains every suggested trade from the user's side", () => {
-    const { ideas } = findTrades(model, snapshot, strengths[4]!.rosterId, situations);
+  it("explains every suggested trade from the user's side, reporting its progress as it goes", () => {
+    const reports: { share: number; stage: string }[] = [];
+    const { ideas } = findTrades(model, snapshot, strengths[4]!.rosterId, situations, {}, 8, (share, stage) => reports.push({ share, stage }));
+    // Progress only goes up, starts with the rosters and gets most of the way before the ideas come back.
+    expect(reports[0]!.stage).toBe("setup");
+    expect(reports.every((entry, index) => index === 0 || entry.share >= reports[index - 1]!.share)).toBe(true);
+    expect(reports.at(-1)!.share).toBeGreaterThan(0.9);
+    expect(reports.at(-1)!.share).toBeLessThanOrEqual(1);
     for (const idea of ideas) {
       expect(idea.story.kind).toBe(tradeKind(idea.result));
       expect(idea.story.points.length).toBeGreaterThan(0);
