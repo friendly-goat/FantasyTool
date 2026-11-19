@@ -273,11 +273,11 @@ The search runs in layers, like a tree, and goes deeper only when it has to:
    a named or injured target), packages that fill another team's need, and an
    estimate of every two-team trade of up to two players a side: one-for-two,
    two-for-one and two-for-two with every team. Each estimate pairs the
-   players up by what each swap does to both rosters (a short run of 12
+   players up by what each swap does to both rosters (a short run of 17
    imaginary weeks), so it is cheap enough to cover all of them. The best
-   1,500 get a closer look (the whole trade on the same few weeks, both
+   3,000 get a closer look (the whole trade on the same few weeks, both
    sides, since pairing cannot see how two players fit together), and every
-   one that holds up there (up to 500) is screened properly. Only packages
+   one that holds up there (up to 1,000) is screened properly. Only packages
    that pass the rules there (no received player dropped on arrival) go on.
 2. If nothing from layer 1 is likely to be accepted, the 12 most promising
    near-misses (ranked like ideas: your gain times their chance) each grow by
@@ -293,10 +293,13 @@ leaves when a player is back, open spots from waivers), only with fewer
 weeks and open spots going to the best free agent on his own.
 
 The best of all that, in the order the list uses (likely first by the quick
-read, then gain times chance), get a first look: measured in full on the
-first 40 weeks, the best 400, plus 6 per idea shown and 12 places for
-packages. The best first looks by the same rules (at most two versions of
-one idea) are measured on all 200 weeks, 4 per idea shown. When fewer than 6
+read, then gain times chance), get a first look: measured in full on 68
+weeks, the best 800, plus 6 per idea shown and 12 places for packages. The
+best first looks by the same rules (at most two versions of one idea) are
+measured on all 200 weeks, 8 per idea shown. Every short run covers whole
+rounds of the real weeks left (17 left: estimates on 17 weeks, first looks on
+68), since imaginary week w stands for real week w mod the weeks left: a run
+that stopped part-way would count a player out now for more than his share. When fewer than 6
 of those hold up as realistic (40% or better), the next best first looks are
 measured too, up to 24 per idea shown. A dev script,
 `npx tsx scripts/audit-trades.ts`, checks the finder against a brute-force
@@ -304,8 +307,9 @@ search of every trade of up to two players a side (`--save` and `--load`
 keep the slow reference between runs). It runs on the sample league or on a
 real one: signed in, save `/api/league/<id>` and `/api/league/<id>/stats` as
 JSON and pass them with `--snapshot league.json --stats stats.json --team
-"<name>"`. On the real league (Nov 2026) the finder got about 72% and 90% of
-the brute-force value for two teams, in 6 to 9 seconds a search.
+"<name>"`. On the real league (Nov 2026) the finder got about 83% of the
+brute-force value over four teams (from 66% before the last tuning), in
+about 13 seconds a search.
 
 While it runs, a progress bar (`SearchProgress.tsx`) fills from the search's
 own reports (`onProgress` in `findTrades`, sent back from the worker a few
@@ -578,9 +582,10 @@ changes one (the app restarts).
 
 ## Live matchup
 
-Matchups is the last tab for now (under More on a phone): Sleeper's own
-matchup screen knows which scores are locked and ours has to work it out, so
-this view is parked until it can match it.
+Matchups is hidden from the navigation for now (`HIDDEN_VIEWS` in
+`src/App.tsx`; the code and its server routes stay): Sleeper's own matchup
+screen knows which scores are locked and ours has to work it out, so this
+view is parked until it can match it.
 
 Opening a matchup shows both lineups slot by slot, modelled on Sleeper's
 matchup screen: each starter's counted score, his status, his next game, and

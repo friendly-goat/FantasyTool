@@ -37,8 +37,11 @@ import { formatAgo, formatDate } from "./format.ts";
 import { useTheme } from "./theme.ts";
 
 // My team and Trades are the heart of the app and lead the desktop bar, set apart.
-// Matchups sits last for now: Sleeper's own matchup screen is better until ours catches up.
+// Matchups is kept but hidden from the navigation for now: Sleeper's own matchup screen is
+// better until ours catches up. Take it out of HIDDEN_VIEWS to bring it back.
 const VIEWS = ["My team", "Trades", "Rankings", "Draft", "Teams", "Players", "Activity", "Matchups"] as const;
+const HIDDEN_VIEWS: readonly View[] = ["Matchups"];
+const NAV_VIEWS = VIEWS.filter((name) => !HIDDEN_VIEWS.includes(name));
 const CORE_VIEWS: readonly View[] = ["My team", "Trades"];
 /** How often to ask the server for the league while the page is open. It decides whether Sleeper is asked. */
 const LEAGUE_POLL_MS = 2 * 60_000;
@@ -50,7 +53,7 @@ const LAST_SEASON_POLL_MS = 20000;
 type View = (typeof VIEWS)[number];
 // On a phone, the tab bar holds these (Trades in the middle, set apart); the rest sit under More.
 const PHONE_TABS = ["My team", "Rankings", "Trades", "Draft"] as const satisfies readonly View[];
-const PHONE_MORE = VIEWS.filter((name) => !(PHONE_TABS as readonly View[]).includes(name));
+const PHONE_MORE = NAV_VIEWS.filter((name) => !(PHONE_TABS as readonly View[]).includes(name));
 
 export function App() {
   const [config, setConfig] = useState<AppConfig | null>(null);
@@ -317,9 +320,9 @@ export function App() {
           </div>
           {showNav && (
             <nav className="app-nav" aria-label="League views">
-              {VIEWS.map((name, index) => {
+              {NAV_VIEWS.map((name, index) => {
                 const core = CORE_VIEWS.includes(name);
-                const previous = index > 0 ? VIEWS[index - 1] : undefined;
+                const previous = index > 0 ? NAV_VIEWS[index - 1] : undefined;
                 return (
                   <Fragment key={name}>
                     {previous && core !== CORE_VIEWS.includes(previous) && (

@@ -224,7 +224,7 @@ describe("team strength and trades (against the mock league)", async () => {
     const started = Date.now();
     const { ideas, outlook } = findTrades(model, snapshot, mine, situations);
     // It runs in a web worker; this only guards against it getting much slower (tests run side by side).
-    expect(Date.now() - started).toBeLessThan(15000);
+    expect(Date.now() - started).toBeLessThan(45000);
     expect(ideas.length).toBeLessThanOrEqual(8);
     expect(outlook).not.toBe("none");
     const appearances = new Map<string, number>();
@@ -246,14 +246,14 @@ describe("team strength and trades (against the mock league)", async () => {
       expect(outlook).toBe("long-shot");
       expect(ideas.length).toBeLessThanOrEqual(3);
     }
-  }, 30_000);
+  }, 90_000);
 
   it("ranks trades and pickups together by strength gain, keeping one pickup in view", () => {
     let sawPickup = false;
     for (const { rosterId } of [strengths[0]!, strengths[4]!, strengths[strengths.length - 1]!]) {
       const started = Date.now();
       const moves = topMoves(model, snapshot, rosterId, situations);
-      expect(Date.now() - started).toBeLessThan(8000);
+      expect(Date.now() - started).toBeLessThan(30000);
       expect(moves.length).toBeLessThanOrEqual(5);
       const pickups = freeAgentPickups(model, ids(rosterId));
       if (pickups.length > 0) expect(moves.some((move) => move.kind === "pickup")).toBe(true);
@@ -277,7 +277,7 @@ describe("team strength and trades (against the mock league)", async () => {
       }
     }
     expect(sawPickup).toBe(true);
-  }, 30_000);
+  }, 120_000);
 
   it("digs deeper only when the swaps find nothing likely, and never does worse for it", () => {
     // The first layer (swaps and two-player packages) finds something likely for most goals, so
@@ -465,7 +465,7 @@ describe("team strength and trades (against the mock league)", async () => {
       // Every suggestion helps the user, so none is called a loss.
       expect(idea.story.kind).not.toBe("costs-you");
     }
-  }, 30_000);
+  }, 90_000);
 
   it("rates acceptance higher when the trade helps them more", () => {
     const [a, b] = [strengths[2]!.rosterId, strengths[3]!.rosterId];

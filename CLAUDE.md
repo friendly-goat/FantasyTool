@@ -113,6 +113,8 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   (`src/components/PlayerName.tsx`) so the name opens the player's details.
   In a list, use `PlayerCell` (name, injury tag, position chips, team). When a
   whole card should open the player (draft board), use `PlayerButton` instead.
+- The Matchups view is hidden from the navigation (`HIDDEN_VIEWS` in
+  `src/App.tsx`) but kept in the project; the owner may bring it back.
 - Sleeper's matchup data never says which scores are locked; an unlocked
   starter shows his latest game. Lock state, lock advice and win chances are
   worked out in `shared/matchup.ts` from box scores and the NBA schedule

@@ -161,7 +161,7 @@ describe("injuries, IR and waiver pickups (against the mock league)", async () =
     const weeks = model.calendar.weeks.length;
     const blended = (phases.whileOut * phases.weeksOut + phases.afterBack * (weeks - phases.weeksOut)) / weeks;
     expect(blended).toBeCloseTo(idea.result.a.teamChange, 0);
-  }, 30_000);
+  }, 120_000);
 
   it("makes an injured player look worth less to the manager weighing a trade, within a limit", () => {
     const injured = named(/six weeks/);
@@ -235,7 +235,7 @@ describe("injuries, IR and waiver pickups (against the mock league)", async () =
         }
       }
     }
-  }, 30_000);
+  }, 120_000);
 
   it("keeps projections repeatable", async () => {
     const team = ids(strengths[2]!.rosterId);

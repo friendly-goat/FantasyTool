@@ -762,27 +762,27 @@ export const MISS_FLOOR = 0.03;
 /** A package is kept only if it raises the chance of the offer it grew from by at least this much. */
 export const MIN_LIFT = 0.03;
 /** How many trades that hold up on the first layer's closer look are screened properly, at most. */
-const SCREENED = 500;
+const SCREENED = 1000;
 /** Ideas measured in full from the quick screen, per idea shown. */
 const SHORTLIST = 6;
 /** Extra places on that list for the best packages (two players on a side). */
 const SHORTLIST_PACKAGES = 12;
 /** How many of the screened trades get a first look: measured in full on fewer weeks. */
-const FIRST_LOOK = 400;
-/** Weeks for the first look (the first of the same imaginary weeks). */
-const FIRST_LOOK_WEEKS = 40;
+const FIRST_LOOK = 800;
+/** Weeks for the first look (the first of the same imaginary weeks, rounded to whole rounds of the weeks left). */
+const FIRST_LOOK_WEEKS = 68;
 /** A first look may fall this short of the gain needed (points a week) and still go on. */
 const FIRST_LOOK_SLACK = 0.5;
 /** How many first looks, per idea shown, are measured on all the weeks. */
-const FINALISTS = 4;
+const FINALISTS = 8;
 /** Fewer realistic ideas (40% or better) than this once measured, and the next best are measured too. */
 const ENOUGH_IDEAS = 6;
 /** But no more than this many per idea shown are measured in full in all. */
 const MEASURED_AT_MOST = 24;
 /** How many of the best estimates get a closer look (the whole trade on the same few weeks) before screening. */
-const CLOSER_LOOK = 1500;
-/** Weeks simulated for the first layer's estimates: few, since they only rank; the same weeks for every roster. */
-const ESTIMATE_WEEKS = 12;
+const CLOSER_LOOK = 3000;
+/** Weeks simulated for the first layer's estimates (rounded to whole rounds of the weeks left): few, since they only rank. */
+const ESTIMATE_WEEKS = 17;
 /** Estimates may fall this far (points a week) short of the gain needed and still be screened. */
 const ESTIMATE_SLACK = 1.5;
 /** An offer that grades below this for the other team (a "big loss", F) is never suggested. */
@@ -940,7 +940,13 @@ export function findTrades(
   };
   const targeted = Boolean(options.givePlayerId || options.getPlayerId);
   const minGain = targeted ? -MAX_PRICE : MIN_GAIN;
-  const screenWeeks = targeted ? SCREEN_WEEKS : OPEN_SCREEN_WEEKS;
+  // Short runs cover whole rounds of the real weeks left (imaginary week w is real week w mod
+  // the weeks left), so a player out now counts for his true share of the season, not more.
+  const cycle = Math.max(1, model.calendar.weeks.length);
+  const roundsOf = (weeks: number) => Math.min(model.weeks, cycle * Math.max(1, Math.round(weeks / cycle)));
+  const screenWeeks = roundsOf(targeted ? SCREEN_WEEKS : OPEN_SCREEN_WEEKS);
+  const estimateWeeks = roundsOf(ESTIMATE_WEEKS);
+  const firstLookWeeks = roundsOf(FIRST_LOOK_WEEKS);
   const mine = rosterIds(snapshot, rosterId);
   const myPlayers = players(model, mine);
   const at = (position: string | undefined) => (player: ModelPlayer) =>
@@ -1138,8 +1144,8 @@ export function findTrades(
     let value = effect.get(key);
     if (value === undefined) {
       value =
-        projectedWeekly(model, quickRoster(roster, gives, gets), ESTIMATE_WEEKS) -
-        quickBefore(roster, gives.length, gets.length, ESTIMATE_WEEKS);
+        projectedWeekly(model, quickRoster(roster, gives, gets), estimateWeeks) -
+        quickBefore(roster, gives.length, gets.length, estimateWeeks);
       effect.set(key, value);
     }
     return value;
@@ -1202,10 +1208,10 @@ export function findTrades(
     const myAfter = quickRoster(mine, estimate.gives.map((player) => player.id), estimate.gets);
     const theirAfter = quickRoster(info.theirs, estimate.gets.map((player) => player.id), estimate.gives);
     if (disposable(mine, myAfter, estimate.gets) || disposable(info.theirs, theirAfter, estimate.gives)) return [];
-    const gain = projectedWeekly(model, myAfter, ESTIMATE_WEEKS) - quickBefore(mine, estimate.gives.length, estimate.gets.length, ESTIMATE_WEEKS);
+    const gain = projectedWeekly(model, myAfter, estimateWeeks) - quickBefore(mine, estimate.gives.length, estimate.gets.length, estimateWeeks);
     if (gain < minGain - ESTIMATE_SLACK) return [];
     const theirGain =
-      projectedWeekly(model, theirAfter, ESTIMATE_WEEKS) - quickBefore(info.theirs, estimate.gets.length, estimate.gives.length, ESTIMATE_WEEKS);
+      projectedWeekly(model, theirAfter, estimateWeeks) - quickBefore(info.theirs, estimate.gets.length, estimate.gives.length, estimateWeeks);
     const dropped =
       estimate.gives.length > estimate.gets.length
         ? info.byValue.filter((player) => !estimate.gets.includes(player)).slice(0, estimate.gives.length - estimate.gets.length)
@@ -1305,7 +1311,7 @@ export function findTrades(
     const firstLook = [...new Set([...byQuick.slice(0, FIRST_LOOK), ...shortlist])]
       .map((candidate, index, all) => {
         report("first-look", from, middle, index, all.length);
-        return { candidate, idea: measure(candidate, FIRST_LOOK_WEEKS) };
+        return { candidate, idea: measure(candidate, firstLookWeeks) };
       })
       .filter(({ idea }) => passes(idea))
       .sort(
