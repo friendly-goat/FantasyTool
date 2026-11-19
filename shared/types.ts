@@ -60,6 +60,8 @@ export interface MatchupSide {
  */
 export interface ScoreHistory {
   weeks: { week: number; points: Record<number, number>; source: "standings" | "recorded" }[];
+  /** Each team's projected score for a week, saved by the server while the week was played (shared/realisation.ts). */
+  projections?: Record<number, { projected: Record<number, number>; savedAt: string }>;
 }
 
 /** The NBA games left in the fantasy regular season, from today. */

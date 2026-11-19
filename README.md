@@ -158,6 +158,7 @@ happens to its projected weekly score.
 | What they see on averages (players they would drop subtracted) | chance they accept | +0.8 to -2.0 on the log-odds scale |
 | What the trade does to their team (a gain counts 0.75, a loss 1.5) | chance they accept | +1.25 to -2.0 on the log-odds scale |
 | Pressure on the other team (absences, record, this week's matchup) | chance they accept | 0 to +0.6 on the log-odds scale |
+| How much of its projection a team really scores (`shared/realisation.ts`) | team charts only (projected weeks, ceiling, floor, depth); never strength, grades or trade ideas | between 70% and 110%; a team's own record counts like its weeks (weeks compared with today's projection at half weight) against 2 weeks of the league's rate |
 
 ### Projections
 
@@ -465,13 +466,30 @@ charts fade in; while newer data is measured the last charts stay on screen.
   weeks' scores" below), in a shaded band with solid dots,
   then your projected score in each real week left (lighter line, open dots,
   after a dotted line), against the league's average and range. The note
-  gives your rank in points so far and, of the weeks ahead, your best
-  three-week stretch and toughest week. The projections still use the
-  model's own spread of games (`teamSchedule`), not the real schedule.
+  gives your average and rank so far, and your projected average from here
+  and its rank. The projections still use the model's own spread of games
+  (`teamSchedule`), not the real schedule, so a single projected week's ups
+  and downs are mostly noise; only injuries move them for real.
 
 On the radars 0 is the league's lowest team and 10 its highest, and the
 dashed shape is the league average. Display only: nothing here feeds
 strength, grades or trade ideas.
+
+### Projected points as the league really scores them
+
+The lock-in simulation plays every team as a manager who rotates the bench
+into each open slot every day and locks well. That is what a team can score,
+not what most do: over weeks 1 to 4 the owner's league scored about 87% of it
+(the owner's team about 97%). So the team charts scale each team's projected
+points (projected weeks, ceiling, floor, depth) by how much of its projection
+it really scores (`shared/realisation.ts`): each finished week's real score
+against the projection for that week. The server saves every team's
+projection once a week (`projections-v1-<league>`, with the same model the
+page builds); weeks before it began use today's projection at half weight. A
+team's rate starts from the league's as if it had 2 weeks of its own and
+leans on its own record as weeks pass, kept between 70% and 110%. The notes
+under the charts give the rate. Strength, grades and trade ideas keep the
+model's numbers: the same rate for every team would change no ranking there.
 
 ### Finished weeks' scores
 

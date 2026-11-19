@@ -18,6 +18,7 @@
 // it, so a tiny gap between teams does not look like the whole scale. Display only: none of this feeds strength, grades or trade
 // ideas.
 import { rosterPlayers } from "./analysis.ts";
+import { realisation } from "./realisation.ts";
 import { settledWeeks } from "./weekScores.ts";
 import { fillRoster, type ModelPlayer, type StrengthModel, type TeamStrength, weeklyTotals } from "./strength.ts";
 import { FANTASY_SOURCES, type FantasySource, type LeagueSnapshot, type PlayerStats, type ScheduleAhead, type ScoreHistory } from "./types.ts";
@@ -58,6 +59,14 @@ export interface TeamProfile {
   /** Fantasy points a game the team's main players lose to turnovers and fouls (positive), and its rank (1: fewest). */
   mistakes: { value: number; rank: number } | null;
   weeks: WeekPoint[];
+  /** The weeks ahead: the team's projected average a week and its rank among the league's, or null with none left. */
+  ahead: { average: number; rank: number } | null;
+  /**
+   * How much of its projection the team really scores (shared/realisation.ts), and the league's
+   * rate. Projected points on the charts (weeks ahead, ceiling, floor, depth) are scaled by the
+   * team's rate; `weeks` is how many finished weeks it rests on.
+   */
+  rate: { team: number; league: number; weeks: number };
   /** Rank by the standings' points for (1: most), over the weeks settled, or null before any has. */
   season: { rank: number; weeks: number } | null;
 }
@@ -224,6 +233,18 @@ export function leagueProfiles(
     weekRows.set(team.rosterId, byWeek.map((total, index) => (counts[index] ? total / counts[index]! : 0)));
   }
 
+  // Projected points as this league really scores them: each team's by its own rate.
+  const today = new Map([...weekRows.entries()].map(([id, row]) => [id, row.reduce((sum, value) => sum + value, 0) / Math.max(1, row.length)]));
+  const rates = realisation(extras.history, { weeks: extras.history?.projections ?? {} }, today);
+  for (const [id, row] of shapeRows) {
+    const rate = rates.teams.get(id) ?? 1;
+    for (const key of ["ceiling", "floor", "depth"]) row[key] = (row[key] ?? 0) * rate;
+  }
+  for (const [id, row] of weekRows) {
+    const rate = rates.teams.get(id) ?? 1;
+    weekRows.set(id, row.map((value) => value * rate));
+  }
+
   const mistakes = new Map([...mixRows.entries()].map(([id, row]) => [id, -(row.mistakes ?? 0)]));
   const fewestMistakes = [...mistakes.entries()].sort((a, b) => a[1] - b[1]).map(([id]) => id);
   // A source the league does not score (threes, in a league that gives nothing for them) is left out.
@@ -233,6 +254,9 @@ export function leagueProfiles(
 
   const finished = (extras.history?.weeks ?? []).filter((entry) => entry.week < (model.calendar.weeks[0]?.week ?? snapshot.week));
   const settled = settledWeeks(snapshot.teams) ?? 0;
+  const aheadAverage = new Map(
+    [...weekRows.entries()].map(([id, row]) => [id, row.length ? row.reduce((sum, value) => sum + value, 0) / row.length : 0]),
+  );
   const profiles = new Map<number, TeamProfile>();
   for (const team of snapshot.teams) {
     const past = finished.flatMap((entry): WeekPoint[] => {
@@ -273,6 +297,14 @@ export function leagueProfiles(
       mix: hasMix ? axes(mixRows, mixDefs, team.rosterId) : [],
       mistakes: hasMix ? { value: mistakes.get(team.rosterId) ?? 0, rank: fewestMistakes.indexOf(team.rosterId) + 1 } : null,
       weeks: [...past, ...ahead],
+      rate: { team: rates.teams.get(team.rosterId) ?? 1, league: rates.league, weeks: rates.weeks },
+      ahead:
+        ahead.length > 0
+          ? {
+              average: aheadAverage.get(team.rosterId) ?? 0,
+              rank: 1 + [...aheadAverage.values()].filter((value) => value > (aheadAverage.get(team.rosterId) ?? 0)).length,
+            }
+          : null,
       season:
         settled > 0 ? { rank: 1 + snapshot.teams.filter((other) => other.pointsFor > team.pointsFor).length, weeks: settled } : null,
     });
@@ -323,21 +355,25 @@ export function extremes(axes: ProfileAxis[]): { best: ProfileAxis; worst: Profi
   return { best: sorted[0]!, worst: sorted[sorted.length - 1]! };
 }
 
-/** Of the weeks ahead, the run (up to three) furthest above the league average, and the single week furthest below. */
-export function weekHighlights(points: WeekPoint[]): { best: WeekPoint[]; worst: WeekPoint } | null {
-  const weeks = points.filter((point) => !point.final);
-  if (weeks.length === 0) return null;
-  const margin = (point: WeekPoint) => point.team - point.leagueAverage;
-  const span = Math.min(3, weeks.length);
-  let bestStart = 0;
-  let bestTotal = -Infinity;
-  for (let start = 0; start + span <= weeks.length; start++) {
-    const total = weeks.slice(start, start + span).reduce((sum, point) => sum + margin(point), 0);
-    if (total > bestTotal) {
-      bestTotal = total;
-      bestStart = start;
-    }
+/**
+ * Each team's projected score for the current week (the model's first real week), as the
+ * charts would show it before scaling: saved by the server while the week is played, to set
+ * against the real score once it is over (shared/realisation.ts).
+ */
+export function projectedThisWeek(snapshot: LeagueSnapshot, model: StrengthModel): Record<number, number> {
+  const realWeeks = Math.max(1, model.calendar.weeks.length);
+  const projected: Record<number, number> = {};
+  for (const team of snapshot.teams) {
+    const ids = rosterPlayers(team).map((player) => player.id);
+    const totals = weeklyTotals(model, fillRoster(model, ids).ids);
+    let sum = 0;
+    let count = 0;
+    totals.forEach((total, week) => {
+      if (week % realWeeks !== 0) return;
+      sum += total;
+      count++;
+    });
+    if (count > 0) projected[team.rosterId] = Math.round((100 * sum) / count) / 100;
   }
-  const worst = weeks.reduce((low, point) => (margin(point) < margin(low) ? point : low));
-  return { best: weeks.slice(bestStart, bestStart + span), worst };
+  return projected;
 }

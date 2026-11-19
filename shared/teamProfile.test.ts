@@ -4,7 +4,7 @@ import { buildSnapshot, loadPlayers } from "../server/snapshot.ts";
 import { createMockStats, mockInjuries } from "../server/stats/mock.ts";
 import { StatsService } from "../server/stats/service.ts";
 import { buildModel, leagueStrength } from "./strength.ts";
-import { extremes, leagueProfiles, weekHighlights } from "./teamProfile.ts";
+import { extremes, leagueProfiles } from "./teamProfile.ts";
 
 describe("team profiles (against the mock league)", async () => {
   const raw = (await fetchFromMock("/players/nba")) as Record<string, unknown>;
@@ -63,8 +63,10 @@ describe("team profiles (against the mock league)", async () => {
       expect(point.rank).toBeGreaterThanOrEqual(1);
       expect(point.rank).toBeLessThanOrEqual(snapshot.teams.length);
     }
-    const highlights = weekHighlights(profile.weeks)!;
-    expect(highlights.best.length).toBeGreaterThan(0);
+    // The weeks ahead, averaged and ranked against the league's averages.
+    const averages = [...profiles.values()].map((entry) => entry.ahead!.average);
+    expect(profile.ahead!.average).toBeCloseTo(profile.weeks.reduce((sum, point) => sum + point.team, 0) / profile.weeks.length);
+    expect(profile.ahead!.rank).toBe(1 + averages.filter((value) => value > profile.ahead!.average).length);
     const best = extremes(profile.shape)!;
     expect(best.best.rank).toBeLessThanOrEqual(best.worst.rank);
   });
@@ -85,7 +87,7 @@ describe("team profiles (against the mock league)", async () => {
     expect(health(hurt)).toBeLessThan(health(profiles) - 5);
   });
 
-  it("puts finished weeks first, as final scores, and leaves them out of the weeks-ahead highlights", () => {
+  it("puts finished weeks first, as final scores, and leaves them out of the projected average", () => {
     const first = model.calendar.weeks[0]!.week;
     const ids = snapshot.teams.map((team) => team.rosterId);
     // Two finished weeks: the first team scores most in both; one more score from the future is ignored.
@@ -103,8 +105,9 @@ describe("team profiles (against the mock league)", async () => {
     expect(leader.weeks.slice(0, 2)).toEqual(finals);
     expect(finals[0]).toMatchObject({ team: 900, rank: 1, leagueHigh: 900, leagueLow: 601 });
     expect(leader.weeks).toHaveLength(2 + model.calendar.weeks.length);
-    const ahead = weekHighlights(leader.weeks)!;
-    expect([...ahead.best, ahead.worst].every((point) => !point.final)).toBe(true);
+    // The projected average leaves out the finished weeks.
+    const projected = leader.weeks.filter((point) => !point.final);
+    expect(leader.ahead!.average).toBeCloseTo(projected.reduce((sum, point) => sum + point.team, 0) / projected.length);
   });
 
   it("scores the schedule from the real games left, weighted by how soft each opponent is", () => {
@@ -137,6 +140,26 @@ describe("team profiles (against the mock league)", async () => {
     // Without a schedule the model's games stand in, with no split.
     expect(axis(profiles, rosterId).schedule).toBeUndefined();
     expect(leagueProfiles(snapshot, model, strengths, report.players, { schedule: { status: "unavailable", games: [] } }).get(rosterId)!.shape.find((entry) => entry.key === "schedule")!.schedule).toBeUndefined();
+  });
+
+  it("scales projected points by how much of its projection each team really scores", () => {
+    const first = model.calendar.weeks[0]!.week;
+    // Every team scored 80% of its projection in the two weeks before.
+    const points = Object.fromEntries([...profiles.values()].map((profile) => [profile.rosterId, 0.8 * profile.ahead!.average]));
+    const history = { weeks: [first - 2, first - 1].map((week) => ({ week, points, source: "recorded" as const })) };
+    const scaled = leagueProfiles(snapshot, model, strengths, report.players, { history });
+    const id = strengths[2]!.rosterId;
+    const before = profiles.get(id)!;
+    const after = scaled.get(id)!;
+    expect(before.rate).toEqual({ team: 1, league: 1, weeks: 0 });
+    expect(after.rate.team).toBeCloseTo(0.8);
+    expect(after.rate.league).toBeCloseTo(0.8);
+    const value = (profile: typeof before, key: string) => profile.shape.find((axis) => axis.key === key)!.value;
+    for (const key of ["ceiling", "floor", "depth"]) expect(value(after, key)).toBeCloseTo(0.8 * value(before, key));
+    // Player values are not team totals: the top three stay as they are.
+    expect(value(after, "stars")).toBeCloseTo(value(before, "stars"));
+    expect(after.ahead!.average).toBeCloseTo(0.8 * before.ahead!.average);
+    expect(after.weeks.find((point) => !point.final)!.team).toBeCloseTo(0.8 * before.weeks[0]!.team);
   });
 
   it("splits the mix only by what the league scores, and ranks fewest mistakes first", () => {

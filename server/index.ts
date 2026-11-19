@@ -2,7 +2,9 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import express from "express";
 import type { AppConfig, LeagueSnapshot, Matchup, ScheduleAhead, ScoreHistory, WeekData, WeekMatchups } from "../shared/types.ts";
-import { modelCalendar } from "../shared/strength.ts";
+import { buildModel, modelCalendar } from "../shared/strength.ts";
+import type { ProjectionLedger } from "../shared/realisation.ts";
+import { projectedThisWeek } from "../shared/teamProfile.ts";
 import { checkRecorded, noteStandings, type RecordedWeek, type StandingsLedger, weekScores } from "../shared/weekScores.ts";
 import { RECORDED_WEEKS } from "./recordedWeeks.ts";
 import { nbaTeam } from "../shared/nbaTeams.ts";
@@ -165,6 +167,7 @@ const scheduleKey = (weekStart: string) => `schedule-v1-${weekStart}`;
 const finishedScheduleKey = (weekStart: string) => `schedule-final-v1-${weekStart}`;
 const matchupsKey = (leagueId: string, week: number) => `matchups-v1-${leagueId}-${week}`;
 const ledgerKey = (leagueId: string) => `standings-ledger-v1-${leagueId}`;
+const projectionsKey = (leagueId: string) => `projections-v1-${leagueId}`;
 const scheduleAheadKey = (start: string, end: string) => `schedule-ahead-v1-${start}-${end}`;
 /** The rest of the season's NBA schedule changes little: kept for a day (one schedule download, about ten requests). */
 const scheduleAheadTtl = 24 * 60 * MINUTE;
@@ -250,6 +253,38 @@ async function noteLedger(leagueId: string, snapshot: LeagueSnapshot): Promise<S
   // A failed read or write is tried again next time rather than kept.
   ledgers.set(leagueId, next.catch(() => previous));
   return next;
+}
+
+/**
+ * Each team's projected score for the week being played, saved once a week (the first time the
+ * history is asked for in a week, with the stats ready), to set against its real score when the
+ * week is over (shared/realisation.ts). Worked out on the server with the same model the page
+ * builds; it takes a second or two, so it runs after the answer has gone.
+ */
+const projectionsPending = new Map<string, Promise<ProjectionLedger>>();
+
+async function readProjections(leagueId: string): Promise<ProjectionLedger> {
+  const entry = await storage.readEntry(projectionsKey(leagueId));
+  return (entry?.value as ProjectionLedger | undefined) ?? { weeks: {} };
+}
+
+function noteProjections(leagueId: string, snapshot: LeagueSnapshot): Promise<ProjectionLedger> {
+  const pending = projectionsPending.get(leagueId);
+  if (pending) return pending;
+  const work = (async () => {
+    const ledger = await readProjections(leagueId);
+    if (ledger.weeks[snapshot.week] || snapshot.week < 1) return ledger;
+    const report = await stats.report(snapshot, (await getPlayers()).value, await getInjuries());
+    if (report.status !== "ready" || Object.keys(report.players).length === 0) return ledger;
+    const projected = projectedThisWeek(snapshot, buildModel(snapshot, report));
+    if (Object.keys(projected).length === 0) return ledger;
+    const next: ProjectionLedger = { weeks: { ...ledger.weeks, [snapshot.week]: { projected, savedAt: new Date().toISOString() } } };
+    await storage.writeEntry(projectionsKey(leagueId), { savedAt: Date.now(), value: next });
+    console.log(`[projections] saved week ${snapshot.week} for ${leagueId}`);
+    return next;
+  })().finally(() => projectionsPending.delete(leagueId));
+  projectionsPending.set(leagueId, work);
+  return work;
 }
 
 /** The mock league's finished weeks, from its own matchups (it has no real standings to split). */
@@ -438,7 +473,9 @@ app.get("/api/league/:leagueId/history", async (req, res) => {
       if (problems.length > 0) console.warn("[history] recorded weeks disagree with the standings:", problems);
       checkedRecorded.add(leagueId);
     }
-    const body: ScoreHistory = weekScores(ledger, recorded, snapshot.week - 1);
+    const saved = await readProjections(leagueId);
+    void noteProjections(leagueId, snapshot).catch((error) => console.error("[projections]", error instanceof Error ? error.message : error));
+    const body: ScoreHistory = { ...weekScores(ledger, recorded, snapshot.week - 1), projections: saved.weeks };
     res.json(body);
   } catch (error) {
     sendError(res, error);

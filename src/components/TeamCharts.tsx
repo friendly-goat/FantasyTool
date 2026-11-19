@@ -2,12 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { getHistory, getScheduleAhead } from "../api.ts";
 import { formatPoints, ordinal } from "../format.ts";
 import type { StrengthModel, TeamStrength } from "../../shared/strength.ts";
-import { extremes, leagueProfiles, type ProfileAxis, type TeamProfile, type WeekPoint, weekHighlights } from "../../shared/teamProfile.ts";
+import { extremes, leagueProfiles, type ProfileAxis, type TeamProfile, type WeekPoint } from "../../shared/teamProfile.ts";
 import type { LeagueSnapshot, PlayerStats, ScheduleAhead, ScoreHistory } from "../../shared/types.ts";
 
 // Three views of the team against the league, above the roster on My team:
-// its shape (how it scores), its scoring mix and its weeks (finished and
-// ahead). Each card says in one line what stands out; hovering or tapping a
+// its shape (how it scores), its weeks (finished and ahead) and its scoring
+// mix. Each card says in one line what stands out; hovering or tapping a
 // part of a chart gives that part's figure and rank. On a phone the cards
 // slide sideways. Until the figures are ready each card shows its empty
 // frame at full size, so nothing moves when the charts arrive.
@@ -97,17 +97,21 @@ function useProfiles(
   return profiles;
 }
 
+/** A rate as a whole percentage. */
+const percent = (rate: number) => `${Math.round(100 * rate)}%`;
+
 /** What a shape axis's figure means, short enough to fit the note under the chart. */
-function shapeNote(axis: ProfileAxis): string {
+function shapeNote(axis: ProfileAxis, rate: number): string {
+  const scaled = `, at the ${percent(rate)} of projections you really score`;
   switch (axis.key) {
     case "ceiling":
-      return `${formatPoints(axis.value)} in a good week (better than 9 in 10)`;
+      return `${formatPoints(axis.value)} in a good week (better than 9 in 10)${scaled}`;
     case "floor":
-      return `${formatPoints(axis.value)} in a bad week (worse than 9 in 10)`;
+      return `${formatPoints(axis.value)} in a bad week (worse than 9 in 10)${scaled}`;
     case "stars":
       return `${formatPoints(axis.value)} a week from your best three`;
     case "depth":
-      return `${formatPoints(axis.value)} a week added by the bench`;
+      return `${formatPoints(axis.value)} a week added by the bench${scaled}`;
     case "schedule": {
       if (!axis.schedule) return `${axis.value.toFixed(1)} games a week per main player`;
       const change = Math.round(100 * (axis.schedule.opponents - 1));
@@ -165,11 +169,11 @@ export function TeamCharts({
           <ChartCard title="Team shape" legend={RADAR_LEGEND} summary={null}>
             {() => <RadarFrame count={7} />}
           </ChartCard>
-          <ChartCard title="Scoring mix" legend={RADAR_LEGEND} summary={null}>
-            {() => <RadarFrame count={6} />}
-          </ChartCard>
           <ChartCard title="Week by week" legend={WEEK_LEGEND} summary={null}>
             {() => <WeekFrame />}
+          </ChartCard>
+          <ChartCard title="Scoring mix" legend={RADAR_LEGEND} summary={null}>
+            {() => <RadarFrame count={6} />}
           </ChartCard>
         </div>
         <Dots page={page} />
@@ -178,10 +182,18 @@ export function TeamCharts({
   }
   const shape = extremes(profile.shape);
   const mix = extremes(profile.mix);
-  const weeks = weekHighlights(profile.weeks);
+  const finals = profile.weeks.filter((point) => point.final);
   const weekSummary = [
-    profile.season ? `${ordinal(profile.season.rank)} of ${teams} in points so far.` : "",
-    weeks ? `Best stretch ahead: ${weekSpan(weeks.best)}. Toughest: week ${weeks.worst.week} (${ordinal(weeks.worst.rank)}).` : "",
+    profile.season && finals.length > 0
+      ? `Averaging ${formatPoints(finals.reduce((sum, point) => sum + point.team, 0) / finals.length)} a week (${ordinal(profile.season.rank)} of ${teams}).`
+      : profile.season
+        ? `${ordinal(profile.season.rank)} of ${teams} in points so far.`
+        : "",
+    profile.ahead
+      ? `Projected ${formatPoints(profile.ahead.average)} from here (${ordinal(profile.ahead.rank)})${
+          profile.rate.weeks > 0 ? `, at ${percent(profile.rate.team)} of a perfectly run week` : ""
+        }.`
+      : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -202,7 +214,28 @@ export function TeamCharts({
             <Radar
               axes={profile.shape}
               onFocus={(axis) =>
-                onFocus(axis && `${axis.label}: ${shapeNote(axis)}. ${ordinal(axis.rank)} of ${teams}.`)
+                onFocus(axis && `${axis.label}: ${shapeNote(axis, profile.rate.team)}. ${ordinal(axis.rank)} of ${teams}.`)
+              }
+            />
+          )}
+        </ChartCard>
+        <ChartCard
+          title="Week by week"
+          legend={WEEK_LEGEND}
+          summary={weekSummary}
+        >
+          {(onFocus) => (
+            <WeekChart
+              weeks={profile.weeks}
+              onFocus={(point) =>
+                onFocus(
+                  point &&
+                    `Week ${point.week}, ${point.final ? "final" : "projected"}: ${formatPoints(point.team)}, ${ordinal(point.rank)} of ${teams}. League average ${formatPoints(point.leagueAverage)}.${
+                      point.final || profile.rate.weeks === 0
+                        ? ""
+                        : ` Scaled to the ${percent(profile.rate.team)} of projections you really score (league ${percent(profile.rate.league)}).`
+                    }`,
+                )
               }
             />
           )}
@@ -233,23 +266,6 @@ export function TeamCharts({
             )
           }
         </ChartCard>
-        <ChartCard
-          title="Week by week"
-          legend={WEEK_LEGEND}
-          summary={weekSummary}
-        >
-          {(onFocus) => (
-            <WeekChart
-              weeks={profile.weeks}
-              onFocus={(point) =>
-                onFocus(
-                  point &&
-                    `Week ${point.week}, ${point.final ? "final" : "projected"}: ${formatPoints(point.team)}, ${ordinal(point.rank)} of ${teams}. League average ${formatPoints(point.leagueAverage)}.`,
-                )
-              }
-            />
-          )}
-        </ChartCard>
       </div>
       <Dots page={page} />
     </div>
@@ -264,11 +280,6 @@ function Dots({ page }: { page: number }) {
       ))}
     </div>
   );
-}
-
-function weekSpan(points: WeekPoint[]): string {
-  if (points.length === 1) return `week ${points[0]!.week}`;
-  return `weeks ${points[0]!.week} to ${points[points.length - 1]!.week}`;
 }
 
 type LegendKind = "team" | "league" | "range";
