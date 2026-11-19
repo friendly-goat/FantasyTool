@@ -5,7 +5,7 @@ import { createMockStats, mockInjuries } from "../server/stats/mock.ts";
 import { StatsService } from "../server/stats/service.ts";
 import { rosterPlayers } from "./analysis.ts";
 import { teamSituations } from "./insight.ts";
-import { buildModel, fillRoster, leagueStrength, type ModelPlayer, projectedWeekly, reserveEligible } from "./strength.ts";
+import { buildModel, fillRoster, FREE_UPGRADES, leagueStrength, type ModelPlayer, projectedWeekly, reserveEligible } from "./strength.ts";
 import {
   acceptance,
   chanceWord,
@@ -120,18 +120,25 @@ describe("injuries, IR and waiver pickups (against the mock league)", async () =
   });
 
   it("credits a trade only with the roster spots it opens", () => {
-    // Swap two healthy bench players between teams: any IR stand-in each team
-    // already had is in both its before and after rosters, so it is not a trade pickup.
+    // Swap two healthy mid-roster players between teams (the weakest could be worth less than a
+    // free agent, and so be swapped out as soon as he arrives): any IR stand-in or free upgrade
+    // each team already had is in both its before and after rosters, so it is not a trade pickup.
     const [a, b] = [strengths[0]!.rosterId, strengths[1]!.rosterId];
-    const benchOf = (rosterId: number) =>
-      ids(rosterId).map((id) => model.players.get(id)!).filter((p) => !p.back && p.games > 0).sort((x, y) => x.expected - y.expected)[0]!;
+    const benchOf = (rosterId: number) => {
+      const healthy = ids(rosterId).map((id) => model.players.get(id)!).filter((p) => !p.back && p.games > 0).sort((x, y) => x.expected - y.expected);
+      return healthy[Math.floor(healthy.length / 2)]!;
+    };
     const result = evaluateTrade(model, snapshot, { teamA: a, teamB: b, aGives: [benchOf(a).id], bGives: [benchOf(b).id] });
-    expect(result.a.pickups).toHaveLength(0);
-    expect(result.b.pickups).toHaveLength(0);
-    // Sending two for one opens a spot that stays open: a lasting pickup.
+    // No IR stand-in shows up as the trade's pickup. (A free upgrade at the end of the bench may:
+    // one worth just under the bar before the trade can be worth just over it after.)
+    expect(result.a.pickups.filter((pickup) => pickup.forInjured)).toHaveLength(0);
+    expect(result.b.pickups.filter((pickup) => pickup.forInjured)).toHaveLength(0);
+    // Sending two for one opens a spot, and it is filled: by a lasting pickup, or by a player
+    // the team's free upgrades would otherwise have let go. Never left empty.
     const two = ids(a).map((id) => model.players.get(id)!).filter((p) => !p.back && p.games > 0).slice(0, 2);
     const twoForOne = evaluateTrade(model, snapshot, { teamA: a, teamB: b, aGives: two.map((p) => p.id), bGives: [benchOf(b).id] });
-    expect(twoForOne.a.pickups.some((pickup) => pickup.forInjured === null)).toBe(true);
+    expect(twoForOne.a.afterIds).toHaveLength(twoForOne.a.beforeIds.length);
+    expect(twoForOne.a.pickups.every((pickup) => !twoForOne.a.beforeIds.includes(pickup.player.id))).toBe(true);
   });
 
   it("splits a trade for an injured player into the weeks he is out and the weeks after", () => {
@@ -144,7 +151,9 @@ describe("injuries, IR and waiver pickups (against the mock league)", async () =
     }
     if (!idea) throw new Error("no trade for an injured player found");
     const phases = tradePhases(model, idea.result.a)!;
-    expect(idea.result.a.gets.map((player) => player.id)).toContain(phases.player.id);
+    // The player the weeks split at is part of the trade (the most-out player, either way).
+    expect([...idea.result.a.gets, ...idea.result.a.gives].map((player) => player.id)).toContain(phases.player.id);
+    expect(idea.result.a.gets.some((player) => player.back && player.outShare > 0)).toBe(true);
     expect(phases.weeksOut).toBeGreaterThan(0);
     // He gives you nothing until he is back, then his full level.
     expect(phases.afterBack).toBeGreaterThan(phases.whileOut);
@@ -254,6 +263,50 @@ describe("injuries, IR and waiver pickups (against the mock league)", async () =
       expect(active.length).toBeLessThanOrEqual(model.rosterLimits.active);
     }
   });
+  it("never credits a trade with a free agent the team could pick up anyway", () => {
+    // Adding a player worth less than the best free agent to a trade changes nothing: either way
+    // the team swaps him for that free agent (a free upgrade), before the trade and after it.
+    let checked = 0;
+    const best = model.players.get(model.freeAgentIds[0]!)!;
+    for (const { rosterId } of strengths) {
+      const mine = ids(rosterId).map((id) => model.players.get(id)!).filter((p) => !p.back);
+      const weakest = mine.reduce((low, p) => (p.expected < low.expected ? p : low));
+      if (best.expected <= weakest.expected) continue;
+      const mid = [...mine].sort((x, y) => x.expected - y.expected)[Math.floor(mine.length / 2)]!;
+      const other = strengths.find((team) => team.rosterId !== rosterId)!.rosterId;
+      const theirs = ids(other).map((id) => model.players.get(id)!).filter((p) => !p.back).sort((x, y) => x.expected - y.expected);
+      const target = theirs[Math.floor(theirs.length / 2)]!;
+      const gain = (aGives: string[]) => {
+        const { a } = evaluateTrade(model, snapshot, { teamA: rosterId, teamB: other, aGives, bGives: [target.id] });
+        return a.projectedAfter - a.projectedBefore;
+      };
+      expect(gain([mid.id, weakest.id])).toBeCloseTo(gain([mid.id]), 0);
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(2);
+    // The roster as it stands takes no free upgrades: strength is the team as it is run today.
+    const team = strengths.find(({ rosterId }) => fillRoster(model, ids(rosterId), new Set(), [], FREE_UPGRADES).adds.length > 0)!;
+    expect(fillRoster(model, ids(team.rosterId)).adds.length).toBeLessThan(fillRoster(model, ids(team.rosterId), new Set(), [], FREE_UPGRADES).adds.length);
+  }, 60_000);
+
+  it("searches packages of up to two players a side, and keeps every rule for them", () => {
+    let packages = 0;
+    for (const { rosterId } of strengths.slice(0, 3)) {
+      const { ideas } = findTrades(model, snapshot, rosterId, situations);
+      for (const idea of ideas) {
+        if (idea.offer.aGives.length + idea.offer.bGives.length > 2) packages++;
+        expect(idea.offer.aGives.length).toBeLessThanOrEqual(3);
+        expect(idea.offer.bGives.length).toBeLessThanOrEqual(2);
+        expect(droppedOnArrival(idea.result.a) || droppedOnArrival(idea.result.b)).toBe(false);
+        expect(idea.result.b.grade).toBeGreaterThanOrEqual(20);
+        expect(idea.result.a.projectedAfter - idea.result.a.projectedBefore).toBeGreaterThanOrEqual(0.3);
+      }
+      // No near-copies: one version of an idea.
+      const keys = ideas.map((idea) => similarityKey(idea.offer, idea.result));
+      expect(new Set(keys).size).toBe(keys.length);
+    }
+    expect(packages).toBeGreaterThan(0);
+  }, 60_000);
 });
 
 describe("chance words", () => {
@@ -269,4 +322,5 @@ describe("chance words", () => {
     const steps = Array.from({ length: 101 }, (_, i) => chanceWord(i / 100).step);
     expect(steps.every((step, i) => i === 0 || step >= steps[i - 1]!)).toBe(true);
   });
+
 });

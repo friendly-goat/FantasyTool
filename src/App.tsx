@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { teamSituations } from "../shared/insight.ts";
 import { buildModel, leagueStrength } from "../shared/strength.ts";
+import { registerModel } from "./search.ts";
 import type { TradeOffer } from "../shared/trade.ts";
 import type { AppConfig, LeagueSnapshot, PlayerRef, StatsReport } from "../shared/types.ts";
 import {
@@ -206,7 +207,13 @@ export function App() {
   const statsPlayers = stats?.players;
   const model = useMemo(
     () =>
-      snapshot && stats && statsPlayers && Object.keys(statsPlayers).length > 0 ? buildModel(snapshot, stats) : null,
+      {
+        if (!snapshot || !stats || !statsPlayers || Object.keys(statsPlayers).length === 0) return null;
+        const built = buildModel(snapshot, stats);
+        // So the trade search can build the same model off the page's thread.
+        registerModel(built, snapshot, stats);
+        return built;
+      },
     // Rebuilt only when the league or the player data change, not on progress updates.
     [snapshot, statsPlayers],
   );

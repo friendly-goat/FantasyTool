@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useState } from "react";
 import type { TeamSituation } from "../../shared/insight.ts";
-import { type Move, topMoves } from "../../shared/moves.ts";
+import type { Move } from "../../shared/moves.ts";
+import { searchMoves } from "../search.ts";
 import type { StrengthModel, TeamStrength } from "../../shared/strength.ts";
 import type { TradeOffer } from "../../shared/trade.ts";
 import type { LeagueSnapshot, PlayerRef, StatsReport, Team } from "../../shared/types.ts";
@@ -24,8 +25,10 @@ interface Props {
 
 const percent = new Intl.NumberFormat("en-US", { style: "percent", maximumFractionDigits: 0 });
 
-// The search takes a second or two, so each team's moves are kept for as long as the model stands.
-const movesByModel = new WeakMap<StrengthModel, Map<number, Move[]>>();
+// The search takes a few seconds, so each team's moves are kept (and a search under way is
+// shared) for as long as the model stands.
+const movesByModel = new WeakMap<StrengthModel, Map<number, Promise<Move[]>>>();
+const doneByModel = new WeakMap<StrengthModel, Map<number, Move[]>>();
 
 /** The team's top moves, worked out after the page has painted. Null while searching. */
 function useTopMoves(
@@ -34,17 +37,29 @@ function useTopMoves(
   rosterId: number,
   situations: Map<number, TeamSituation> | null,
 ): Move[] | null {
-  const saved = model ? (movesByModel.get(model)?.get(rosterId) ?? null) : null;
+  const saved = model ? (doneByModel.get(model)?.get(rosterId) ?? null) : null;
   const [found, setFound] = useState<{ model: StrengthModel; rosterId: number; moves: Move[] } | null>(null);
   useEffect(() => {
-    if (!model || !situations || movesByModel.get(model)?.has(rosterId)) return;
-    const timer = window.setTimeout(() => {
-      const moves = topMoves(model, snapshot, rosterId, situations);
-      if (!movesByModel.has(model)) movesByModel.set(model, new Map());
-      movesByModel.get(model)!.set(rosterId, moves);
-      setFound({ model, rosterId, moves });
-    }, 60);
-    return () => window.clearTimeout(timer);
+    if (!model || !situations || doneByModel.get(model)?.has(rosterId)) return;
+    let live = true;
+    if (!movesByModel.has(model)) movesByModel.set(model, new Map());
+    const searches = movesByModel.get(model)!;
+    if (!searches.has(rosterId)) {
+      searches.set(
+        rosterId,
+        searchMoves(model, snapshot, situations, rosterId).then((moves) => {
+          if (!doneByModel.has(model)) doneByModel.set(model, new Map());
+          doneByModel.get(model)!.set(rosterId, moves);
+          return moves;
+        }),
+      );
+    }
+    void searches.get(rosterId)!.then((moves) => {
+      if (live) setFound({ model, rosterId, moves });
+    });
+    return () => {
+      live = false;
+    };
   }, [model, snapshot, rosterId, situations]);
   if (saved) return saved;
   return found && found.model === model && found.rosterId === rosterId ? found.moves : null;

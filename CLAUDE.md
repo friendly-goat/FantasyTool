@@ -86,8 +86,12 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   chance (`chanceParts`) does use the other team's team effect and what they
   see on averages, each capped, combined on the log-odds scale. Ideas are
   ranked by your weekly gain times that chance. `findTrades` searches in
-  layers (swaps, then near-misses grown into packages, up to 3) and goes
-  deeper only when nothing is likely; never suggest an offer that is a big
+  layers: swaps plus an estimate of every two-team trade of up to two
+  players a side (screened, then the best measured in full), then
+  near-misses grown into packages (up to 3), deeper only when nothing is
+  likely. Check search changes with `scripts/audit-trades.ts` (brute force on
+  the sample league). The search runs in a web worker (`src/search.ts`);
+  both sides of a what-if take the same free upgrades (`FREE_UPGRADES`); never suggest an offer that is a big
   loss (F) for the other team, or one where either side drops a player it
   receives (`droppedOnArrival`). IR slots come from Sleeper's
   `settings.reserve_slots`, not `roster_positions`.

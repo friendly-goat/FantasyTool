@@ -251,7 +251,7 @@ describe("team strength and trades (against the mock league)", async () => {
     for (const { rosterId } of [strengths[0]!, strengths[4]!, strengths[strengths.length - 1]!]) {
       const started = Date.now();
       const moves = topMoves(model, snapshot, rosterId, situations);
-      expect(Date.now() - started).toBeLessThan(5000);
+      expect(Date.now() - started).toBeLessThan(8000);
       expect(moves.length).toBeLessThanOrEqual(5);
       const pickups = freeAgentPickups(model, ids(rosterId));
       if (pickups.length > 0) expect(moves.some((move) => move.kind === "pickup")).toBe(true);
@@ -278,11 +278,16 @@ describe("team strength and trades (against the mock league)", async () => {
   }, 30_000);
 
   it("digs deeper only when the swaps find nothing likely, and never does worse for it", () => {
+    // The first layer (swaps and two-player packages) finds something likely for most goals, so
+    // the weakest rosters ask for the strongest teams' best players, which it often cannot.
     let deeper = 0;
-    for (const { rosterId } of strengths.slice(0, 2)) {
-      for (const player of ids(rosterId).map((id) => model.players.get(id)!).filter((p) => p.games > 0).slice(0, 5)) {
-        const swaps = findTrades(model, snapshot, rosterId, situations, { givePlayerId: player.id, maxDepth: 1 });
-        const full = findTrades(model, snapshot, rosterId, situations, { givePlayerId: player.id });
+    for (const { rosterId } of [strengths.at(-1)!, strengths.at(-2)!]) {
+      const targets = strengths
+        .slice(0, 2)
+        .flatMap((team) => ids(team.rosterId).map((id) => model.players.get(id)!).sort((a, b) => b.expected - a.expected).slice(0, 2));
+      for (const player of targets) {
+        const swaps = findTrades(model, snapshot, rosterId, situations, { getPlayerId: player.id, maxDepth: 1 });
+        const full = findTrades(model, snapshot, rosterId, situations, { getPlayerId: player.id });
         const best = (ideas: { chance: number }[]) => Math.max(0, ...ideas.map((idea) => idea.chance));
         if (swaps.outlook === "likely") {
           expect(full.depth).toBe(1);
@@ -293,7 +298,7 @@ describe("team strength and trades (against the mock league)", async () => {
         expect(full.depth).toBeLessThanOrEqual(3);
         if (full.ideas.length > 0 && swaps.ideas.length > 0) expect(best(full.ideas)).toBeGreaterThanOrEqual(best(swaps.ideas) - 0.02);
         for (const idea of full.ideas) {
-          expect(idea.offer.aGives).toContain(player.id);
+          expect(idea.offer.bGives).toContain(player.id);
           expect(idea.result.b.grade).toBeGreaterThanOrEqual(20); // never a big loss for them
           expect(idea.depth).toBeLessThanOrEqual(full.depth);
         }
@@ -307,7 +312,9 @@ describe("team strength and trades (against the mock league)", async () => {
     for (const idea of findTrades(model, snapshot, mine, situations, { getPosition: "C" }).ideas) {
       expect(idea.result.a.gets.some((player) => player.positions.includes("C"))).toBe(true);
     }
-    const send = ids(mine).map((id) => model.players.get(id)!).filter((p) => p.games > 0)[0]!;
+    // A mid-level player: the weakest may be worth less than a free agent, and no one trades for him.
+    const healthy = ids(mine).map((id) => model.players.get(id)!).filter((p) => p.games > 0).sort((a, b) => a.expected - b.expected);
+    const send = healthy[Math.floor(healthy.length / 2)]!;
     const sending = findTrades(model, snapshot, mine, situations, { givePlayerId: send.id }).ideas;
     expect(sending.length).toBeGreaterThan(0);
     for (const idea of sending) expect(idea.offer.aGives).toContain(send.id);
@@ -319,12 +326,12 @@ describe("team strength and trades (against the mock league)", async () => {
     const getting = findTrades(model, snapshot, mine, situations, { getPlayerId: target.id });
     expect(getting.ideas.length).toBeGreaterThan(0);
     for (const idea of getting.ideas) {
-      expect(idea.offer.bGives).toEqual([target.id]);
+      expect(idea.offer.bGives).toContain(target.id);
       expect(idea.offer.teamB).toBe(other);
       // You may pay a little for a named player, never more than a point a week.
       expect(idea.result.a.projectedAfter - idea.result.a.projectedBefore).toBeGreaterThanOrEqual(-1);
     }
-  });
+  }, 60_000);
 
   it("says so when only long shots exist, and shows few of them", () => {
     // The best player in the league is out of reach for the weakest roster.

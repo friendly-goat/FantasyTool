@@ -7,7 +7,6 @@ import {
   evaluateTrade,
   chanceWord,
   likelihood,
-  findTrades,
   playerValue,
   gradeWord,
   type FinderOptions,
@@ -23,6 +22,7 @@ import {
   type TradeStory,
 } from "../../shared/trade.ts";
 import type { LeagueSnapshot, Team } from "../../shared/types.ts";
+import { searchTrades } from "../search.ts";
 import { formatPoints, formatRecord, formatSigned, formatWholeChange as whole, ordinal } from "../format.ts";
 import { Avatar } from "./Avatar.tsx";
 import { ChanceTag, EffectBar, RecordTag } from "./TeamEffect.tsx";
@@ -518,7 +518,6 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
 
   function findIdeas() {
     setSearching(true);
-    // Let the "Searching" label paint before the search starts.
     const options: FinderOptions =
       goal === "position"
         ? { getPosition: position }
@@ -531,10 +530,11 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
               : {};
     const target =
       goal === "get" ? (model!.players.get(getId)?.name ?? null) : goal === "send" ? (model!.players.get(sendId)?.name ?? null) : null;
-    setTimeout(() => {
-      setFound({ ...findTrades(model!, snapshot, myRosterId, situations!, options), model: model!, target });
+    const searchedWith = model!;
+    void searchTrades(searchedWith, snapshot, situations!, myRosterId, options).then((result) => {
+      setFound({ ...result, model: searchedWith, target });
       setSearching(false);
-    }, 30);
+    });
   }
 
   function load(idea: TradeIdea) {

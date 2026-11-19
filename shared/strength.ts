@@ -480,17 +480,21 @@ interface Scratch {
   placedSlot: Int32Array;
   byLevel: number[];
   byWait: number[];
+  /** Sorts byWait by what each player can still expect this week, most first (made once, reused). */
+  waitOrder: (x: number, y: number) => number;
 }
 
 function scratchFor(model: StrengthModel, roster: ModelPlayer[]): Scratch {
   const n = roster.length;
   const slots = model.slots.length;
+  const waits = new Float64Array(n);
   return {
     open: new Uint8Array(slots),
     last: new Float64Array(slots),
     lastBy: new Int32Array(slots),
     done: new Uint8Array(n),
-    waits: new Float64Array(n),
+    waits,
+    waitOrder: (x, y) => waits[y]! - waits[x]!,
     today: new Float64Array(n),
     taken: new Uint8Array(slots),
     used: new Uint8Array(slots),
@@ -604,17 +608,21 @@ export function simulateWeek(
     }
 
     // Lock a game when it beats what the slot can still expect from the rest of the week.
-    byWait.sort((x, y) => waits[y]! - waits[x]!);
+    // What all open slots can still expect changes only when a game is locked, so it is
+    // worked out again only then.
+    byWait.sort(work.waitOrder);
+    let expected = stillToCome(model, roster, work, -1, -1);
     for (let k = 0; k < placed; k++) {
       const player = placedPlayer[k]!;
       const slot = placedSlot[k]!;
       const score = today[player]!;
-      const threshold = stillToCome(model, roster, work, -1, -1) - stillToCome(model, roster, work, player, slot);
+      const threshold = expected - stillToCome(model, roster, work, player, slot);
       if (score >= threshold) {
         open[slot] = 0;
         done[player] = 1;
         waits[player] = 0;
-        byWait.sort((x, y) => waits[y]! - waits[x]!);
+        byWait.sort(work.waitOrder);
+        expected = stillToCome(model, roster, work, -1, -1);
         lockedBy[slot] = player;
         total += score;
       } else {
@@ -694,6 +702,14 @@ export function projectByWeek(model: StrengthModel, playerIds: string[]): number
 /** Weeks used when trying out free agents, to keep it quick. */
 const PICKUP_TRIAL_WEEKS = 60;
 const PICKUP_CANDIDATES = 6;
+/**
+ * In a trade's what-if, how many times a manager may swap his weakest active
+ * player for a better free agent: a move he can make at any time, trade or
+ * no trade, so both rosters make it and the trade is not credited with it.
+ */
+export const FREE_UPGRADES = 2;
+/** A swap must add at least this much a week (on the trial weeks) to be worth making. */
+const UPGRADE_MIN = 0.05;
 
 /**
  * A player kept only for as long as `injured` is out: he plays only the
@@ -751,6 +767,11 @@ export function fillRoster(
   claimed: Set<string> = new Set(),
   /** Free agents to keep if they are still wanted: the pickups the roster made before a trade. */
   prefer: string[] = [],
+  /**
+   * How many times the weakest active player may be swapped for a better free
+   * agent (FREE_UPGRADES in a trade's what-if; none for the roster as it is).
+   */
+  upgrades = 0,
 ): FilledRoster {
   const roster = playerIds.flatMap((id) => model.players.get(id) ?? []);
   const reserve = roster
@@ -781,6 +802,38 @@ export function fillRoster(
     const player = model.players.get(typeof best === "string" ? best : best.id)!;
     picked.push(player);
     ids = [...ids, player.id];
+  }
+
+  // Free upgrades: the weakest active player for a better free agent, when it helps. Only free
+  // agents who are better on their own are tried, so most rosters need no extra projection.
+  for (let swap = 0; swap < upgrades; swap++) {
+    const pool = [...active, ...picked];
+    if (pool.length === 0) break;
+    const weakest = pool.reduce((low, player) => (player.expected < low.expected ? player : low));
+    const kept = prefer.map((id) => model.players.get(id)).find((player): player is ModelPlayer => !!player && !unavailable(player.id));
+    const options = [
+      ...(kept && kept.expected > weakest.expected ? [kept.id] : []),
+      ...model.freeAgentIds
+        .filter((id) => !unavailable(id) && (model.players.get(id)?.expected ?? 0) > weakest.expected)
+        .slice(0, PICKUP_CANDIDATES),
+    ];
+    if (options.length === 0) break;
+    const without = ids.filter((id) => id !== weakest.id);
+    const current = projectedWeekly(model, ids, PICKUP_TRIAL_WEEKS);
+    const best = options
+      .map((id) => ({ id, projected: projectedWeekly(model, [...without, id], PICKUP_TRIAL_WEEKS) }))
+      .reduce((a, b) => (b.projected > a.projected ? b : a));
+    if (best.projected < current + UPGRADE_MIN) break;
+    const player = model.players.get(best.id)!;
+    // A free agent picked up a moment ago is simply not picked up; a rostered player is dropped.
+    const pickedAt = picked.indexOf(weakest);
+    if (pickedAt >= 0) picked.splice(pickedAt, 1);
+    else {
+      drops.push(weakest);
+      active = active.filter((entry) => entry !== weakest);
+    }
+    picked.push(player);
+    ids = [...without, player.id];
   }
 
   // Each player on IR who is back this season pushes out the least valuable active player then.
