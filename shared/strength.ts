@@ -703,11 +703,11 @@ export function projectByWeek(model: StrengthModel, playerIds: string[]): number
 const PICKUP_TRIAL_WEEKS = 60;
 const PICKUP_CANDIDATES = 6;
 /**
- * In a trade's what-if, how many times a manager may swap his weakest active
+ * In a trade's what-if, the most times a manager may swap his weakest active
  * player for a better free agent: a move he can make at any time, trade or
- * no trade. The swaps are made once, on the roster before the trade, and the
- * trade is made on that roster, so it is never credited with them (nor with a
- * swap that only becomes worth making by a hair once the roster changes).
+ * no trade. One per roster spot the trade opens (freeUpgrades in trade.ts),
+ * made once, on the roster before the trade, and the trade is made on that
+ * roster, so it is never credited with them.
  */
 export const FREE_UPGRADES = 5;
 

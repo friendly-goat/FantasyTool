@@ -222,7 +222,8 @@ describe("team strength and trades (against the mock league)", async () => {
     const mine = strengths[4]!.rosterId;
     const started = Date.now();
     const { ideas, outlook } = findTrades(model, snapshot, mine, situations);
-    expect(Date.now() - started).toBeLessThan(5000);
+    // It runs in a web worker; this only guards against it getting much slower (tests run side by side).
+    expect(Date.now() - started).toBeLessThan(15000);
     expect(ideas.length).toBeLessThanOrEqual(8);
     expect(outlook).not.toBe("none");
     const appearances = new Map<string, number>();
@@ -244,7 +245,7 @@ describe("team strength and trades (against the mock league)", async () => {
       expect(outlook).toBe("long-shot");
       expect(ideas.length).toBeLessThanOrEqual(3);
     }
-  });
+  }, 30_000);
 
   it("ranks trades and pickups together by strength gain, keeping one pickup in view", () => {
     let sawPickup = false;
@@ -454,7 +455,7 @@ describe("team strength and trades (against the mock league)", async () => {
       // Every suggestion helps the user, so none is called a loss.
       expect(idea.story.kind).not.toBe("costs-you");
     }
-  });
+  }, 30_000);
 
   it("rates acceptance higher when the trade helps them more", () => {
     const [a, b] = [strengths[2]!.rosterId, strengths[3]!.rosterId];

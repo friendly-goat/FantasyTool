@@ -280,7 +280,9 @@ describe("injuries, IR and waiver pickups (against the mock league)", async () =
         const { a } = evaluateTrade(model, snapshot, { teamA: rosterId, teamB: other, aGives, bGives: [target.id] });
         return a.projectedAfter - a.projectedBefore;
       };
-      expect(gain([mid.id, weakest.id])).toBeCloseTo(gain([mid.id]), 1);
+      // The same up to how the free agent and the traded players fit together.
+      const [one, two] = [gain([mid.id]), gain([mid.id, weakest.id])];
+      expect(Math.abs(two - one)).toBeLessThanOrEqual(Math.max(0.5, 0.1 * Math.abs(one)));
       checked++;
     }
     expect(checked).toBeGreaterThan(2);

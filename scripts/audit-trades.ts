@@ -7,6 +7,7 @@
 // finds better or more ideas than the finder.
 //
 //   npx tsx scripts/audit-trades.ts [--teams 3] [--goal best|C|send|get|injured] [--shortlist 400]
+//   npx tsx scripts/audit-trades.ts --snapshot league.json --stats stats.json --team "Bazooka"
 //
 // A development tool: slow on purpose (minutes), never part of the app.
 
@@ -16,6 +17,7 @@ import { buildSnapshot, loadPlayers } from "../server/snapshot.ts";
 import { createMockStats } from "../server/stats/mock.ts";
 import { StatsService } from "../server/stats/service.ts";
 import { rosterPlayers } from "../shared/analysis.ts";
+import type { LeagueSnapshot, StatsReport } from "../shared/types.ts";
 import { teamSituations } from "../shared/insight.ts";
 import { buildModel, leagueStrength, type ModelPlayer, projectedWeekly } from "../shared/strength.ts";
 import {
@@ -37,6 +39,8 @@ import {
   pickIdeas,
   players,
   quickRosterAfter,
+  quickRosterBefore,
+  freeUpgrades,
   rosterIds,
   SCREEN_WEEKS,
   similarityKey,
@@ -57,12 +61,25 @@ const SHORTLIST = Number(arg("shortlist", "400"));
 const SAVE = arg("save", "");
 const LOAD = arg("load", "");
 
-const raw = (await fetchFromMock("/players/nba")) as Record<string, unknown>;
-const allPlayers = await loadPlayers(fetchFromMock);
-const snapshot = await buildSnapshot(MOCK_LEAGUE_ID, fetchFromMock, allPlayers);
-const service = new StatsService(createMockStats(raw), { storage: null });
-await service.sync("2026");
-const model = buildModel(snapshot, await service.report(snapshot, allPlayers));
+// A real league instead of the sample: the JSON the app itself loads (signed in, open
+// /api/league/<id> and /api/league/<id>/stats and save each page).
+const SNAPSHOT = arg("snapshot", "");
+const STATS = arg("stats", "");
+const TEAM = arg("team", "");
+async function sampleLeague(): Promise<{ snapshot: LeagueSnapshot; report: StatsReport }> {
+  const raw = (await fetchFromMock("/players/nba")) as Record<string, unknown>;
+  const allPlayers = await loadPlayers(fetchFromMock);
+  const snapshot = await buildSnapshot(MOCK_LEAGUE_ID, fetchFromMock, allPlayers);
+  const service = new StatsService(createMockStats(raw), { storage: null });
+  await service.sync("2026");
+  return { snapshot, report: await service.report(snapshot, allPlayers) };
+}
+const league =
+  SNAPSHOT && STATS
+    ? { snapshot: JSON.parse(readFileSync(SNAPSHOT, "utf8")) as LeagueSnapshot, report: JSON.parse(readFileSync(STATS, "utf8")) as StatsReport }
+    : await sampleLeague();
+const { snapshot } = league;
+const model = buildModel(snapshot, league.report);
 const situations = teamSituations(snapshot, model, leagueStrength(snapshot, model));
 const urgency = (id: number) => situations.get(id)?.urgency ?? 0;
 const order: Likelihood[] = ["likely", "possible", "long shot"];
@@ -91,7 +108,8 @@ function reference(rosterId: number, options: FinderOptions) {
   const minGain = targeted ? -MAX_PRICE : MIN_GAIN;
   const weeks = targeted ? SCREEN_WEEKS : OPEN_SCREEN_WEEKS;
   const mine = rosterIds(snapshot, rosterId);
-  const myBefore = projectedWeekly(model, mine, weeks);
+  const before = (roster: string[], sent: number, received: number) =>
+    projectedWeekly(model, quickRosterBefore(model, roster, freeUpgrades(sent, received)), weeks);
   const at = (position?: string) => (player: ModelPlayer) => !position || player.positions.includes(position);
   const givers = players(model, mine).filter(
     (p) => p.games > 0 && at(options.givePosition)(p) && (!options.givePlayerId || p.id === options.givePlayerId),
@@ -104,7 +122,6 @@ function reference(rosterId: number, options: FinderOptions) {
   for (const team of snapshot.teams) {
     if (team.rosterId === rosterId) continue;
     const theirs = rosterIds(snapshot, team.rosterId);
-    const theirBefore = projectedWeekly(model, theirs, weeks);
     const byValue = players(model, theirs).sort((a, b) => a.expected - b.expected);
     const targets = players(model, theirs).filter((p) => p.games > 0 || isInjuredTarget(p));
     const getSets = pairs(targets).filter((set) =>
@@ -118,10 +135,10 @@ function reference(rosterId: number, options: FinderOptions) {
     for (const gives of giveSets) {
       for (const gets of getSets) {
         considered++;
-        const g = projectedWeekly(model, quickRosterAfter(model, mine, gives.map((p) => p.id), gets), weeks) - myBefore;
+        const g = projectedWeekly(model, quickRosterAfter(model, mine, gives.map((p) => p.id), gets), weeks) - before(mine, gives.length, gets.length);
         if (g < minGain) continue;
         const theirGain =
-          projectedWeekly(model, quickRosterAfter(model, theirs, gets.map((p) => p.id), gives), weeks) - theirBefore;
+          projectedWeekly(model, quickRosterAfter(model, theirs, gets.map((p) => p.id), gives), weeks) - before(theirs, gets.length, gives.length);
         const dropped = gives.length > gets.length ? byValue.filter((p) => !gets.includes(p)).slice(0, gives.length - gets.length) : [];
         const chance = chanceFrom(theirGain, sumAverage(gives) - sumAverage(dropped), sumAverage(gets), urgency(team.rosterId));
         if (chance < 0.1) continue;
@@ -186,7 +203,10 @@ const remeasure = (offers: TradeOffer[]): Idea[] =>
     const chance = acceptanceChance(result.b, urgency(offer.teamB));
     return { offer, result, chance, likelihood: likelihood(chance) };
   });
-for (const team of snapshot.teams.slice(SKIP, SKIP + TEAMS)) {
+const audited = TEAM
+  ? snapshot.teams.filter((team) => String(team.rosterId) === TEAM || team.teamName.toLowerCase().includes(TEAM.toLowerCase()))
+  : snapshot.teams.slice(SKIP, SKIP + TEAMS);
+for (const team of audited) {
   const mine = rosterPlayers(team).map((p) => p.id);
   const ranked = players(model, mine).filter((p) => p.games > 0).sort((a, b) => b.expected - a.expected);
   const target = snapshot.teams.find((t) => t.rosterId !== team.rosterId)!;

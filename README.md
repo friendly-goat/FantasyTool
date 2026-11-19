@@ -151,7 +151,7 @@ happens to its projected weekly score.
 | Re-evaluation date | when an injured player is back | read as the earliest return; the expected return is 10 days later |
 | Return window spread | when an injured player is back | at least 25% of the time away, centred on the expected day |
 | Injured reserve and waiver pickups | strength, trades | one player per IR slot; open spots filled from the 6 best free agents; the same rule before and after a trade |
-| Free upgrades (a trade's what-if only) | trades | at most 5 swaps of the weakest player for one of the 6 best free agents who is better on his own, unless it makes the roster worse; made once, on the roster before the trade, and the trade is made on that roster; never below the team as it stands |
+| Free upgrades (a trade's what-if only) | trades | one swap of the weakest player for a better free agent per roster spot the trade opens (none for a team that gets as many players as it sends), unless it makes the roster worse; made once, on the roster before the trade, and the trade is made on that roster; never below the team as it stands |
 | What they see of an injured player | what they see on averages | his average less the share of weeks he will miss, plus 10% of that; at most 80% off |
 | Reluctance to trade at all | chance they accept | fixed: with the premium below, an even trade comes out at about a third |
 | Own-player premium (managers overvalue their own players) | what they see on averages | fixed: their players count 8% higher (`OWN_PLAYER_PREMIUM`) |
@@ -274,9 +274,8 @@ The search runs in layers, like a tree, and goes deeper only when it has to:
    players up by what each swap does to both rosters (a short run of 8
    imaginary weeks), so it is cheap enough to cover all of them. The best
    1,500 get a closer look (the whole trade on the same few weeks, both
-   sides, since pairing cannot see how two players fit together), and the
-   best 300 of those (at most 4 for the same players back and 24 for any one
-   player, so every player gets a look) are screened properly. Only packages
+   sides, since pairing cannot see how two players fit together), and every
+   one that holds up there (up to 500) is screened properly. Only packages
    that pass the rules there (no received player dropped on arrival) go on.
 2. If nothing from layer 1 is likely to be accepted, the 12 most promising
    near-misses (ranked like ideas: your gain times their chance) each grow by
@@ -296,8 +295,10 @@ realistic (35% or better) once measured, the next best are measured too, 48
 at a time, up to 24 per idea shown. A dev script, `npx tsx scripts/audit-trades.ts`, checks the
 finder against a brute-force search of every trade of up to two players a
 side on the sample league (`--save` and `--load` keep the slow reference
-between runs); with these settings the finder gets about 90% of the
-brute-force value in a fraction of the time.
+between runs); with these settings the finder gets about 86% of the
+brute-force value in a fraction of the time. It also runs on a real league:
+signed in, save `/api/league/<id>` and `/api/league/<id>/stats` as JSON and
+pass them with `--snapshot league.json --stats stats.json --team "<name>"`.
 
 The search runs in a web worker (`src/search.ts`, `src/searchWorker.ts`),
 which builds the same model from the same league and stats, so the page
@@ -360,9 +361,12 @@ active player (a pickup or not) plays only until then; nobody goes for a
 player out for the season. Rosters are filled the same way before and after
 a trade, so a trade is credited only with the spots it opens, and a pickup
 the team makes either way is not counted as the trade's. For the same reason
-a trade is made on the roster after the team's free upgrades: its weakest
-players swapped for better free agents, up to five, as long as the roster
-gets no worse. A team could make those moves anyway, so a two-for-one that
+a trade is made on the roster after the team's free upgrades: one for each
+roster spot the trade opens, its weakest player swapped for a better free
+agent, as long as the roster gets no worse. A team that gets as many players
+as it sends gets none: every team in the league reaching for the same few
+free agents at once is no truer than none of them doing it, and it would
+make every bench look as good as the best free agent. A team could make those moves anyway, so a two-for-one that
 sends away a player worth less than a free agent is not credited with the
 free agent who replaces him. The swaps are made once, before the trade, not
 again after it, so a trade never gets credit for a swap that only just
