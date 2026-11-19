@@ -157,6 +157,7 @@ happens to its projected weekly score.
 | What they see on averages (players they would drop subtracted) | chance they accept | +0.8 to -2.0 on the log-odds scale |
 | What the trade does to their team (a gain counts 0.75, a loss 1.5) | chance they accept | +1.25 to -2.0 on the log-odds scale |
 | Pressure on the other team (absences, record, this week's matchup) | chance they accept | 0 to +0.6 on the log-odds scale |
+| Three-team trades: both other managers must agree | chance they accept | their two chances multiplied, each worked out as for a two-team trade with the limits above; nothing added |
 
 ### Projections
 
@@ -293,6 +294,42 @@ then the builder, then your best nine and position needs. Both builder rosters
 start closed; "Open in builder" loads an idea and opens both. When one team
 has fewer players (an empty bench or IR spot), its list is padded with empty
 slots so the two rosters line up row for row.
+
+### Three-team trades
+
+Turn on "Include three-team trades" on the Trades tab and the finder also
+looks for three-team trades (`findThreeTeamTrades` in `shared/threeTeam.ts`),
+then ranks them together with the two-team ideas by exactly the same rules
+(`withThreeTeam`, which uses the two-team finder's own `pickIdeas`). With
+the switch off, the finder is the two-team finder, unchanged.
+
+- **Each team is measured as in a two-team trade** (`measureSide`): its roster
+  before and after, both run through `fillRoster`, its grade, strength change,
+  player value and fit. A team's grade means the same thing either way.
+- **Both other managers have to say yes.** Each one's chance is worked out as
+  for a two-team trade (what he sees on averages, what it does to his team,
+  pressure); the chance for the trade is the two multiplied. So a three-team
+  idea has to be good for both partners to rank, and it makes the list only
+  when it truly beats the two-team ideas. When none does, the finder says so
+  and shows the closest one, if it stands a fair chance.
+- **What it looks for: triangles.** For each of your best swaps (you send one
+  player, a team sends you one), every team that could sit between: it takes
+  your player and sends the other team one of its own, close in value to both
+  (within 40%, as two-team swaps are). Only when no triangle is likely does it
+  grow the closest ones by one of your spare players, sent to the less keen
+  team.
+- **The same rules as two-team ideas:** worth it for you, never a big loss
+  (F) for either partner, no player dropped as soon as he arrives, no
+  near-copies (the same players to you from the same team, around the same
+  main piece; which team sits in the middle is not a new idea), and no player
+  in more than two ideas, across both kinds.
+- **The builder takes a third team.** "Open in builder" loads a three-team idea;
+  you can also add a third team yourself. Each ticked player has a "To" choice
+  (by default the deal goes round: first team to second, second to third,
+  third to first). Every team gets a grade card, player value shows as a row
+  per team, and the chance block shows each manager's chance and the two
+  together.
+- Top moves on My team stay two-team.
 
 ### Injuries, IR and waiver pickups
 

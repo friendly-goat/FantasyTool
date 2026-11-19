@@ -6,13 +6,10 @@ import {
   acceptance,
   evaluateTrade,
   chanceWord,
-  likelihood,
   findTrades,
   playerValue,
   gradeWord,
   type FinderOptions,
-  type FinderResult,
-  type TradeIdea,
   type TradeOffer,
   reserveMoves,
   tradePhases,
@@ -22,8 +19,23 @@ import {
   type Chance,
   type TradeStory,
 } from "../../shared/trade.ts";
+import {
+  evaluateThreeTeam,
+  findThreeTeamTrades,
+  type FinderIdea,
+  isThreeTeam,
+  type MixedFinderResult,
+  type ThreeTeamChance,
+  type ThreeTeamIdea,
+  type ThreeTeamOffer,
+  type ThreeTeamResult,
+  threeTeamAcceptance,
+  threeTeamProblem,
+  threeTeamStory,
+  withThreeTeam,
+} from "../../shared/threeTeam.ts";
 import type { LeagueSnapshot, Team } from "../../shared/types.ts";
-import { formatPoints, formatRecord, formatSigned, formatWholeChange as whole, ordinal } from "../format.ts";
+import { formatPoints, formatRecord, formatSigned, formatWholeChange as whole } from "../format.ts";
 import { Avatar } from "./Avatar.tsx";
 import { ChanceTag, EffectBar, RecordTag } from "./TeamEffect.tsx";
 import { PlayerName } from "./PlayerName.tsx";
@@ -70,7 +82,14 @@ function pickerRoster(team: Team, model: StrengthModel): ModelPlayer[] {
     .sort((a, b) => b.expected - a.expected);
 }
 
-function RosterPicker({ team, model, chosen, onToggle, label, open, onOpenChange, rows }: {
+/** In a three-team trade, where a ticked player goes: one of the other two teams. */
+interface Destinations {
+  options: Team[];
+  of: (playerId: string) => number;
+  onChange: (playerId: string, to: number) => void;
+}
+
+function RosterPicker({ team, model, chosen, onToggle, label, open, onOpenChange, rows, destinations }: {
   team: Team;
   model: StrengthModel;
   chosen: Set<string>;
@@ -78,11 +97,14 @@ function RosterPicker({ team, model, chosen, onToggle, label, open, onOpenChange
   label: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Rows to show at least, so two rosters side by side line up; extra rows are empty slots. */
+  /** Rows to show at least, so rosters side by side line up; extra rows are empty slots. */
   rows: number;
+  /** Three-team trades only: each ticked player gets a choice of where he goes. */
+  destinations?: Destinations;
 }) {
   const roster = pickerRoster(team, model);
   const empty = Math.max(0, rows - roster.length);
+  const teamName = (rosterId: number) => destinations?.options.find((option) => option.rosterId === rosterId)?.teamName ?? "";
   return (
     <details className="card trade-roster" open={open} onToggle={(event) => onOpenChange(event.currentTarget.open)}>
       <summary className="trade-roster-summary">
@@ -95,7 +117,7 @@ function RosterPicker({ team, model, chosen, onToggle, label, open, onOpenChange
           {chosen.size > 0
             ? roster
                 .filter((player) => chosen.has(player.id))
-                .map((player) => player.name)
+                .map((player) => (destinations ? `${player.name} to ${teamName(destinations.of(player.id))}` : player.name))
                 .join(", ")
             : open
               ? "Tick players to trade"
@@ -103,13 +125,13 @@ function RosterPicker({ team, model, chosen, onToggle, label, open, onOpenChange
         </span>
       </summary>
       <div className="roster-scroll">
-        <table className="roster-table">
+        <table className={destinations ? "roster-table roster-table-three" : "roster-table"}>
           <thead>
             <tr className="group-row">
               <th scope="col">Player</th>
               <th scope="col" className="num">Weekly value</th>
-              <th scope="col" className="num">Avg</th>
-              <th scope="col" className="num">Plays</th>
+              <th scope="col" className="num roster-extra">Avg</th>
+              <th scope="col" className="num roster-extra">Plays</th>
             </tr>
           </thead>
           <tbody>
@@ -125,12 +147,30 @@ function RosterPicker({ team, model, chosen, onToggle, label, open, onOpenChange
                         aria-label={`Trade ${player.name}`}
                       />
                     </label>
-                    <PlayerCell player={player} />
+                    <span className="pick-player">
+                      <PlayerCell player={player} />
+                      {destinations && chosen.has(player.id) && (
+                        <label className="dest">
+                          <span>To</span>
+                          <select
+                            value={destinations.of(player.id)}
+                            onChange={(event) => destinations.onChange(player.id, Number(event.target.value))}
+                            aria-label={`Where ${player.name} goes`}
+                          >
+                            {destinations.options.map((option) => (
+                              <option key={option.rosterId} value={option.rosterId}>
+                                {option.teamName}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+                    </span>
                   </span>
                 </th>
                 <td className="num strong">{player.games > 0 ? formatPoints(player.expected) : "–"}</td>
-                <td className="num">{player.games > 0 ? formatPoints(player.average) : "–"}</td>
-                <td className="num quiet-cell">{player.games > 0 ? percent.format(player.availability) : "–"}</td>
+                <td className="num roster-extra">{player.games > 0 ? formatPoints(player.average) : "–"}</td>
+                <td className="num quiet-cell roster-extra">{player.games > 0 ? percent.format(player.availability) : "–"}</td>
               </tr>
             ))}
             {/* Only to line up with the other roster; on a phone the two are stacked, so they go. */}
@@ -150,8 +190,8 @@ function RosterPicker({ team, model, chosen, onToggle, label, open, onOpenChange
                   </span>
                 </th>
                 <td className="num quiet-cell">–</td>
-                <td className="num quiet-cell">–</td>
-                <td className="num quiet-cell">–</td>
+                <td className="num quiet-cell roster-extra">–</td>
+                <td className="num quiet-cell roster-extra">–</td>
               </tr>
             ))}
           </tbody>
@@ -185,14 +225,20 @@ function PlayerValue({ model, player }: { model: StrengthModel; player: ModelPla
   );
 }
 
-/** The players in the trade itself, joining and leaving. */
-function MoveList({ side, model }: { side: TradeSide; model: StrengthModel }) {
+/** In a three-team trade, which team each player comes from and goes to. */
+interface Routes {
+  from: (playerId: string) => string;
+  to: (playerId: string) => string;
+}
+
+/** The players in the trade itself, joining and leaving (in a three-team trade, from and to whom). */
+function MoveList({ side, model, routes }: { side: TradeSide; model: StrengthModel; routes?: Routes }) {
   const value = (player: ModelPlayer) => <PlayerValue model={model} player={player} />;
   return (
     <PlayerMoves
       moves={[
-        ...side.gets.map((player) => ({ player, joins: true, value: value(player) })),
-        ...side.gives.map((player) => ({ player, joins: false, value: value(player) })),
+        ...side.gets.map((player) => ({ player, joins: true, value: value(player), note: routes && `From ${routes.from(player.id)}` })),
+        ...side.gives.map((player) => ({ player, joins: false, value: value(player), note: routes && `To ${routes.to(player.id)}` })),
       ]}
     />
   );
@@ -241,7 +287,19 @@ function TeamManagement({ side, model, team }: { side: TradeSide; model: Strengt
   );
 }
 
-function SideResult({ side, team, scale, model }: { side: TradeSide; team: Team | undefined; scale: number; model: StrengthModel }) {
+function SideResult({
+  side,
+  team,
+  scale,
+  model,
+  routes,
+}: {
+  side: TradeSide;
+  team: Team | undefined;
+  scale: number;
+  model: StrengthModel;
+  routes?: Routes;
+}) {
   const strengthTone = side.strengthChange > 0 ? "up" : side.strengthChange < 0 ? "down" : "";
   const phases = useMemo(() => tradePhases(model, side), [model, side]);
   return (
@@ -261,7 +319,7 @@ function SideResult({ side, team, scale, model }: { side: TradeSide; team: Team 
         <span className="grade-word">{gradeWord(side.grade)}</span>
       </p>
 
-      <MoveList side={side} model={model} />
+      <MoveList side={side} model={model} routes={routes} />
       <TeamManagement side={side} model={model} team={team} />
 
       <div className="effect-block">
@@ -392,6 +450,105 @@ function verdict(result: TradeResult, chance: number, nameA: string, nameB: stri
   return `${first}, ${outcome} (${pct}).`;
 }
 
+/** A three-team idea in the finder: who sends whom where, why, each team's grade and the chance both accept. */
+function ThreeTeamIdeaCard({
+  idea,
+  teamName,
+  mine,
+  players,
+  onOpen,
+}: {
+  idea: ThreeTeamIdea;
+  teamName: (rosterId: number) => string;
+  mine: number;
+  players: (ids: string[]) => ModelPlayer[];
+  onOpen: () => void;
+}) {
+  const [you, ...others] = idea.result.sides;
+  return (
+    <li className="card idea idea-three">
+      <div className="idea-main">
+        <p className="idea-kind">Three-team trade</p>
+        <RouteList offer={idea.offer} teamName={teamName} mine={mine} players={players} />
+        <StoryBlock story={idea.story} />
+      </div>
+      <div className="idea-side">
+        <dl className="idea-facts">
+          <div>
+            <dt>You</dt>
+            <dd className={tone(you.grade)}>{you.letter}</dd>
+          </div>
+          {others.map((side) => (
+            <div key={side.rosterId}>
+              <dt className="idea-team" title={teamName(side.rosterId)}>
+                {teamName(side.rosterId)}
+              </dt>
+              <dd className={tone(side.grade)}>{side.letter}</dd>
+            </div>
+          ))}
+          <div>
+            <dt>Your strength</dt>
+            <dd className={you.strengthChange > 0 ? "up" : you.strengthChange < 0 ? "down" : ""}>{whole(you.strengthChange)}</dd>
+          </div>
+          <div>
+            <dt>Chance both accept</dt>
+            <dd>
+              <ChanceTag chance={idea.chance} showPercent />
+            </dd>
+          </div>
+        </dl>
+        <p className="quiet idea-each">
+          {idea.chances.map((entry, index) => (
+            <span key={entry.rosterId}>
+              {index > 0 && ", "}
+              {teamName(entry.rosterId)} {percent.format(entry.chance)}
+            </span>
+          ))}
+        </p>
+      </div>
+      <button type="button" className="button button-plain" onClick={onOpen}>
+        Open in builder
+      </button>
+    </li>
+  );
+}
+
+/** The three-team verdict: your grade, then whether both others are likely to agree. */
+function threeVerdict(result: ThreeTeamResult, chance: number, name: (rosterId: number) => string): string {
+  const [you, b, c] = result.sides;
+  const pct = percent.format(chance);
+  const first =
+    you.grade >= 57 ? `Helps ${name(you.rosterId)}` : you.grade <= 43 ? `Costs ${name(you.rosterId)}` : `About even for ${name(you.rosterId)}`;
+  const both = `${name(b.rosterId)} and ${name(c.rosterId)}`;
+  const but = you.grade >= 57 ? "but" : "and";
+  const outcome = [
+    `${but} ${both} would almost certainly not both agree`,
+    `${but} getting both ${both} to agree is unlikely`,
+    `${but} ${both} would probably not both agree`,
+    `and whether ${both} both agree is a toss-up`,
+    `and ${both} might both agree`,
+    `and ${both} would likely both agree`,
+    `and ${both} would almost certainly both agree`,
+  ][chanceWord(chance).step];
+  return `${first}, ${outcome} (${pct}).`;
+}
+
+function ChanceParts({ chance }: { chance: Chance }) {
+  return (
+    <ul className="chance-parts quiet">
+      {chance.parts.map((part) => (
+        <li key={part.label}>
+          <span>{part.label}</span>
+          <span className={part.points > 0 ? "up" : part.points < 0 ? "down" : ""}>
+            {part.points > 0 ? "+" : part.points < 0 ? "\u2212" : ""}
+            {Math.abs(part.points)} pts
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function ChanceBlock({ chance, name }: { chance: Chance; name: string }) {
   return (
     <div className="chance-block">
@@ -399,18 +556,102 @@ function ChanceBlock({ chance, name }: { chance: Chance; name: string }) {
       <p className="chance-figure">
         <ChanceTag chance={chance.chance} showPercent />
       </p>
-      <ul className="chance-parts quiet">
-        {chance.parts.map((part) => (
-          <li key={part.label}>
-            <span>{part.label}</span>
-            <span className={part.points > 0 ? "up" : part.points < 0 ? "down" : ""}>
-              {part.points > 0 ? "+" : part.points < 0 ? "\u2212" : ""}
-              {Math.abs(part.points)} pts
-            </span>
-          </li>
-        ))}
-      </ul>
+      <ChanceParts chance={chance} />
     </div>
+  );
+}
+
+/** Both other managers' chances, each with its parts, and the chance they both say yes. */
+function ThreeChanceBlock({ chance, teamName }: { chance: ThreeTeamChance; teamName: (rosterId: number) => string }) {
+  return (
+    <div className="chance-block">
+      <h3 className="my-card-title">Chance both accept</h3>
+      <p className="chance-figure">
+        <ChanceTag chance={chance.chance} showPercent />
+      </p>
+      <p className="quiet chance-note">Both have to say yes, so their two chances are multiplied.</p>
+      {chance.each.map((entry) => (
+        <div key={entry.rosterId} className="chance-each">
+          <p className="chance-each-title">
+            <span>{teamName(entry.rosterId)}</span>
+            <span>
+              <ChanceTag chance={entry.chance.chance} showPercent />
+            </span>
+          </p>
+          <ChanceParts chance={entry.chance} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Player value for each of three teams: what it gets and sends, and the net,
+ * as a bar from the middle. The three-team version of the player value
+ * slider: no team context, just each player's own value above a free agent.
+ */
+function ValueSplit({ result, teamOf }: { result: ThreeTeamResult; teamOf: (rosterId: number) => Team | undefined }) {
+  const scale = Math.max(3, ...result.sides.map((side) => Math.abs(side.valueChange)));
+  return (
+    <div className="value-split">
+      <p className="balance-title">Player value</p>
+      <ul>
+        {result.sides.map((side) => {
+          const team = teamOf(side.rosterId);
+          const net = side.valueChange;
+          return (
+            <li key={side.rosterId} className="value-split-row">
+              <span className="value-split-team">
+                <Avatar url={team?.avatarUrl ?? null} name={team?.teamName ?? "?"} size="sm" />
+                <span className="value-split-name">{team?.teamName}</span>
+              </span>
+              <span className="quiet value-split-flow">
+                Gets {formatPoints(side.valueReceived)}, sends {formatPoints(side.valueSent)}
+              </span>
+              <EffectBar change={net} scale={scale} label={`${team?.teamName ?? "Team"}: ${formatSigned(net)} a week of player value`} />
+              <span className={`value-split-net ${net >= 0.5 ? "up" : net <= -0.5 ? "down" : ""}`}>{formatSigned(net)}</span>
+            </li>
+          );
+        })}
+      </ul>
+      <p className="quiet balance-detail">
+        Each team's player value in and out a week: each player's own weekly value above a typical free agent, before
+        any team context.
+      </p>
+    </div>
+  );
+}
+
+/** Who sends whom where, one line per pair of teams, in the order the deal goes round. */
+function RouteList({
+  offer,
+  teamName,
+  mine,
+  players,
+}: {
+  offer: ThreeTeamOffer;
+  teamName: (rosterId: number) => string;
+  mine: number;
+  players: (ids: string[]) => ModelPlayer[];
+}) {
+  const legs: { from: number; to: number; ids: string[] }[] = [];
+  for (const move of offer.moves) {
+    const leg = legs.find((entry) => entry.from === move.from && entry.to === move.to);
+    if (leg) leg.ids.push(move.playerId);
+    else legs.push({ from: move.from, to: move.to, ids: [move.playerId] });
+  }
+  const who = (rosterId: number, start: boolean) => (rosterId === mine ? (start ? "You" : "you") : teamName(rosterId));
+  // What you send first, then the rest of the deal in the order it goes round.
+  const ordered = [...legs.filter((leg) => leg.from === mine), ...legs.filter((leg) => leg.from !== mine)];
+  return (
+    <ul className="routes">
+      {ordered.map((leg) => (
+        <li key={`${leg.from}-${leg.to}`}>
+          <strong>{who(leg.from, true)}</strong> {leg.from === mine ? "send" : "sends"}{" "}
+          {names(players(leg.ids))} to <strong>{who(leg.to, false)}</strong>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -421,23 +662,50 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
   const [teamB, setTeamB] = useState(others[0]?.rosterId ?? myRosterId);
   const [aGives, setAGives] = useState<Set<string>>(new Set());
   const [bGives, setBGives] = useState<Set<string>>(new Set());
-  const [found, setFound] = useState<(FinderResult & { model: StrengthModel; target: string | null }) | null>(null);
+  const [teamC, setTeamC] = useState<number | null>(null);
+  const [cGives, setCGives] = useState<Set<string>>(new Set());
+  // Three-team trades: where each ticked player goes, when not the default (A to B, B to C, C to A).
+  const [dest, setDest] = useState<Record<string, number>>({});
+  const [found, setFound] = useState<
+    (MixedFinderResult & { model: StrengthModel; target: string | null; threeTeam: boolean }) | null
+  >(null);
+  const [allowThree, setAllowThree] = useState(false);
   const [searching, setSearching] = useState(false);
   const [goal, setGoal] = useState<Goal>("best");
   const [position, setPosition] = useState("SF");
   const [sendId, setSendId] = useState("");
   const [getId, setGetId] = useState("");
   // Both sides start closed; opening an idea in the builder opens both.
-  const [openSides, setOpenSides] = useState({ a: false, b: false });
+  const [openSides, setOpenSides] = useState({ a: false, b: false, c: false });
+
+  const scrollToBuilder = (behavior: ScrollBehavior) =>
+    // After the tab is shown and the builder has the trade.
+    requestAnimationFrame(() => document.getElementById("trade-builder")?.scrollIntoView({ behavior, block: "start" }));
 
   function loadOffer(offer: TradeOffer, behavior: ScrollBehavior) {
     setTeamA(offer.teamA);
     setTeamB(offer.teamB);
+    setTeamC(null);
     setAGives(new Set(offer.aGives));
     setBGives(new Set(offer.bGives));
-    setOpenSides({ a: true, b: true });
-    // After the tab is shown and the builder has the trade.
-    requestAnimationFrame(() => document.getElementById("trade-builder")?.scrollIntoView({ behavior, block: "start" }));
+    setCGives(new Set());
+    setDest({});
+    setOpenSides({ a: true, b: true, c: false });
+    scrollToBuilder(behavior);
+  }
+
+  function loadThree(offer: ThreeTeamOffer) {
+    const [first, second, third] = offer.teams;
+    const from = (rosterId: number) => new Set(offer.moves.filter((move) => move.from === rosterId).map((move) => move.playerId));
+    setTeamA(first);
+    setTeamB(second);
+    setTeamC(third);
+    setAGives(from(first));
+    setBGives(from(second));
+    setCGives(from(third));
+    setDest(Object.fromEntries(offer.moves.map((move) => [move.playerId, move.to])));
+    setOpenSides({ a: true, b: true, c: true });
+    scrollToBuilder("smooth");
   }
 
   useEffect(() => {
@@ -449,10 +717,43 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
 
 
   const team = (rosterId: number) => snapshot.teams.find((candidate) => candidate.rosterId === rosterId);
+  const teamName = (rosterId: number) => team(rosterId)?.teamName ?? "Another team";
+  const three = teamC !== null;
   const result = useMemo(() => {
-    if (!model || teamA === teamB || aGives.size + bGives.size === 0) return null;
+    if (!model || three || teamA === teamB || aGives.size + bGives.size === 0) return null;
     return evaluateTrade(model, snapshot, { teamA, teamB, aGives: [...aGives], bGives: [...bGives] });
-  }, [model, snapshot, teamA, teamB, aGives, bGives]);
+  }, [model, snapshot, three, teamA, teamB, aGives, bGives]);
+
+  // ---- Three-team builder ----
+  const threeOffer = useMemo((): ThreeTeamOffer | null => {
+    if (teamC === null) return null;
+    const teams: [number, number, number] = [teamA, teamB, teamC];
+    // By default the deal goes round: A to B, B to C, C to A.
+    const fallback = (from: number) => (from === teamA ? teamB : from === teamB ? teamC : teamA);
+    const to = (playerId: string, from: number) => {
+      const chosen = dest[playerId];
+      return chosen !== undefined && chosen !== from && teams.includes(chosen) ? chosen : fallback(from);
+    };
+    const moves = [
+      ...[...aGives].map((playerId) => ({ playerId, from: teamA, to: to(playerId, teamA) })),
+      ...[...bGives].map((playerId) => ({ playerId, from: teamB, to: to(playerId, teamB) })),
+      ...[...cGives].map((playerId) => ({ playerId, from: teamC, to: to(playerId, teamC) })),
+    ];
+    return { teams, moves };
+  }, [teamA, teamB, teamC, aGives, bGives, cGives, dest]);
+  const threeProblem = threeOffer && threeOffer.moves.length > 0 ? threeTeamProblem(threeOffer, teamName) : null;
+  const threeResult = useMemo(
+    () => (model && threeOffer && threeOffer.moves.length > 0 && !threeProblem ? evaluateThreeTeam(model, snapshot, threeOffer) : null),
+    [model, snapshot, threeOffer, threeProblem],
+  );
+  const threeChance = useMemo(
+    () => (threeResult ? threeTeamAcceptance(threeResult, (rosterId) => situations?.get(rosterId)?.urgency ?? 0) : null),
+    [threeResult, situations],
+  );
+  const threeStoryText = useMemo(
+    () => (model && threeResult ? threeTeamStory(model, snapshot, threeResult) : null),
+    [model, snapshot, threeResult],
+  );
 
   // Roster needs for both builder teams, behind the explanation of a trade.
   const builderProfiles = useMemo(() => {
@@ -506,14 +807,31 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
     update(next);
   };
 
-  function chooseTeam(which: "a" | "b", rosterId: number) {
+  function chooseTeam(which: "a" | "b" | "c", rosterId: number) {
     if (which === "a") {
       setTeamA(rosterId);
       setAGives(new Set());
-    } else {
+    } else if (which === "b") {
       setTeamB(rosterId);
       setBGives(new Set());
+    } else {
+      setTeamC(rosterId);
+      setCGives(new Set());
     }
+  }
+
+  function addThirdTeam() {
+    const next = snapshot.teams.find((candidate) => candidate.rosterId !== teamA && candidate.rosterId !== teamB);
+    if (!next) return;
+    setTeamC(next.rosterId);
+    setCGives(new Set());
+    setOpenSides((sides) => ({ ...sides, c: sides.a || sides.b }));
+  }
+
+  function removeThirdTeam() {
+    setTeamC(null);
+    setCGives(new Set());
+    setDest({});
   }
 
   function findIdeas() {
@@ -531,20 +849,43 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
               : {};
     const target =
       goal === "get" ? (model!.players.get(getId)?.name ?? null) : goal === "send" ? (model!.players.get(sendId)?.name ?? null) : null;
+    const threeTeam = allowThree;
     setTimeout(() => {
-      setFound({ ...findTrades(model!, snapshot, myRosterId, situations!, options), model: model!, target });
+      const two = findTrades(model!, snapshot, myRosterId, situations!, options);
+      // Three-team trades only when asked, ranked with the two-team ideas by the same rules.
+      const mixed = threeTeam
+        ? withThreeTeam(two, findThreeTeamTrades(model!, snapshot, myRosterId, situations!, options), options)
+        : withThreeTeam(two, [], options);
+      setFound({ ...mixed, model: model!, target, threeTeam });
       setSearching(false);
     }, 30);
   }
 
-  function load(idea: TradeIdea) {
-    loadOffer(idea.offer, "smooth");
+  function load(idea: FinderIdea) {
+    if (isThreeTeam(idea)) loadThree(idea.offer);
+    else loadOffer(idea.offer, "smooth");
   }
 
   const a = team(teamA);
   const b = team(teamB);
-  const rows = Math.max(a ? pickerRoster(a, model).length : 0, b ? pickerRoster(b, model).length : 0);
-  const teamSelect = (which: "a" | "b", value: number, label: string) => (
+  const c = teamC !== null ? team(teamC) : undefined;
+  const rows = Math.max(...[a, b, c].map((entry) => (entry ? pickerRoster(entry, model).length : 0)));
+  const destinationsFor = (from: number): Destinations | undefined =>
+    threeOffer
+      ? {
+          options: threeOffer.teams.filter((rosterId) => rosterId !== from).flatMap((rosterId) => team(rosterId) ?? []),
+          of: (playerId) => threeOffer.moves.find((move) => move.playerId === playerId)?.to ?? from,
+          onChange: (playerId, to) => setDest((current) => ({ ...current, [playerId]: to })),
+        }
+      : undefined;
+  const routes: Routes | undefined = threeOffer
+    ? {
+        from: (playerId) => teamName(threeOffer.moves.find((move) => move.playerId === playerId)?.from ?? -1),
+        to: (playerId) => teamName(threeOffer.moves.find((move) => move.playerId === playerId)?.to ?? -1),
+      }
+    : undefined;
+  const threeScale = threeResult ? Math.max(30, ...threeResult.sides.map((side) => Math.abs(side.strengthChange))) : 30;
+  const teamSelect = (which: "a" | "b" | "c", value: number, label: string) => (
     <label>
       {label}
       <select value={value} onChange={(event) => chooseTeam(which, Number(event.target.value))}>
@@ -613,6 +954,21 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
             </select>
           </label>
         )}
+        <label className="switch">
+          <input
+            type="checkbox"
+            role="switch"
+            checked={allowThree}
+            onChange={(event) => {
+              setAllowThree(event.target.checked);
+              setFound(null);
+            }}
+          />
+          <span className="switch-track" aria-hidden="true">
+            <span className="switch-thumb" />
+          </span>
+          Include three-team trades
+        </label>
         <button type="button" className="button" disabled={searching || !ready} onClick={findIdeas}>
           {searching ? "Searching…" : "Find trades"}
         </button>
@@ -650,64 +1006,116 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
       )}
       {found && found.ideas.length > 0 && (
         <ul className="ideas">
-          {found.ideas.map((idea) => (
-            <li key={`${idea.offer.aGives.join("+")}-${idea.offer.bGives.join("+")}`} className="card idea">
-              <div className="idea-main">
-                <p className="idea-deal">
-                  Send {names(idea.result.a.gives)} to {team(idea.offer.teamB)?.teamName} for {names(idea.result.a.gets)}
-                </p>
-                <StoryBlock story={idea.story} />
-              </div>
-              <div className="idea-side">
-                <dl className="idea-facts">
-                  <div>
-                    <dt>You</dt>
-                    <dd className={tone(idea.result.a.grade)}>{idea.result.a.letter}</dd>
-                  </div>
-                  <div>
-                    <dt>Them</dt>
-                    <dd className={tone(idea.result.b.grade)}>{idea.result.b.letter}</dd>
-                  </div>
-                  <div>
-                    <dt>Your strength</dt>
-                    <dd className={idea.result.a.strengthChange > 0 ? "up" : idea.result.a.strengthChange < 0 ? "down" : ""}>
-                      {whole(idea.result.a.strengthChange)}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Their strength</dt>
-                    <dd className={idea.result.b.strengthChange > 0 ? "up" : idea.result.b.strengthChange < 0 ? "down" : ""}>
-                      {whole(idea.result.b.strengthChange)}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Chance they accept</dt>
-                    <dd>
-                      <ChanceTag chance={idea.chance} showPercent />
-                    </dd>
-                  </div>
-                </dl>
-                <ValueBalance result={idea.result} nameA="you" nameB="them" compact />
-              </div>
-              <button type="button" className="button button-plain" onClick={() => load(idea)}>
-                Open in builder
-              </button>
-            </li>
-          ))}
+          {found.ideas.map((idea) =>
+            isThreeTeam(idea) ? (
+              <ThreeTeamIdeaCard
+                key={idea.offer.moves.map((move) => `${move.playerId}>${move.to}`).join("+")}
+                idea={idea}
+                teamName={teamName}
+                mine={myRosterId}
+                players={(ids) => ids.flatMap((id) => model.players.get(id) ?? [])}
+                onOpen={() => load(idea)}
+              />
+            ) : (
+              <li key={`${idea.offer.aGives.join("+")}-${idea.offer.bGives.join("+")}`} className="card idea">
+                <div className="idea-main">
+                  <p className="idea-deal">
+                    Send {names(idea.result.a.gives)} to {team(idea.offer.teamB)?.teamName} for {names(idea.result.a.gets)}
+                  </p>
+                  <StoryBlock story={idea.story} />
+                </div>
+                <div className="idea-side">
+                  <dl className="idea-facts">
+                    <div>
+                      <dt>You</dt>
+                      <dd className={tone(idea.result.a.grade)}>{idea.result.a.letter}</dd>
+                    </div>
+                    <div>
+                      <dt>Them</dt>
+                      <dd className={tone(idea.result.b.grade)}>{idea.result.b.letter}</dd>
+                    </div>
+                    <div>
+                      <dt>Your strength</dt>
+                      <dd className={idea.result.a.strengthChange > 0 ? "up" : idea.result.a.strengthChange < 0 ? "down" : ""}>
+                        {whole(idea.result.a.strengthChange)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Their strength</dt>
+                      <dd className={idea.result.b.strengthChange > 0 ? "up" : idea.result.b.strengthChange < 0 ? "down" : ""}>
+                        {whole(idea.result.b.strengthChange)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Chance they accept</dt>
+                      <dd>
+                        <ChanceTag chance={idea.chance} showPercent />
+                      </dd>
+                    </div>
+                  </dl>
+                  <ValueBalance result={idea.result} nameA="you" nameB="them" compact />
+                </div>
+                <button type="button" className="button button-plain" onClick={() => load(idea)}>
+                  Open in builder
+                </button>
+              </li>
+            ),
+          )}
         </ul>
+      )}
+      {found?.threeTeam && !found.ideas.some(isThreeTeam) && (
+        <div className="three-left-out">
+          {found.bestThreeLeftOut && found.bestThreeLeftOut.likelihood !== "long shot" ? (
+            <>
+              <p className="finder-outlook quiet">
+                No three-team trade ranked among these: it needs two managers to agree, so it has to be good for both.
+                The closest one:
+              </p>
+              <ul className="ideas">
+                <ThreeTeamIdeaCard
+                  idea={found.bestThreeLeftOut}
+                  teamName={teamName}
+                  mine={myRosterId}
+                  players={(ids) => ids.flatMap((id) => model.players.get(id) ?? [])}
+                  onOpen={() => load(found.bestThreeLeftOut!)}
+                />
+              </ul>
+            </>
+          ) : (
+            <p className="finder-outlook quiet">
+              Three-team trades were searched too, but none stood a fair chance: both other managers would have to
+              agree.
+            </p>
+          )}
+        </div>
       )}
 
       <h2 className="section-title ideas-title" id="trade-builder">Build a trade</h2>
       <div className="filters">
         {teamSelect("a", teamA, "Team")}
-        {teamSelect("b", teamB, "Trading with")}
-        {(aGives.size > 0 || bGives.size > 0) && (
+        {teamSelect("b", teamB, three ? "With" : "Trading with")}
+        {teamC !== null && (
+          <span className="third-team">
+            {teamSelect("c", teamC, "And")}
+            <button type="button" className="button button-plain button-small" onClick={removeThirdTeam} aria-label="Remove the third team">
+              Remove
+            </button>
+          </span>
+        )}
+        {teamC === null && (
+          <button type="button" className="button button-plain add-team" onClick={addThirdTeam}>
+            <span aria-hidden="true">+</span> Add a third team
+          </button>
+        )}
+        {(aGives.size > 0 || bGives.size > 0 || cGives.size > 0) && (
           <button
             type="button"
             className="button button-plain"
             onClick={() => {
               setAGives(new Set());
               setBGives(new Set());
+              setCGives(new Set());
+              setDest({});
             }}
           >
             Clear trade
@@ -715,7 +1123,61 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
         )}
       </div>
 
-      {teamA === teamB ? (
+      {three && threeOffer && c ? (
+        <>
+          {threeResult && threeChance ? (
+            <div className="trade-result" role="status">
+              <div className="card balance-card">
+                <ValueSplit result={threeResult} teamOf={team} />
+              </div>
+              <p className="verdict">{threeVerdict(threeResult, threeChance.chance, teamName)}</p>
+              <div className="my-cards my-cards-three">
+                {threeResult.sides.map((side) => (
+                  <SideResult key={side.rosterId} side={side} team={team(side.rosterId)} scale={threeScale} model={model} routes={routes} />
+                ))}
+              </div>
+              {threeStoryText && (
+                <div className="card story-card">
+                  <div>
+                    <h3 className="my-card-title">Why, from {teamName(teamA)}'s side</h3>
+                    <StoryBlock story={threeStoryText} />
+                  </div>
+                  <ThreeChanceBlock chance={threeChance} teamName={teamName} />
+                </div>
+              )}
+            </div>
+          ) : threeProblem ? (
+            // Three different teams are needed at all; anything else is a step still to take.
+            <p className={threeProblem.startsWith("Choose") ? "notice notice-warn" : "quiet trade-hint"}>{threeProblem}</p>
+          ) : (
+            <p className="quiet trade-hint">
+              Tick the players each team would send. Each one goes round to the next team unless you choose another.
+            </p>
+          )}
+          {a && b && (
+            <div className="trade-rosters trade-rosters-three">
+              {([
+                [a, aGives, setAGives, "a"],
+                [b, bGives, setBGives, "b"],
+                [c, cGives, setCGives, "c"],
+              ] as const).map(([entry, chosen, update, key]) => (
+                <RosterPicker
+                  key={key}
+                  team={entry}
+                  model={model}
+                  chosen={chosen}
+                  onToggle={toggle(chosen, update)}
+                  label={`${entry.teamName} sends`}
+                  open={openSides[key]}
+                  onOpenChange={(open) => setOpenSides((sides) => ({ ...sides, [key]: open }))}
+                  rows={rows}
+                  destinations={destinationsFor(entry.rosterId)}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      ) : teamA === teamB ? (
         <p className="notice notice-warn">Choose two different teams.</p>
       ) : (
         a &&
@@ -849,6 +1311,8 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
           multiplied by that chance. Less likely ones are shown only when none reach even odds, and long shots
           (under 35%) only when there is nothing better. When you name a player, offers that cost you up to a
           point a week are allowed, since that is sometimes the price of a move you want.
+          A three-team trade needs both other managers to say yes, so its chance is their two chances
+          multiplied, and it is ranked with the two-team ideas by the same rules.
           That chance is an estimate, not a measurement. Managers overvalue their own players, so an even trade
           comes out at about a third: they count their own players 8% higher on the averages, and a loss to their
           team weighs twice as much as a gain of the same size. It adds three limited parts: what they see on the averages, what the trade does to their team

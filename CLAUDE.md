@@ -91,6 +91,13 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   loss (F) for the other team, or one where either side drops a player it
   receives (`droppedOnArrival`). IR slots come from Sleeper's
   `settings.reserve_slots`, not `roster_positions`.
+- Three-team trades (`shared/threeTeam.ts`) are opt-in: the finder's
+  "Include three-team trades" switch and the builder's third team. Every team
+  is measured with `measureSide`, as in a two-team trade; the chance is the
+  two other managers' chances multiplied; ideas are ranked with two-team ones
+  by `withThreeTeam` using the same `pickIdeas`. With the switch off the
+  two-team finder's output must stay exactly as it is (tested). Top moves on
+  My team stay two-team.
 - The owner wants analysis that finds what he would not notice himself, done
   with data in code. No chatbot or LLM inside the app.
 - The user's own team is chosen once per league (`myRosterId` in `src/App.tsx`).
