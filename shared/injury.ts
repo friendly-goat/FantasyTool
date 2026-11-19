@@ -9,7 +9,12 @@
 //                  8 weeks: about 5).
 //   Re-evaluation: "re-evaluated in three weeks" is the earliest he could be
 //                  back, not when he will be. The expected return moves
-//                  REEVALUATION_DAYS after it.
+//                  later by REEVALUATION_SHARE of the time from the report
+//                  to the re-evaluation, and at least REEVALUATION_MIN_DAYS:
+//                  the further off the check-up, the less settled the
+//                  timeline (1 week: back in about 2; 2 weeks: about 3;
+//                  4 weeks: about 5 1/2; 8 weeks: about 11). The window runs
+//                  from the re-evaluation to twice that delay after it.
 //   Spread:        the window is wider the further out the date is: at least
 //                  SPREAD_SHARE of the time away, centred on the expected day.
 //
@@ -29,11 +34,17 @@ export interface InjuryNews {
   seasonOut: boolean;
   /** The day the report was read, YYYY-MM-DD. */
   asOf: string;
+  /**
+   * When the report's news was put out, YYYY-MM-DD: the earliest dated update in its note
+   * (within the last half year), else the day it was read. A re-evaluation is timed from it.
+   */
+  reported?: string;
 }
 
 export const NEAR_DAYS = 7;
 export const BUFFER_SHARE = 0.1;
-export const REEVALUATION_DAYS = 10;
+export const REEVALUATION_SHARE = 0.4;
+export const REEVALUATION_MIN_DAYS = 7;
 export const SPREAD_SHARE = 0.25;
 
 const DAY = 86_400_000;
@@ -100,7 +111,16 @@ export function readInjury(
     reevaluation: /re-?evaluat/i.test(report.description),
     seasonOut: /out for (the )?(rest of the |remainder of the )?season|season-ending/i.test(text),
     asOf: today,
+    reported: reportedOn(report.description, today),
   };
+}
+
+/** The earliest dated update in a report's note ("Prior reporting (2026-11-02): ..."), within the last half year; else today. */
+export function reportedOn(description: string, today: string): string {
+  const dates = [...description.matchAll(/\b(\d{4}-\d{2}-\d{2})\b/g)]
+    .map((match) => match[1]!)
+    .filter((date) => !Number.isNaN(toTime(date)) && daysBetween(date, today) >= 0 && daysBetween(date, today) <= 183);
+  return dates.length > 0 ? dates.sort()[0]! : today;
 }
 
 export interface ReturnWindow {
@@ -120,8 +140,12 @@ export function returnOutlook(news: InjuryNews): ReturnOutlook {
   // A date already past (a report not yet updated) is read as today.
   const stated = daysBetween(news.asOf, news.returnDate) < 0 ? news.asOf : news.returnDate;
   const away = daysBetween(news.asOf, stated);
-  const buffer = Math.max(0, away - NEAR_DAYS) * BUFFER_SHARE;
-  const expectedDays = away + (news.reevaluation ? REEVALUATION_DAYS : 0) + buffer;
+  // A re-evaluation slips by a share of how far off it was when announced; any other date by the buffer.
+  const lead = Math.max(away, daysBetween(news.reported ?? news.asOf, stated));
+  const delay = news.reevaluation
+    ? Math.max(REEVALUATION_MIN_DAYS, REEVALUATION_SHARE * lead)
+    : Math.max(0, away - NEAR_DAYS) * BUFFER_SHARE;
+  const expectedDays = away + delay;
   const half = Math.max(expectedDays - away, (SPREAD_SHARE * away) / 2);
   const earliestDays = Math.max(0, expectedDays - half);
   return {

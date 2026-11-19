@@ -846,8 +846,9 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
         </p>
         <p>
           Ideas with an even chance or better of being accepted (50% and up) come first, ranked by the weekly points they add for you
-          multiplied by that chance. Less likely ones are shown only when none reach even odds, and long shots
-          (under 35%) only when there is nothing better. When you name a player, offers that cost you up to a
+          multiplied by that chance, with 70% or more counting as 70%: a fair offer is a toss-up, so a bigger gain at 60% beats a
+          smaller one at 85%. Less likely ones are shown only when none reach even odds, and long shots
+          (under 40%) only when there is nothing better. When you name a player, offers that cost you up to a
           point a week are allowed, since that is sometimes the price of a move you want.
           That chance is an estimate, not a measurement. Managers overvalue their own players, so an even trade
           comes out at about a third: they count their own players 8% higher on the averages, and a loss to their

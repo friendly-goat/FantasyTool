@@ -29,7 +29,7 @@ export function InjuryNote({ injury }: { injury: InjuryNews }) {
   if (outlook.kind === "window" && injury.returnDate) {
     const expected = formatDay(outlook.window.expected, today);
     if (injury.reevaluation) {
-      plan = `The report's date is a re-evaluation, so the app treats it as the earliest he could be back and plans on about ${expected}.`;
+      plan = `The report's date is a re-evaluation, so the app treats it as the earliest he could be back. The further off a check-up, the more it tends to slip, so the app plans on about ${expected}.`;
     } else if (daysBetween(today, injury.returnDate) > NEAR_DAYS) {
       plan = `Dates this far out often slip, so the app plans on about ${expected}.`;
     }

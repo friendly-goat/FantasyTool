@@ -4,7 +4,8 @@ import {
   daysBetween,
   readInjury,
   readReturnDate,
-  REEVALUATION_DAYS,
+  REEVALUATION_MIN_DAYS,
+  reportedOn,
   returnOutlook,
   weeklyChanceBack,
 } from "./injury.ts";
@@ -67,7 +68,24 @@ describe("returnOutlook", () => {
     const outlook = returnOutlook(news("Dec 9", "Will be re-evaluated in about three weeks."));
     if (outlook.kind !== "window") throw new Error("expected a window");
     expect(outlook.window.earliest).toBe("2026-12-09");
-    expect(daysBetween("2026-12-09", outlook.window.expected)).toBeGreaterThanOrEqual(REEVALUATION_DAYS);
+    expect(daysBetween("2026-12-09", outlook.window.expected)).toBeGreaterThanOrEqual(REEVALUATION_MIN_DAYS);
+  });
+
+  it("lets a far-off re-evaluation slip further than a near one, timed from when it was announced", () => {
+    const slip = (date: string, description: string) => {
+      const outlook = returnOutlook(news(date, description));
+      if (outlook.kind !== "window") throw new Error("expected a window");
+      return daysBetween(news(date).returnDate!, outlook.window.expected);
+    };
+    // A week away: at least the minimum. Two weeks: about three in all. Two months: weeks more.
+    expect(slip("Nov 24", "Re-evaluated in a week.")).toBe(REEVALUATION_MIN_DAYS);
+    expect(slip("Dec 1", "Re-evaluated in two weeks.")).toBe(7);
+    expect(slip("2027-01-17", "Re-evaluated in two months.")).toBe(Math.round(0.4 * 61));
+    // Announced two weeks ago, the check-up was a month off then, so it slips like a month-long one.
+    expect(reportedOn("Re-evaluated in four weeks. Prior reporting (2026-11-03): surgery.", today)).toBe("2026-11-03");
+    expect(slip("Dec 1", "Will be re-evaluated in four weeks. Prior reporting (2026-11-03): surgery.")).toBe(Math.round(0.4 * 28));
+    // Dates in the future, or long ago, are not when the news came out.
+    expect(reportedOn("Expected back (2027-01-05). Old note (2025-01-02).", today)).toBe(today);
   });
 
   it("keeps a season-ending injury out, and gives nothing without a date", () => {

@@ -30,6 +30,7 @@ import {
   evenOnValue,
   gradeWord,
   letterGrade,
+  ideaRank,
   likelihood,
   playerValue,
   tradeKind,
@@ -394,7 +395,10 @@ describe("team strength and trades (against the mock league)", async () => {
   });
 
   it("bands chances, words grades, and places the balance between teams", () => {
-    expect([0.62, 0.5, 0.49, 0.35, 0.34].map(likelihood)).toEqual(["likely", "likely", "possible", "possible", "long shot"]);
+    expect([0.62, 0.5, 0.49, 0.4, 0.39].map(likelihood)).toEqual(["likely", "likely", "possible", "possible", "long shot"]);
+    // Ranking counts any chance from 70% up as 70%: a bigger gain at 60% beats a smaller one at 85%.
+    expect(ideaRank(10, 0.6)).toBeGreaterThan(ideaRank(8, 0.85));
+    expect(ideaRank(8, 0.85)).toBe(ideaRank(8, 0.7));
     expect([95, 60, 50, 43, 30, 5].map(gradeWord)).toEqual(["Big win", "Win", "About even", "About even", "Loss", "Big loss"]);
     // An even trade with typical pressure lands at about a third: they value their own player 8% higher.
     expect(chanceFrom(0, 30, 30, 0.3)).toBeCloseTo(1 / (1 + Math.exp(-(-0.3 + 6 * Math.log(1 / 1.08) + 0.18))));

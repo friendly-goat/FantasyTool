@@ -148,7 +148,7 @@ happens to its projected weekly score.
 | Scattered missed games | availability | a rate, blended with a typical 90% early on |
 | Long absence (4+ games in a row) | availability | a current one with no return date is expected to last as long again; finished ones are not held against him |
 | Return date buffer (`shared/injury.ts`) | when an injured player is back | none within 7 days; beyond that, 10% of the time away later (4 weeks: about 2 days; 8 weeks: about 5) |
-| Re-evaluation date | when an injured player is back | read as the earliest return; the expected return is 10 days later |
+| Re-evaluation date | when an injured player is back | read as the earliest return; the expected return is 40% of the time from the report to the re-evaluation later, at least 7 days (2 weeks off: back in about 3; 8 weeks: about 11) |
 | Return window spread | when an injured player is back | at least 25% of the time away, centred on the expected day |
 | Injured reserve and waiver pickups | strength, trades | one player per IR slot; open spots filled from the 6 best free agents; the same rule before and after a trade |
 | Free upgrades (a trade's what-if only) | trades | one swap of the weakest player for a better free agent per roster spot the trade opens (none for a team that gets as many players as it sends), unless it makes the roster worse; made once, on the roster before the trade, and the trade is made on that roster; never below the team as it stands |
@@ -250,8 +250,10 @@ the labels. "A real change" in a label means the same as a B- or better.
 
 `findTrades` in `shared/trade.ts`, with `shared/insight.ts`. Trades are ranked
 by the weekly points they add for you multiplied by the estimated chance they
-are accepted, in three bands: likely (50% or more), possible (35 to 50%) and
-long shots. The chance's parts are combined on the log-odds scale, so one bad
+are accepted, with any chance of 70% or more counting as 70% (`CHANCE_ENOUGH`:
+a fair offer is a toss-up to a manager, so a bigger gain at 60% beats a
+smaller one at 85%), in three bands: likely (50% or more), possible (40 to
+50%) and long shots (under 40%, in practice a no). The chance's parts are combined on the log-odds scale, so one bad
 part (say, the trade clearly hurts their team) pulls it down however fair the
 trade looks; the builder shows how many points each part adds or takes away,
 and its one-line verdict uses the same chance. On screen the chance carries a
@@ -291,7 +293,7 @@ chance): 6 per idea shown (at most two versions of one idea, so the list
 holds many different ideas), plus 12 places for the best packages. A quick
 read can be far off for some rosters (players out with more of them than IR
 slots, or strong waivers), so when fewer than 6 of those hold up as
-realistic (35% or better) once measured, the next best are measured too, 48
+realistic (40% or better) once measured, the next best are measured too, 48
 at a time, up to 24 per idea shown. A dev script, `npx tsx scripts/audit-trades.ts`, checks the
 finder against a brute-force search of every trade of up to two players a
 side on the sample league (`--save` and `--load` keep the slow reference
@@ -330,7 +332,9 @@ report comes from the stats source (balldontlie's player injuries, on the
 ALL-STAR plan). A return date is read as a window, not a day: a few days away
 is taken almost as given; further out, the expected day moves a little later
 and the window widens. A "re-evaluated" date is the earliest he could be
-back, with the expected return 10 days after. "Out for the season" keeps him
+back; the expected return is later by 40% of the time from the news to the
+check-up (at least a week), since far-off check-ups slip more. The news date
+is the earliest dated update in the report's note. "Out for the season" keeps him
 out. A player marked out with no date is expected to miss as long again as
 he has (half a week if just ruled out). A player who has not played this
 season but is on the report with a date is projected at last season's level.

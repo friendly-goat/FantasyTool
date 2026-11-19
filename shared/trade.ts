@@ -591,9 +591,10 @@ export function acceptanceChance(theirs: TradeSide, urgency: number): number {
 
 /** How likely an idea is to be accepted, in three plain bands. */
 export type Likelihood = "likely" | "possible" | "long shot";
-// Even a good offer is often turned down, so "likely" starts at even odds.
+// Even a good offer is often turned down, so "likely" starts at even odds. Below about 40% an
+// offer is in practice a no.
 export const LIKELY = 0.5;
-export const POSSIBLE = 0.35;
+export const POSSIBLE = 0.4;
 
 export function likelihood(chance: number): Likelihood {
   return chance >= LIKELY ? "likely" : chance >= POSSIBLE ? "possible" : "long shot";
@@ -752,7 +753,7 @@ const SCREENED = 500;
 const SHORTLIST = 6;
 /** Extra places on that list for the best packages (two players on a side). */
 const SHORTLIST_PACKAGES = 12;
-/** Fewer realistic ideas (35% or better) than this once measured, and the next best are measured too. */
+/** Fewer realistic ideas (40% or better) than this once measured, and the next best are measured too. */
 const ENOUGH_IDEAS = 6;
 /** But no more than this many per idea shown are measured in full in all. */
 const MEASURED_AT_MOST = 24;
@@ -869,12 +870,20 @@ export function pickIdeas<T extends { likelihood: Likelihood; chance: number }>(
 }
 
 /**
+ * A chance this high counts as good as certain when ranking ideas: a fair
+ * offer is a toss-up to a manager, so the search should not trade a bigger
+ * gain at 60% for a smaller one at 85%.
+ */
+export const CHANCE_ENOUGH = 0.7;
+
+/**
  * How ideas are ordered within a likelihood band. A real gain is weighed by
- * its chance; ideas that gain nothing (or cost a little, when a player is
- * named) rank below every real gain, the more likely and cheaper ones first.
+ * its chance, up to CHANCE_ENOUGH; ideas that gain nothing (or cost a little,
+ * when a player is named) rank below every real gain, the more likely and
+ * cheaper ones first.
  */
 export function ideaRank(gain: number, chance: number): number {
-  return gain >= 0.05 ? gain * chance : gain + chance - 1;
+  return gain >= 0.05 ? gain * Math.min(1, chance / CHANCE_ENOUGH) : gain + chance - 1;
 }
 
 interface Candidate {
