@@ -53,9 +53,13 @@ export interface MatchupSide {
   bench: MatchupSlot[];
 }
 
-/** Every finished week's final score for each team (Sleeper's matchups). */
+/**
+ * Every finished week's final score for each team, counting locked games (shared/weekScores.ts):
+ * from the change in the standings' points for, or recorded from Sleeper's app. Weeks that
+ * cannot be known yet are left out.
+ */
 export interface ScoreHistory {
-  weeks: { week: number; points: Record<number, number> }[];
+  weeks: { week: number; points: Record<number, number>; source: "standings" | "recorded" }[];
 }
 
 /** The NBA games left in the fantasy regular season, from today. */

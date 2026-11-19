@@ -460,8 +460,9 @@ charts fade in; while newer data is measured the last charts stay on screen.
   `server/scoring.ts`, saved on each player's stats as `sources`); a source
   the league does not score, such as threes in the owner's league, is left
   out.
-- **Week by week** (line): your final score in each finished week (Sleeper's
-  matchups, `/api/league/:id/history`), in a shaded band with solid dots,
+- **Week by week** (line): your final score in each finished week
+  (`/api/league/:id/history`, from `shared/weekScores.ts`; see "Finished
+  weeks' scores" below), in a shaded band with solid dots,
   then your projected score in each real week left (lighter line, open dots,
   after a dotted line), against the league's average and range. The note
   gives your rank in points so far and, of the weeks ahead, your best
@@ -471,6 +472,29 @@ charts fade in; while newer data is measured the last charts stay on screen.
 On the radars 0 is the league's lowest team and 10 its highest, and the
 dashed shape is the league average. Display only: nothing here feeds
 strength, grades or trade ideas.
+
+### Finished weeks' scores
+
+Sleeper's weekly matchup feed cannot be trusted for past weeks in a lock-in
+league: it adds up each starter's latest game rather than the game that was
+locked, and the figures for a finished week keep changing as rosters change
+(check with `npm run check:sleeper -- <league_id> --weeks`). The standings'
+points for and against do count locks: they are the sum of each team's final
+weekly scores. So the server notes every team's points for and against under
+the number of weeks settled (wins + losses + ties, the same for every team)
+each time the league loads, in storage (`standings-ledger-v1-<league>`), and a
+week's score is the change in points for from the week before
+(`shared/weekScores.ts`). A later look at a settled week replaces it when the
+change is a stat correction (up to 15 points), never a bigger jump. A week is
+caught as long as the app is opened at least once before the next one settles.
+
+Weeks played before the ledger began cannot be split from the season total,
+so they are recorded by hand from Sleeper's app in `server/recordedWeeks.ts`
+(every team's score and opponent) and checked against the standings: each
+team's weeks must add up to its points for, and its opponents' to its points
+against; a mismatch is logged. Weeks known neither way are left off the chart.
+The season rank on the chart comes straight from points for. The hidden
+Matchups view still reads Sleeper's weekly feed.
 
 ### Top moves (My team)
 

@@ -18,6 +18,7 @@
 // it, so a tiny gap between teams does not look like the whole scale. Display only: none of this feeds strength, grades or trade
 // ideas.
 import { rosterPlayers } from "./analysis.ts";
+import { settledWeeks } from "./weekScores.ts";
 import { fillRoster, type ModelPlayer, type StrengthModel, type TeamStrength, weeklyTotals } from "./strength.ts";
 import { FANTASY_SOURCES, type FantasySource, type LeagueSnapshot, type PlayerStats, type ScheduleAhead, type ScoreHistory } from "./types.ts";
 
@@ -57,7 +58,7 @@ export interface TeamProfile {
   /** Fantasy points a game the team's main players lose to turnovers and fouls (positive), and its rank (1: fewest). */
   mistakes: { value: number; rank: number } | null;
   weeks: WeekPoint[];
-  /** Rank by total points over the finished weeks (1: most), or null before any week has finished. */
+  /** Rank by the standings' points for (1: most), over the weeks settled, or null before any has. */
   season: { rank: number; weeks: number } | null;
 }
 
@@ -231,7 +232,7 @@ export function leagueProfiles(
     .map((key): AxisDef => ({ key, label: MIX_LABELS[key], unit: "points", minRange: MIX_MIN_RANGE }));
 
   const finished = (extras.history?.weeks ?? []).filter((entry) => entry.week < (model.calendar.weeks[0]?.week ?? snapshot.week));
-  const totals = new Map(snapshot.teams.map((team) => [team.rosterId, finished.reduce((sum, entry) => sum + (entry.points[team.rosterId] ?? 0), 0)]));
+  const settled = settledWeeks(snapshot.teams) ?? 0;
   const profiles = new Map<number, TeamProfile>();
   for (const team of snapshot.teams) {
     const past = finished.flatMap((entry): WeekPoint[] => {
@@ -273,9 +274,7 @@ export function leagueProfiles(
       mistakes: hasMix ? { value: mistakes.get(team.rosterId) ?? 0, rank: fewestMistakes.indexOf(team.rosterId) + 1 } : null,
       weeks: [...past, ...ahead],
       season:
-        finished.length > 0
-          ? { rank: 1 + [...totals.values()].filter((total) => total > (totals.get(team.rosterId) ?? 0)).length, weeks: finished.length }
-          : null,
+        settled > 0 ? { rank: 1 + snapshot.teams.filter((other) => other.pointsFor > team.pointsFor).length, weeks: settled } : null,
     });
   }
   return profiles;

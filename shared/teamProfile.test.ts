@@ -51,7 +51,12 @@ describe("team profiles (against the mock league)", async () => {
     const profile = profiles.get(strengths[3]!.rosterId)!;
     expect(profile.weeks).toHaveLength(model.calendar.weeks.length);
     expect(profile.weeks.every((point) => !point.final)).toBe(true);
-    expect(profile.season).toBeNull();
+    // The season so far is ranked by the standings' points for, not by any weekly feed.
+    const team = snapshot.teams.find((entry) => entry.rosterId === profile.rosterId)!;
+    expect(profile.season).toEqual({
+      rank: 1 + snapshot.teams.filter((other) => other.pointsFor > team.pointsFor).length,
+      weeks: team.wins + team.losses + team.ties,
+    });
     for (const point of profile.weeks) {
       expect(point.team).toBeGreaterThanOrEqual(point.leagueLow - 1e-9);
       expect(point.team).toBeLessThanOrEqual(point.leagueHigh + 1e-9);
@@ -88,6 +93,7 @@ describe("team profiles (against the mock league)", async () => {
       weeks: [first - 2, first - 1, first].map((week) => ({
         week,
         points: Object.fromEntries(ids.map((id, index) => [id, (index === 0 ? 900 : 600) + index - (week === first ? 2000 : 0)])),
+        source: "recorded" as const,
       })),
     };
     const withHistory = leagueProfiles(snapshot, model, strengths, report.players, { history });
@@ -97,8 +103,6 @@ describe("team profiles (against the mock league)", async () => {
     expect(leader.weeks.slice(0, 2)).toEqual(finals);
     expect(finals[0]).toMatchObject({ team: 900, rank: 1, leagueHigh: 900, leagueLow: 601 });
     expect(leader.weeks).toHaveLength(2 + model.calendar.weeks.length);
-    expect(leader.season).toEqual({ rank: 1, weeks: 2 });
-    expect(withHistory.get(ids[1]!)!.season!.rank).toBe(ids.length);
     const ahead = weekHighlights(leader.weeks)!;
     expect([...ahead.best, ahead.worst].every((point) => !point.final)).toBe(true);
   });

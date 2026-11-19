@@ -132,7 +132,12 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   place a team on the league's range (0 lowest team, 10 highest); display
   only, never fed into strength, grades or trade ideas. Their Schedule axis
   uses the real games left and opponents' `allowed` ratios; Week by week shows
-  finished weeks' final scores (`/history`) apart from projected weeks. Cards
+  finished weeks' final scores (`/history`) apart from projected weeks.
+  Finished weeks' scores never come from Sleeper's weekly matchup feed (it
+  leaves out locks and drifts after the week): they are the change in the
+  standings' points for (`shared/weekScores.ts`, ledger in storage), or weeks
+  recorded from Sleeper's app (`server/recordedWeeks.ts`, checked against
+  points for and against). Cards
   keep their full size while loading (no layout shift).
 - The Draft tab's rising and falling marks (`shared/draft.ts`) are a display
   label only: rank by weekly value now against pick order, one round either

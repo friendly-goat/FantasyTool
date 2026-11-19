@@ -3,6 +3,8 @@ import path from "node:path";
 import express from "express";
 import type { AppConfig, LeagueSnapshot, Matchup, ScheduleAhead, ScoreHistory, WeekData, WeekMatchups } from "../shared/types.ts";
 import { modelCalendar } from "../shared/strength.ts";
+import { checkRecorded, noteStandings, type RecordedWeek, type StandingsLedger, weekScores } from "../shared/weekScores.ts";
+import { RECORDED_WEEKS } from "./recordedWeeks.ts";
 import { nbaTeam } from "../shared/nbaTeams.ts";
 import {
   authFromEnv,
@@ -162,6 +164,7 @@ const scheduleKey = (weekStart: string) => `schedule-v1-${weekStart}`;
 // Separate keys for finished weeks, so a copy saved while games were on is never served as final.
 const finishedScheduleKey = (weekStart: string) => `schedule-final-v1-${weekStart}`;
 const matchupsKey = (leagueId: string, week: number) => `matchups-v1-${leagueId}-${week}`;
+const ledgerKey = (leagueId: string) => `standings-ledger-v1-${leagueId}`;
 const scheduleAheadKey = (start: string, end: string) => `schedule-ahead-v1-${start}-${end}`;
 /** The rest of the season's NBA schedule changes little: kept for a day (one schedule download, about ten requests). */
 const scheduleAheadTtl = 24 * 60 * MINUTE;
@@ -229,6 +232,43 @@ async function getWeekMatchups(leagueId: string, snapshot: LeagueSnapshot, week:
   return result.value;
 }
 
+/**
+ * Each team's points for and against, noted under the weeks settled so far, kept in storage: the
+ * change from one settled week to the next is that week's final score, locks included
+ * (shared/weekScores.ts). Noted whenever the league is loaded, so a week is caught as long as
+ * the app is opened at least once before the next week settles.
+ */
+const ledgers = new Map<string, Promise<StandingsLedger>>();
+
+async function noteLedger(leagueId: string, snapshot: LeagueSnapshot): Promise<StandingsLedger> {
+  const previous = ledgers.get(leagueId) ?? storage.readEntry(ledgerKey(leagueId)).then((entry) => (entry?.value as StandingsLedger | undefined) ?? { marks: {} });
+  const next = previous.then(async (ledger) => {
+    const noted = noteStandings(ledger, snapshot.teams, snapshot.fetchedAt);
+    if (noted !== ledger) await storage.writeEntry(ledgerKey(leagueId), { savedAt: Date.now(), value: noted });
+    return noted;
+  });
+  // A failed read or write is tried again next time rather than kept.
+  ledgers.set(leagueId, next.catch(() => previous));
+  return next;
+}
+
+/** The mock league's finished weeks, from its own matchups (it has no real standings to split). */
+async function mockRecordedWeeks(leagueId: string, snapshot: LeagueSnapshot): Promise<RecordedWeek[]> {
+  const weeks: RecordedWeek[] = [];
+  for (let week = 1; week < snapshot.week; week++) {
+    const entry: RecordedWeek = { week, points: {}, opponent: {} };
+    for (const matchup of await getWeekMatchups(leagueId, snapshot, week)) {
+      const [a, b] = matchup.sides;
+      for (const side of matchup.sides) entry.points[side.rosterId] = side.points;
+      if (a && b) [entry.opponent[a.rosterId], entry.opponent[b.rosterId]] = [b.rosterId, a.rosterId];
+    }
+    weeks.push(entry);
+  }
+  return weeks;
+}
+
+const checkedRecorded = new Set<string>();
+
 /** The league's injury report, saved; an empty list when the source has none or it cannot be had yet. */
 async function getInjuries() {
   if (!stats.hasInjuries()) return [];
@@ -275,6 +315,7 @@ app.get("/api/league/:leagueId", async (req, res) => {
   try {
     const leagueId = req.params.leagueId.trim();
     const result = await getSnapshot(leagueId);
+    void noteLedger(leagueId, result.value).catch((error) => console.error("[ledger]", error instanceof Error ? error.message : error));
     const live = await isLive(leagueId);
     // Keep the schedule loaded too: it is how the server knows when games are on.
     const week = weekOf(result.value);
@@ -383,23 +424,21 @@ app.get("/api/league/:leagueId/week", async (req, res) => {
   }
 });
 
-// Every finished week's final score per team, for the week-by-week chart on My team. Each
-// finished week is one Sleeper request, saved for a week (the last one for six hours).
+// Every finished week's final score per team, for the week-by-week chart on My team. Not from
+// Sleeper's weekly matchups, which leave out locks in this league: from the change in the
+// standings each week, and weeks recorded from Sleeper's app (shared/weekScores.ts).
 app.get("/api/league/:leagueId/history", async (req, res) => {
   try {
     const leagueId = req.params.leagueId.trim();
     const snapshot = (await getSnapshot(leagueId)).value;
-    const finished = Array.from({ length: Math.max(0, snapshot.week - 1) }, (_, index) => index + 1);
-    const weeks = await Promise.all(
-      finished.map(async (week) => {
-        const points: Record<number, number> = {};
-        for (const matchup of await getWeekMatchups(leagueId, snapshot, week)) {
-          for (const side of matchup.sides) points[side.rosterId] = side.points;
-        }
-        return { week, points };
-      }),
-    );
-    const body: ScoreHistory = { weeks: weeks.filter((entry) => Object.keys(entry.points).length > 0) };
+    const ledger = await noteLedger(leagueId, snapshot);
+    const recorded = mock ? await mockRecordedWeeks(leagueId, snapshot) : (RECORDED_WEEKS[leagueId] ?? []);
+    if (!mock && !checkedRecorded.has(leagueId) && recorded.length > 0) {
+      const problems = checkRecorded(ledger, recorded);
+      if (problems.length > 0) console.warn("[history] recorded weeks disagree with the standings:", problems);
+      checkedRecorded.add(leagueId);
+    }
+    const body: ScoreHistory = weekScores(ledger, recorded, snapshot.week - 1);
     res.json(body);
   } catch (error) {
     sendError(res, error);
