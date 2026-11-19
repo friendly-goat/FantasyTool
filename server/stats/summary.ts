@@ -242,3 +242,36 @@ export function playerLog(
       .reverse(),
   };
 }
+
+/** Games against a team counted as league average, so a team seen a few times is not judged on them alone. */
+const ALLOWED_PRIOR_GAMES = 3;
+
+/**
+ * Fantasy points opponents score against each NBA team, per game, as a ratio to the league's
+ * average (above 1: a soft matchup). Counted regular-season games only, under the league's
+ * scoring; each team starts from three average games, so a few big nights do not make it soft.
+ */
+export function pointsAllowed(lines: GameLine[], scoring: Record<string, number>, seasonStart: string | null = null): Record<string, number> {
+  // The stats source may give only an opponent ID: learn each ID's abbreviation from the lines.
+  const abbrById = new Map<string, string>();
+  for (const line of lines) if (line.teamId && line.team) abbrById.set(line.teamId, line.team);
+  const totals = new Map<string, { points: number; games: Set<string> }>();
+  for (const line of lines) {
+    if (!counts(line, seasonStart)) continue;
+    const against = line.opponent ?? (line.opponentId ? abbrById.get(line.opponentId) : undefined);
+    if (!against) continue;
+    const entry = totals.get(against) ?? { points: 0, games: new Set<string>() };
+    entry.points += fantasyPoints(line.stats, scoring);
+    entry.games.add(line.date);
+    totals.set(against, entry);
+  }
+  const perGame = [...totals.values()].filter((entry) => entry.games.size > 0);
+  const average = perGame.reduce((sum, entry) => sum + entry.points, 0) / Math.max(1, perGame.reduce((sum, entry) => sum + entry.games.size, 0));
+  if (!(average > 0)) return {};
+  return Object.fromEntries(
+    [...totals.entries()].map(([team, entry]) => [
+      team,
+      (entry.points + ALLOWED_PRIOR_GAMES * average) / ((entry.games.size + ALLOWED_PRIOR_GAMES) * average),
+    ]),
+  );
+}

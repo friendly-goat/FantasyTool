@@ -115,7 +115,7 @@ export function MyTeam({ snapshot, stats, model, strengths, team, onChangeTeam, 
         </button>
       </div>
 
-      <TeamCharts snapshot={snapshot} model={model} strengths={strengths} stats={players} rosterId={team.rosterId} />
+      <TeamCharts snapshot={snapshot} model={model} strengths={strengths} stats={players} allowed={stats?.allowed} rosterId={team.rosterId} />
 
       <h3 className="panel-heading">Roster</h3>
       <div className="roster-card">

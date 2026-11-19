@@ -1,31 +1,100 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { getHistory, getScheduleAhead } from "../api.ts";
 import { formatPoints, ordinal } from "../format.ts";
 import type { StrengthModel, TeamStrength } from "../../shared/strength.ts";
 import { extremes, leagueProfiles, type ProfileAxis, type TeamProfile, type WeekPoint, weekHighlights } from "../../shared/teamProfile.ts";
-import type { LeagueSnapshot, PlayerStats } from "../../shared/types.ts";
+import type { LeagueSnapshot, PlayerStats, ScheduleAhead, ScoreHistory } from "../../shared/types.ts";
 
 // Three views of the team against the league, above the roster on My team:
-// its shape (how it scores), its scoring mix and its weeks ahead. Each card
-// says in one line what stands out; hovering or tapping a part of a chart
-// gives that part's figure and rank. On a phone the cards slide sideways.
+// its shape (how it scores), its scoring mix and its weeks (finished and
+// ahead). Each card says in one line what stands out; hovering or tapping a
+// part of a chart gives that part's figure and rank. On a phone the cards
+// slide sideways. Until the figures are ready each card shows its empty
+// frame at full size, so nothing moves when the charts arrive.
 
-const profilesByModel = new WeakMap<StrengthModel, Map<number, TeamProfile>>();
+interface Extras {
+  history: ScoreHistory | null;
+  schedule: ScheduleAhead | null;
+}
 
+/** Finished weeks and the schedule ahead, once per league and week (a failed load is tried again next time). */
+const loadedExtras = new Map<string, Extras>();
+const pendingExtras = new Map<string, Promise<Extras>>();
+
+function useExtras(leagueId: string, week: number): Extras | null {
+  const key = `${leagueId}:${week}`;
+  const [extras, setExtras] = useState<Extras | null>(() => loadedExtras.get(key) ?? null);
+  useEffect(() => {
+    const ready = loadedExtras.get(key);
+    if (ready) {
+      setExtras(ready);
+      return;
+    }
+    let live = true;
+    let pending = pendingExtras.get(key);
+    if (!pending) {
+      pending = Promise.all([getHistory(leagueId).catch(() => null), getScheduleAhead(leagueId).catch(() => null)]).then(([history, schedule]) => {
+        const value = { history, schedule };
+        if (history && schedule) loadedExtras.set(key, value);
+        pendingExtras.delete(key);
+        return value;
+      });
+      pendingExtras.set(key, pending);
+    }
+    void pending.then((value) => live && setExtras(value));
+    return () => {
+      live = false;
+    };
+  }, [key, leagueId]);
+  return extras;
+}
+
+interface Cached {
+  extras: Extras;
+  allowed: Record<string, number> | undefined;
+  profiles: Map<number, TeamProfile>;
+}
+const profilesByModel = new WeakMap<StrengthModel, Cached>();
+
+function cachedProfiles(model: StrengthModel | null, extras: Extras | null, allowed: Record<string, number> | undefined) {
+  const hit = model ? profilesByModel.get(model) : undefined;
+  return hit && hit.extras === extras && hit.allowed === allowed ? hit.profiles : null;
+}
+
+/**
+ * Every team's profile. Worked out after the page has painted (it takes a moment), so the empty
+ * frames show first; while a newer model is being measured the last profiles stay on screen.
+ */
 function useProfiles(
   snapshot: LeagueSnapshot,
   model: StrengthModel | null,
   strengths: TeamStrength[] | null,
   stats: Record<string, PlayerStats>,
+  allowed: Record<string, number> | undefined,
 ) {
-  return useMemo(() => {
-    if (!model || !strengths) return null;
-    let profiles = profilesByModel.get(model);
-    if (!profiles) {
-      profiles = leagueProfiles(snapshot, model, strengths, stats);
-      profilesByModel.set(model, profiles);
+  const extras = useExtras(snapshot.league.id, snapshot.week);
+  const [profiles, setProfiles] = useState(() => cachedProfiles(model, extras, allowed));
+  useEffect(() => {
+    if (!model || !strengths || !extras) return;
+    const hit = cachedProfiles(model, extras, allowed);
+    if (hit) {
+      setProfiles(hit);
+      return;
     }
-    return profiles;
-  }, [snapshot, model, strengths, stats]);
+    let timer = 0;
+    const frame = requestAnimationFrame(() => {
+      timer = window.setTimeout(() => {
+        const next = leagueProfiles(snapshot, model, strengths, stats, { ...extras, allowed });
+        profilesByModel.set(model, { extras, allowed, profiles: next });
+        setProfiles(next);
+      }, 0);
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
+  }, [snapshot, model, strengths, stats, extras, allowed]);
+  return profiles;
 }
 
 /** What a shape axis's figure means, short enough to fit the note under the chart. */
@@ -39,8 +108,13 @@ function shapeNote(axis: ProfileAxis): string {
       return `${formatPoints(axis.value)} a week from your best three`;
     case "depth":
       return `${formatPoints(axis.value)} a week added by the bench`;
-    case "games":
-      return `${axis.value.toFixed(1)} games a week per main player`;
+    case "schedule": {
+      if (!axis.schedule) return `${axis.value.toFixed(1)} games a week per main player`;
+      const change = Math.round(100 * (axis.schedule.opponents - 1));
+      const opponents =
+        change === 0 ? "against average opponents" : `against opponents who give up ${Math.abs(change)}% ${change > 0 ? "more" : "fewer"} points than average`;
+      return `${axis.schedule.games.toFixed(1)} games a week left per main player, ${opponents}`;
+    }
     case "health":
       return `${axis.value.toFixed(0)}% of your top ten on hand, next four weeks`;
     case "trend":
@@ -55,15 +129,18 @@ export function TeamCharts({
   model,
   strengths,
   stats,
+  allowed,
   rosterId,
 }: {
   snapshot: LeagueSnapshot;
   model: StrengthModel | null;
   strengths: TeamStrength[] | null;
   stats: Record<string, PlayerStats>;
+  /** How many fantasy points each NBA team gives up, against the league average (StatsReport.allowed). */
+  allowed: Record<string, number> | undefined;
   rosterId: number;
 }) {
-  const profiles = useProfiles(snapshot, model, strengths, stats);
+  const profiles = useProfiles(snapshot, model, strengths, stats, allowed);
   const profile = profiles?.get(rosterId);
   const teams = snapshot.teams.length;
   const scroller = useRef<HTMLDivElement>(null);
@@ -79,12 +156,35 @@ export function TeamCharts({
     };
     element.addEventListener("scroll", onScroll, { passive: true });
     return () => element.removeEventListener("scroll", onScroll);
-  }, [profile]);
+  }, []);
 
-  if (!profile) return null;
+  if (!profile) {
+    return (
+      <div className="team-charts-wrap" aria-busy="true">
+        <div className="team-charts" ref={scroller}>
+          <ChartCard title="Team shape" legend={RADAR_LEGEND} summary={null}>
+            {() => <RadarFrame count={7} />}
+          </ChartCard>
+          <ChartCard title="Scoring mix" legend={RADAR_LEGEND} summary={null}>
+            {() => <RadarFrame count={6} />}
+          </ChartCard>
+          <ChartCard title="Week by week" legend={WEEK_LEGEND} summary={null}>
+            {() => <WeekFrame />}
+          </ChartCard>
+        </div>
+        <Dots page={page} />
+      </div>
+    );
+  }
   const shape = extremes(profile.shape);
   const mix = extremes(profile.mix);
   const weeks = weekHighlights(profile.weeks);
+  const weekSummary = [
+    profile.season ? `${ordinal(profile.season.rank)} of ${teams} in points so far.` : "",
+    weeks ? `Best stretch ahead: ${weekSpan(weeks.best)}. Toughest: week ${weeks.worst.week} (${ordinal(weeks.worst.rank)}).` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <div className="team-charts-wrap">
@@ -136,11 +236,7 @@ export function TeamCharts({
         <ChartCard
           title="Week by week"
           legend={WEEK_LEGEND}
-          summary={
-            weeks
-              ? `Best stretch: ${weekSpan(weeks.best)}. Toughest: week ${weeks.worst.week} (${ordinal(weeks.worst.rank)} of ${teams}).`
-              : ""
-          }
+          summary={weekSummary}
         >
           {(onFocus) => (
             <WeekChart
@@ -148,18 +244,24 @@ export function TeamCharts({
               onFocus={(point) =>
                 onFocus(
                   point &&
-                    `Week ${point.week}: ${formatPoints(point.team)}, ${ordinal(point.rank)} of ${teams}. League average ${formatPoints(point.leagueAverage)}.`,
+                    `Week ${point.week}, ${point.final ? "final" : "projected"}: ${formatPoints(point.team)}, ${ordinal(point.rank)} of ${teams}. League average ${formatPoints(point.leagueAverage)}.`,
                 )
               }
             />
           )}
         </ChartCard>
       </div>
-      <div className="team-charts-dots" aria-hidden="true">
-        {[0, 1, 2].map((index) => (
-          <span key={index} className={index === page ? "is-current" : ""} />
-        ))}
-      </div>
+      <Dots page={page} />
+    </div>
+  );
+}
+
+function Dots({ page }: { page: number }) {
+  return (
+    <div className="team-charts-dots" aria-hidden="true">
+      {[0, 1, 2].map((index) => (
+        <span key={index} className={index === page ? "is-current" : ""} />
+      ))}
     </div>
   );
 }
@@ -187,7 +289,8 @@ function ChartCard({
   children,
 }: {
   title: string;
-  summary: string;
+  /** Null while loading: the note keeps its place with two placeholder lines. */
+  summary: string | null;
   legend: [string, LegendKind][];
   children: (onFocus: (text: string | null) => void) => React.ReactNode;
 }) {
@@ -206,9 +309,16 @@ function ChartCard({
         </ul>
       </div>
       <div className="team-chart-plot">{children(setFocus)}</div>
-      <p className={`team-chart-note${focus ? " is-focus" : ""}`} aria-live="polite">
-        {focus ?? summary}
-      </p>
+      {summary === null ? (
+        <p className="team-chart-note is-loading" aria-label="Loading">
+          <span className="team-chart-placeholder" />
+          <span className="team-chart-placeholder short" />
+        </p>
+      ) : (
+        <p className={`team-chart-note is-ready${focus ? " is-focus" : ""}`} aria-live="polite">
+          {focus ?? summary}
+        </p>
+      )}
     </figure>
   );
 }
@@ -241,9 +351,11 @@ function pointing(index: number, pick: (index: number | null) => void) {
 
 /** Where an axis label sits, and which way it runs from there. */
 function labelAt(index: number, count: number): { x: number; y: number; anchor: "start" | "middle" | "end" } {
-  const [x, y] = point(index, count, 12.2);
+  const [x, y] = point(index, count, 10);
   const anchor = Math.abs(x - CX) < 8 ? "middle" : x > CX ? "start" : "end";
-  return { x: x + (anchor === "start" ? 5 : anchor === "end" ? -5 : 0), y, anchor };
+  // Beside the outer ring; a label straight above or below the middle sits clear of its dot.
+  const lift = anchor !== "middle" ? 0 : y < CY ? -11 : 11;
+  return { x: x + (anchor === "start" ? 5 : anchor === "end" ? -5 : 0), y: y + lift, anchor };
 }
 
 /** A box around an axis label, a little larger than the text (11px labels are about 6.4px a letter). */
@@ -255,6 +367,22 @@ function labelBox(label: string, index: number, count: number) {
 }
 
 const path = (points: [number, number][]) => points.map(([x, y], index) => `${index ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`).join("") + "Z";
+
+/** The radar's empty rings and spokes, the same size as the chart, while the figures load. */
+function RadarFrame({ count }: { count: number }) {
+  return (
+    <svg className="radar is-loading" viewBox="-30 0 360 236" aria-hidden="true">
+      {[2.5, 5, 7.5, 10].map((ring) => (
+        <path key={ring} className="radar-ring" d={path(Array.from({ length: count }, (_, index) => point(index, count, ring)))} />
+      ))}
+      {Array.from({ length: count }, (_, index) => {
+        const [x, y] = point(index, count, 10);
+        return <line key={index} className="radar-spoke" x1={CX} y1={CY} x2={x} y2={y} />;
+      })}
+      <path className="chart-placeholder-shape" d={path(Array.from({ length: count }, (_, index) => point(index, count, 5 + 1.6 * Math.sin(index * 2.1))))} />
+    </svg>
+  );
+}
 
 function Radar({ axes, onFocus }: { axes: ProfileAxis[]; onFocus: (axis: ProfileAxis | null) => void }) {
   const [active, setActive] = useState<number | null>(null);
@@ -336,6 +464,25 @@ function niceTicks(low: number, high: number): number[] {
   return ticks;
 }
 
+/** The week chart's empty grid, the same size as the chart, while the figures load. */
+function WeekFrame() {
+  const plotHeight = W.height - W.top - W.bottom;
+  const plotWidth = W.width - W.left - W.right;
+  const wave = Array.from({ length: 13 }, (_, index) => {
+    const x = W.left + (plotWidth * index) / 12;
+    const y = W.top + plotHeight * (0.5 + 0.12 * Math.sin(index * 0.9));
+    return `${index ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join("");
+  return (
+    <svg className="week-chart is-loading" viewBox={`0 0 ${W.width} ${W.height}`} aria-hidden="true">
+      {[0.15, 0.38, 0.62, 0.85].map((share) => (
+        <line key={share} className="week-grid" x1={W.left} x2={W.width - W.right} y1={W.top + plotHeight * share} y2={W.top + plotHeight * share} />
+      ))}
+      <path className="chart-placeholder-line" d={wave} />
+    </svg>
+  );
+}
+
 function WeekChart({ weeks, onFocus }: { weeks: WeekPoint[]; onFocus: (point: WeekPoint | null) => void }) {
   const [active, setActive] = useState<number | null>(null);
   if (weeks.length === 0) return null;
@@ -358,8 +505,18 @@ function WeekChart({ weeks, onFocus }: { weeks: WeekPoint[]; onFocus: (point: We
   };
   const labelEvery = Math.ceil(weeks.length / 6);
   const slot = plotWidth / Math.max(1, weeks.length - 1);
+  // Finished weeks sit in a shaded band on the left with their final scores; a line marks
+  // where the projections begin. The team's line is solid with filled dots where the score is
+  // final, and lighter with open dots where it is projected.
+  const played = weeks.filter((point) => point.final).length;
+  const split = played > 0 && played < weeks.length ? (x(played - 1) + x(played)) / 2 : played === weeks.length ? W.width - W.right : null;
+  const segment = (from: number, to: number) =>
+    weeks
+      .slice(from, to)
+      .map((point, index) => `${index ? "L" : "M"}${x(from + index).toFixed(1)},${y(point.team).toFixed(1)}`)
+      .join("");
   return (
-    <svg className="week-chart" viewBox={`0 0 ${W.width} ${W.height}`} role="img" aria-label="Projected score each week left, against the league" onPointerLeave={(event) => event.pointerType === "mouse" && pick(null)} onClick={(event) => event.target === event.currentTarget && pick(null)}>
+    <svg className="week-chart" viewBox={`0 0 ${W.width} ${W.height}`} role="img" aria-label={played ? "Final score each finished week, then projected score each week left, against the league" : "Projected score each week left, against the league"} onPointerLeave={(event) => event.pointerType === "mouse" && pick(null)} onClick={(event) => event.target === event.currentTarget && pick(null)}>
       {niceTicks(y0, y1).map((tick) => (
         <g key={tick}>
           <line className="week-grid" x1={W.left} x2={W.width - W.right} y1={y(tick)} y2={y(tick)} />
@@ -368,12 +525,33 @@ function WeekChart({ weeks, onFocus }: { weeks: WeekPoint[]; onFocus: (point: We
           </text>
         </g>
       ))}
+      {split !== null && (
+        <g className="week-played">
+          <rect className="week-played-area" x={W.left} y={W.top} width={split - W.left} height={plotHeight} />
+          {played < weeks.length && <line className="week-now" x1={split} x2={split} y1={W.top} y2={W.top + plotHeight} />}
+          <text className="week-phase" x={W.left + 4} y={W.top + 11}>
+            Final
+          </text>
+          {played < weeks.length && split < W.width - W.right - 50 && (
+            <text className="week-phase" x={split + 4} y={W.top + 11}>
+              Projected
+            </text>
+          )}
+        </g>
+      )}
       <path className="week-band" d={band} />
       <path className="week-league" d={line((point) => point.leagueAverage)} />
-      <path className="week-team" d={line((point) => point.team)} />
+      {played > 0 && <path className="week-team" d={segment(0, played)} />}
+      {played < weeks.length && <path className="week-team is-projected" d={segment(Math.max(0, played - 1), weeks.length)} />}
       {active !== null && <line className="week-guide" x1={x(active)} x2={x(active)} y1={W.top} y2={W.top + plotHeight} />}
       {weeks.map((point, index) => (
-        <circle key={point.week} className={`week-dot${active === index ? " is-active" : ""}`} cx={x(index)} cy={y(point.team)} r={active === index ? 5 : 2.5} />
+        <circle
+          key={point.week}
+          className={`week-dot${point.final ? "" : " is-projected"}${active === index ? " is-active" : ""}`}
+          cx={x(index)}
+          cy={y(point.team)}
+          r={active === index ? 5 : point.final ? 3 : 2.5}
+        />
       ))}
       {weeks.map((point, index) =>
         index % labelEvery === 0 || index === weeks.length - 1 ? (

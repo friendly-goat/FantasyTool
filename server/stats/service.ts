@@ -10,7 +10,7 @@ import type { GameLine, InjuryReport, StatsProvider } from "./provider.ts";
 function injuriesBySource(report: InjuryReport[], today: string): Map<string, InjuryNews> {
   return new Map(report.map((entry) => [entry.playerId, readInjury(entry, today)]));
 }
-import { counts, lastSeasonLevels, playerLog, RECENT_WINDOW, summarize, type LastSeason } from "./summary.ts";
+import { counts, lastSeasonLevels, playerLog, pointsAllowed, RECENT_WINDOW, summarize, type LastSeason } from "./summary.ts";
 
 // Keeps a season of game lines on disk and brings it up to date in the
 // background. The first sync downloads the whole season so far; later
@@ -130,6 +130,7 @@ export class StatsService {
         lastSeason,
         injuriesBySource(injuryReport, new Date(this.now()).toISOString().slice(0, 10)),
       ),
+      allowed: pointsAllowed(lines, scoring, snapshot.league.seasonStartDate),
     };
   }
 

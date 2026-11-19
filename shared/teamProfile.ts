@@ -4,11 +4,14 @@
 //
 //   Shape:  how the team scores, from the same lock-in simulation as team
 //           strength: its good weeks (ceiling), its bad weeks (floor), its
-//           top three, what the bench adds, games played a week, health now
-//           (the next HEALTH_WEEKS weeks) and where its players are heading.
+//           top three, what the bench adds, its schedule (the real NBA games
+//           left for its main players, each weighted by how many fantasy
+//           points that opponent gives up), health now (the next HEALTH_WEEKS
+//           weeks) and where its players are heading.
 //   Mix:    where its fantasy points come from (scoring, threes, boards,
 //           playmaking, defense, bonuses), from the players who play most.
-//   Weeks:  its projected score in each real week left, against the league.
+//   Weeks:  its final score in each finished week (Sleeper's matchups) and its
+//           projected score in each real week left, against the league.
 //
 // Radar values are placed on the league's own range: 0 is the lowest team,
 // 10 the highest. A range narrower than the axis's MIN_RANGE is widened to
@@ -16,7 +19,7 @@
 // ideas.
 import { rosterPlayers } from "./analysis.ts";
 import { fillRoster, type ModelPlayer, type StrengthModel, type TeamStrength, weeklyTotals } from "./strength.ts";
-import { FANTASY_SOURCES, type FantasySource, type LeagueSnapshot, type PlayerStats } from "./types.ts";
+import { FANTASY_SOURCES, type FantasySource, type LeagueSnapshot, type PlayerStats, type ScheduleAhead, type ScoreHistory } from "./types.ts";
 
 export interface ProfileAxis {
   key: string;
@@ -31,10 +34,14 @@ export interface ProfileAxis {
   rank: number;
   /** How the figure reads, e.g. "412.30 a week". */
   unit: "points" | "percent" | "games";
+  /** Schedule only: real games a week per main player, and how much opponents give up against the league average (1.04: 4% more). Absent when the real schedule is not available and the model's games stand in. */
+  schedule?: { games: number; opponents: number };
 }
 
 export interface WeekPoint {
   week: number;
+  /** A finished week's final score (Sleeper), rather than a projection. */
+  final: boolean;
   team: number;
   leagueAverage: number;
   leagueLow: number;
@@ -50,6 +57,16 @@ export interface TeamProfile {
   /** Fantasy points a game the team's main players lose to turnovers and fouls (positive), and its rank (1: fewest). */
   mistakes: { value: number; rank: number } | null;
   weeks: WeekPoint[];
+  /** Rank by total points over the finished weeks (1: most), or null before any week has finished. */
+  season: { rank: number; weeks: number } | null;
+}
+
+/** What the profiles can use besides the model: finished weeks, the real schedule and how soft each opponent is. */
+export interface ProfileExtras {
+  history?: ScoreHistory | null;
+  schedule?: ScheduleAhead | null;
+  /** Fantasy points opponents score against each NBA team, as a ratio to the league average (StatsReport.allowed). */
+  allowed?: Record<string, number>;
 }
 
 /** Players counted for the mix and for health: the ones who play most. */
@@ -70,7 +87,7 @@ const SHAPE_AXES: AxisDef[] = [
   { key: "ceiling", label: "Ceiling", unit: "points", minRange: 10 },
   { key: "stars", label: "Top three", unit: "points", minRange: 6 },
   { key: "depth", label: "Depth", unit: "points", minRange: 5 },
-  { key: "games", label: "Games", unit: "games", minRange: 0.3 },
+  { key: "schedule", label: "Schedule", unit: "games", minRange: 0.3 },
   { key: "health", label: "Health", unit: "percent", minRange: 25, fromTop: true },
   { key: "trend", label: "Trend", unit: "percent", minRange: 6 },
   { key: "floor", label: "Floor", unit: "points", minRange: 10 },
@@ -124,15 +141,20 @@ export function leagueProfiles(
   model: StrengthModel,
   strengths: TeamStrength[],
   stats: Record<string, PlayerStats>,
+  extras: ProfileExtras = {},
 ): Map<number, TeamProfile> {
   const shapeRows = new Map<number, Record<string, number>>();
   const mixRows = new Map<number, Record<string, number>>();
   const weekRows = new Map<number, number[]>();
   const realWeeks = Math.max(1, model.calendar.weeks.length);
   let hasMix = false;
+  const games = remainingGames(model, extras);
+  const scheduleParts = new Map<number, { games: number; opponents: number }>();
 
   for (const team of snapshot.teams) {
-    const ids = rosterPlayers(team).map((player) => player.id);
+    const roster = rosterPlayers(team);
+    const ids = roster.map((player) => player.id);
+    const nbaTeam = new Map(roster.map((player) => [player.id, player.team]));
     const players = ids.flatMap((id) => model.players.get(id) ?? []);
     // Run as its manager would, as team strength does: IR, open spots from waivers.
     const totals = weeklyTotals(model, fillRoster(model, ids).ids);
@@ -150,13 +172,34 @@ export function leagueProfiles(
     const healthy = core.reduce((sum, player) => sum + player.healthy, 0);
     const injuredAway = core.reduce((sum, player) => sum + player.healthy * (1 - onHand(player)), 0);
     const seen = main.filter((player) => player.games > 0);
+    // Schedule: each main player's real games left a week, weighted by how soft each opponent
+    // is, averaged by what the player is worth (a star's schedule matters more).
+    let schedule = main.reduce((sum, player) => sum + gamesPerWeek(model, player), 0) / Math.max(1, main.length);
+    if (games) {
+      let weight = 0;
+      let count = 0;
+      let adjusted = 0;
+      for (const player of main) {
+        const club = nbaTeam.get(player.id);
+        const left = club ? games.byTeam.get(club) : undefined;
+        if (!left) continue;
+        const value = Math.max(0, player.expected);
+        weight += value;
+        count += (value * left.length) / games.weeks;
+        adjusted += (value * left.reduce((sum, opponent) => sum + softness(extras.allowed, opponent), 0)) / games.weeks;
+      }
+      if (weight > 0) {
+        schedule = adjusted / weight;
+        scheduleParts.set(team.rosterId, { games: count / weight, opponents: count > 0 ? adjusted / count : 1 });
+      }
+    }
     const average = seen.reduce((sum, player) => sum + player.average, 0);
     shapeRows.set(team.rosterId, {
       ceiling: quantile(sorted, 0.9),
       floor: quantile(sorted, 0.1),
       stars: byValue.slice(0, 3).reduce((sum, player) => sum + player.expected, 0),
       depth: strength?.benchAdds ?? 0,
-      games: main.reduce((sum, player) => sum + gamesPerWeek(model, player), 0) / Math.max(1, main.length),
+      schedule,
       health: healthy > 0 ? 100 * (1 - injuredAway / healthy) : 100,
       trend: average > 0 ? (100 * seen.reduce((sum, player) => sum + (player.projected - player.average), 0)) / average : 0,
     });
@@ -187,13 +230,32 @@ export function leagueProfiles(
     .filter((key) => [...mixRows.values()].some((row) => Math.abs(row[key] ?? 0) > 0.01))
     .map((key): AxisDef => ({ key, label: MIX_LABELS[key], unit: "points", minRange: MIX_MIN_RANGE }));
 
+  const finished = (extras.history?.weeks ?? []).filter((entry) => entry.week < (model.calendar.weeks[0]?.week ?? snapshot.week));
+  const totals = new Map(snapshot.teams.map((team) => [team.rosterId, finished.reduce((sum, entry) => sum + (entry.points[team.rosterId] ?? 0), 0)]));
   const profiles = new Map<number, TeamProfile>();
   for (const team of snapshot.teams) {
-    const weeks = model.calendar.weeks.map((week, index) => {
+    const past = finished.flatMap((entry): WeekPoint[] => {
+      const mine = entry.points[team.rosterId];
+      const scores = snapshot.teams.map((other) => entry.points[other.rosterId]).filter((score): score is number => typeof score === "number");
+      if (typeof mine !== "number" || scores.length === 0) return [];
+      return [
+        {
+          week: entry.week,
+          final: true,
+          team: mine,
+          leagueAverage: scores.reduce((sum, score) => sum + score, 0) / scores.length,
+          leagueLow: Math.min(...scores),
+          leagueHigh: Math.max(...scores),
+          rank: 1 + scores.filter((score) => score > mine).length,
+        },
+      ];
+    });
+    const ahead = model.calendar.weeks.map((week, index): WeekPoint => {
       const scores = [...weekRows.values()].map((row) => row[index] ?? 0);
       const mine = weekRows.get(team.rosterId)?.[index] ?? 0;
       return {
         week: week.week,
+        final: false,
         team: mine,
         leagueAverage: scores.reduce((sum, score) => sum + score, 0) / Math.max(1, scores.length),
         leagueLow: Math.min(...scores),
@@ -203,13 +265,49 @@ export function leagueProfiles(
     });
     profiles.set(team.rosterId, {
       rosterId: team.rosterId,
-      shape: axes(shapeRows, SHAPE_AXES, team.rosterId),
+      shape: axes(shapeRows, SHAPE_AXES, team.rosterId).map((axis) => {
+        const parts = scheduleParts.get(team.rosterId);
+        return axis.key === "schedule" && parts ? { ...axis, schedule: parts } : axis;
+      }),
       mix: hasMix ? axes(mixRows, mixDefs, team.rosterId) : [],
       mistakes: hasMix ? { value: mistakes.get(team.rosterId) ?? 0, rank: fewestMistakes.indexOf(team.rosterId) + 1 } : null,
-      weeks,
+      weeks: [...past, ...ahead],
+      season:
+        finished.length > 0
+          ? { rank: 1 + [...totals.values()].filter((total) => total > (totals.get(team.rosterId) ?? 0)).length, weeks: finished.length }
+          : null,
     });
   }
   return profiles;
+}
+
+/** How a softness ratio is read: missing or odd figures count as an average opponent. */
+function softness(allowed: Record<string, number> | undefined, opponent: string): number {
+  const ratio = allowed?.[opponent];
+  return typeof ratio === "number" && Number.isFinite(ratio) && ratio > 0 ? ratio : 1;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The real NBA games left in the fantasy regular season: each NBA team's opponents from today,
+ * and how many weeks that is (today counts as a whole day). Null when the schedule is not
+ * available, and the model's games stand in.
+ */
+function remainingGames(model: StrengthModel, extras: ProfileExtras): { byTeam: Map<string, string[]>; weeks: number } | null {
+  const schedule = extras.schedule;
+  const end = model.calendar.weeks.at(-1)?.end;
+  if (!schedule || schedule.status !== "ready" || !end) return null;
+  const today = model.calendar.today;
+  const byTeam = new Map<string, string[]>();
+  for (const game of schedule.games) {
+    if (game.date < today || game.date > end || !game.home || !game.away) continue;
+    byTeam.set(game.home, [...(byTeam.get(game.home) ?? []), game.away]);
+    byTeam.set(game.away, [...(byTeam.get(game.away) ?? []), game.home]);
+  }
+  if (byTeam.size === 0) return null;
+  const days = Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / DAY_MS) + 1;
+  return { byTeam, weeks: Math.max(1 / 7, days / 7) };
 }
 
 /** Games a week he is expected to play, over the imaginary weeks (schedule, rest and injury). */
@@ -226,8 +324,9 @@ export function extremes(axes: ProfileAxis[]): { best: ProfileAxis; worst: Profi
   return { best: sorted[0]!, worst: sorted[sorted.length - 1]! };
 }
 
-/** The run of weeks (up to three) furthest above the league average, and the single week furthest below. */
-export function weekHighlights(weeks: WeekPoint[]): { best: WeekPoint[]; worst: WeekPoint } | null {
+/** Of the weeks ahead, the run (up to three) furthest above the league average, and the single week furthest below. */
+export function weekHighlights(points: WeekPoint[]): { best: WeekPoint[]; worst: WeekPoint } | null {
+  const weeks = points.filter((point) => !point.final);
   if (weeks.length === 0) return null;
   const margin = (point: WeekPoint) => point.team - point.leagueAverage;
   const span = Math.min(3, weeks.length);

@@ -7,7 +7,7 @@ import { matchPlayers, normalizeName, sameLastName } from "./match.ts";
 import { createMockStats } from "./mock.ts";
 import type { GameLine, StatsProvider } from "./provider.ts";
 import { StatsService } from "./service.ts";
-import { playerLog, summarize } from "./summary.ts";
+import { playerLog, pointsAllowed, summarize } from "./summary.ts";
 
 const EMPTY: StatLine = {
   pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tov: 0, tpm: 0, tpa: 0,
@@ -165,6 +165,33 @@ describe("summarize", () => {
     const stats = summarize(lines, matches, players, { pts: 1 }, "2026-10-20").a!;
     expect(stats.games).toBe(2);
     expect(stats.fantasyAvg).toBe(25);
+  });
+});
+
+describe("pointsAllowed", () => {
+  it("rates each team by what its opponents score, against the league, shrunk toward average", () => {
+    const lines = [
+      // MIA gives up 60 a game over two games; NYK 20 over two; BOS (by ID only) 40 over two.
+      gameLine({ playerId: "1", team: "BOS", teamId: "2", opponent: "MIA", date: "2026-10-22", pts: 60 }),
+      gameLine({ playerId: "2", team: "BOS", teamId: "2", opponent: "MIA", date: "2026-10-24", pts: 60 }),
+      gameLine({ playerId: "3", team: "MIA", teamId: "16", opponent: "NYK", date: "2026-10-22", pts: 20 }),
+      gameLine({ playerId: "4", team: "MIA", teamId: "16", opponent: "NYK", date: "2026-10-24", pts: 20 }),
+      gameLine({ playerId: "5", team: "NYK", teamId: "20", opponentId: "2", date: "2026-10-22", pts: 40 }),
+      gameLine({ playerId: "6", team: "NYK", teamId: "20", opponentId: "2", date: "2026-10-24", pts: 40 }),
+      // Not counted: preseason, unfinished, and a game with no minutes.
+      gameLine({ playerId: "7", team: "BOS", opponent: "NYK", date: "2026-10-10", pts: 500 }),
+      gameLine({ playerId: "8", team: "BOS", opponent: "NYK", date: "2026-10-26", pts: 500, final: false }),
+      gameLine({ playerId: "9", team: "BOS", opponent: "NYK", date: "2026-10-27", pts: 500, minutes: 0 }),
+    ];
+    const allowed = pointsAllowed(lines, { pts: 1 }, "2026-10-20");
+    // League average 40 a game; MIA (60·2 + 40·3) / (5·40) = 1.2, NYK (20·2 + 120) / 200 = 0.8.
+    expect(allowed.MIA).toBeCloseTo(1.2);
+    expect(allowed.NYK).toBeCloseTo(0.8);
+    expect(allowed.BOS).toBeCloseTo(1);
+  });
+
+  it("is empty without finished games", () => {
+    expect(pointsAllowed([], { pts: 1 })).toEqual({});
   });
 });
 

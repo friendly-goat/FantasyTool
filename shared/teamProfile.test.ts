@@ -50,6 +50,8 @@ describe("team profiles (against the mock league)", async () => {
   it("gives each real week left the team's score, inside the league's range, with its rank", () => {
     const profile = profiles.get(strengths[3]!.rosterId)!;
     expect(profile.weeks).toHaveLength(model.calendar.weeks.length);
+    expect(profile.weeks.every((point) => !point.final)).toBe(true);
+    expect(profile.season).toBeNull();
     for (const point of profile.weeks) {
       expect(point.team).toBeGreaterThanOrEqual(point.leagueLow - 1e-9);
       expect(point.team).toBeLessThanOrEqual(point.leagueHigh + 1e-9);
@@ -76,6 +78,61 @@ describe("team profiles (against the mock league)", async () => {
     const hurt = leagueProfiles(snapshot, { ...model, players }, strengths, report.players);
     const health = (map: typeof profiles) => map.get(rosterId)!.shape.find((axis) => axis.key === "health")!.value;
     expect(health(hurt)).toBeLessThan(health(profiles) - 5);
+  });
+
+  it("puts finished weeks first, as final scores, and leaves them out of the weeks-ahead highlights", () => {
+    const first = model.calendar.weeks[0]!.week;
+    const ids = snapshot.teams.map((team) => team.rosterId);
+    // Two finished weeks: the first team scores most in both; one more score from the future is ignored.
+    const history = {
+      weeks: [first - 2, first - 1, first].map((week) => ({
+        week,
+        points: Object.fromEntries(ids.map((id, index) => [id, (index === 0 ? 900 : 600) + index - (week === first ? 2000 : 0)])),
+      })),
+    };
+    const withHistory = leagueProfiles(snapshot, model, strengths, report.players, { history });
+    const leader = withHistory.get(ids[0]!)!;
+    const finals = leader.weeks.filter((point) => point.final);
+    expect(finals.map((point) => point.week)).toEqual([first - 2, first - 1]);
+    expect(leader.weeks.slice(0, 2)).toEqual(finals);
+    expect(finals[0]).toMatchObject({ team: 900, rank: 1, leagueHigh: 900, leagueLow: 601 });
+    expect(leader.weeks).toHaveLength(2 + model.calendar.weeks.length);
+    expect(leader.season).toEqual({ rank: 1, weeks: 2 });
+    expect(withHistory.get(ids[1]!)!.season!.rank).toBe(ids.length);
+    const ahead = weekHighlights(leader.weeks)!;
+    expect([...ahead.best, ahead.worst].every((point) => !point.final)).toBe(true);
+  });
+
+  it("scores the schedule from the real games left, weighted by how soft each opponent is", () => {
+    const { today, weeks } = model.calendar;
+    const end = weeks.at(-1)!.end;
+    const rosterId = strengths[0]!.rosterId;
+    const team = snapshot.teams.find((entry) => entry.rosterId === rosterId)!;
+    const clubs = new Set(
+      [...team.starters.flatMap((slot) => (slot.player ? [slot.player] : [])), ...team.bench].flatMap((player) => (player.team ? [player.team] : [])),
+    );
+    const all = [...new Set(snapshot.teams.flatMap((entry) => [...entry.starters.flatMap((slot) => (slot.player ? [slot.player] : [])), ...entry.bench]).flatMap((player) => (player.team ? [player.team] : [])))];
+    const days: string[] = [];
+    for (let day = Date.parse(`${today}T00:00:00Z`); day <= Date.parse(`${end}T00:00:00Z`); day += 86_400_000) days.push(new Date(day).toISOString().slice(0, 10));
+    // Every NBA team plays every other day against a team called OPP; this team's clubs also play on the days between.
+    const games = days.flatMap((date, index) =>
+      all.flatMap((club) => (index % 2 === 0 || clubs.has(club) ? [{ date, home: club, away: "OPP" }] : [])),
+    );
+    const schedule = { status: "ready" as const, games };
+    const axis = (map: typeof profiles, id: number) => map.get(id)!.shape.find((entry) => entry.key === "schedule")!;
+    const even = leagueProfiles(snapshot, model, strengths, report.players, { schedule });
+    // Its clubs play every day, so it has the league's best schedule (tied with any team on the same clubs).
+    expect(axis(even, rosterId).value).toBeCloseTo(Math.max(...snapshot.teams.map((entry) => axis(even, entry.rosterId).value)));
+    expect(axis(even, rosterId).value).toBeGreaterThan(Math.min(...snapshot.teams.map((entry) => axis(even, entry.rosterId).value)));
+    expect(axis(even, rosterId).schedule!.games).toBeGreaterThan(5);
+    expect(axis(even, rosterId).schedule!.opponents).toBeCloseTo(1);
+    // A soft opponent raises every team's figure by the same share.
+    const soft = leagueProfiles(snapshot, model, strengths, report.players, { schedule, allowed: { OPP: 1.1 } });
+    expect(axis(soft, rosterId).value).toBeCloseTo(axis(even, rosterId).value * 1.1);
+    expect(axis(soft, rosterId).schedule!.opponents).toBeCloseTo(1.1);
+    // Without a schedule the model's games stand in, with no split.
+    expect(axis(profiles, rosterId).schedule).toBeUndefined();
+    expect(leagueProfiles(snapshot, model, strengths, report.players, { schedule: { status: "unavailable", games: [] } }).get(rosterId)!.shape.find((entry) => entry.key === "schedule")!.schedule).toBeUndefined();
   });
 
   it("splits the mix only by what the league scores, and ranks fewest mistakes first", () => {

@@ -6,6 +6,8 @@ import type {
   WeekMatchups,
   LeagueSnapshot,
   PlayerDetail,
+  ScheduleAhead,
+  ScoreHistory,
   StatsReport,
   UserLeagues,
 } from "../shared/types.ts";
@@ -75,6 +77,16 @@ export function getWeek(leagueId: string, week?: number): Promise<WeekData> {
 }
 
 /** A week's matchups, for weeks before the current one (the current week's come with the league). */
+/** Every finished week's final score per team. */
+export function getHistory(leagueId: string): Promise<ScoreHistory> {
+  return getJson(`/api/league/${encodeURIComponent(leagueId)}/history`);
+}
+
+/** The NBA games left in the fantasy regular season. */
+export function getScheduleAhead(leagueId: string): Promise<ScheduleAhead> {
+  return getJson(`/api/league/${encodeURIComponent(leagueId)}/schedule-ahead`);
+}
+
 export function getMatchups(leagueId: string, week: number): Promise<WeekMatchups> {
   return getJson(`/api/league/${encodeURIComponent(leagueId)}/matchups?week=${week}`);
 }

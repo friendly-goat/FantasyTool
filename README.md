@@ -431,13 +431,23 @@ here (see [Live matchup](#live-matchup)).
 Above the roster, three cards place your team against the league
 (`shared/teamProfile.ts`, `src/components/TeamCharts.tsx`); on a phone they
 slide sideways. Each says in one line what stands out, and hovering or
-tapping part of a chart gives that figure and its rank.
+tapping part of a chart gives that figure and its rank. Until the figures
+are ready (the finished weeks and the schedule load, then the profiles are
+worked out after the page has painted) each card shows its empty frame at
+full size with placeholder lines for the note, so nothing moves when the
+charts fade in; while newer data is measured the last charts stay on screen.
 
 - **Team shape** (radar): from the same lock-in simulation as team strength,
   run for every team: ceiling and floor (a week better than 9 in 10, and
   worse than 9 in 10), top three (your three best players' expected locked
-  scores), depth (what the bench adds over the best nine), games (games a
-  week your ten main players are expected to play), health (share of the
+  scores), depth (what the bench adds over the best nine), schedule (the real NBA
+  games left in the regular season for your ten main players' teams, a week,
+  each game weighted by how many fantasy points that opponent gives up
+  against the league average, `allowed` in the stats report from
+  `pointsAllowed` in `server/stats/summary.ts`, shrunk toward average by
+  three average games; averaged by each player's value, so a star's schedule
+  counts more; when the schedule cannot be loaded the model's games a week
+  stand in), health (share of the
   value of your ten best players when fit that is on hand over the next four
   weeks, injuries only, so a star out for three weeks counts now) and trend
   (projection against their averages). A range narrower than the axis's
@@ -450,9 +460,13 @@ tapping part of a chart gives that figure and its rank.
   `server/scoring.ts`, saved on each player's stats as `sources`); a source
   the league does not score, such as threes in the owner's league, is left
   out.
-- **Week by week** (line): your projected score in each real week left,
-  against the league's average and range, with your best three-week
-  stretch and toughest week.
+- **Week by week** (line): your final score in each finished week (Sleeper's
+  matchups, `/api/league/:id/history`), in a shaded band with solid dots,
+  then your projected score in each real week left (lighter line, open dots,
+  after a dotted line), against the league's average and range. The note
+  gives your rank in points so far and, of the weeks ahead, your best
+  three-week stretch and toughest week. The projections still use the
+  model's own spread of games (`teamSchedule`), not the real schedule.
 
 On the radars 0 is the league's lowest team and 10 its highest, and the
 dashed shape is the league average. Display only: nothing here feeds
@@ -505,6 +519,7 @@ schedule); the header shows it.
 | Player list | Sleeper | 24 hours | Sleeper asks for it at most once a day |
 | Draft | Sleeper | 7 days once finished, else as the league | A finished draft never changes |
 | A finished week's matchups (one request a week) | Sleeper | 6 hours for last week, 7 days for older weeks | Only Sleeper's stat corrections change them, in the days after a week |
+| The rest of the season's NBA schedule, for the team charts (about ten requests) | balldontlie | 24 hours | Games are rarely moved; only the count left and the opponents are used |
 | A finished week's NBA schedule (one request a week) | balldontlie | 7 days | Every game is final; saved apart from the current week's copy so a game-night copy is never shown as final |
 | NBA schedule (one request) | balldontlie | 30 min, 3 min while games are on (`SCHEDULE_CACHE_MINUTES`, `LIVE_SCHEDULE_MINUTES`) | Scores and game states change on game nights |
 | Box scores, while a matchup is open | balldontlie | 30 min, 10 min while games are on (`WEEK_STATS_MINUTES`, `LIVE_WEEK_STATS_MINUTES`) | balldontlie updates live stats about every 10 minutes |

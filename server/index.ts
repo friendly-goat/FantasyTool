@@ -1,7 +1,8 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import express from "express";
-import type { AppConfig, LeagueSnapshot, Matchup, WeekData, WeekMatchups } from "../shared/types.ts";
+import type { AppConfig, LeagueSnapshot, Matchup, ScheduleAhead, ScoreHistory, WeekData, WeekMatchups } from "../shared/types.ts";
+import { modelCalendar } from "../shared/strength.ts";
 import { nbaTeam } from "../shared/nbaTeams.ts";
 import {
   authFromEnv,
@@ -161,6 +162,9 @@ const scheduleKey = (weekStart: string) => `schedule-v1-${weekStart}`;
 // Separate keys for finished weeks, so a copy saved while games were on is never served as final.
 const finishedScheduleKey = (weekStart: string) => `schedule-final-v1-${weekStart}`;
 const matchupsKey = (leagueId: string, week: number) => `matchups-v1-${leagueId}-${week}`;
+const scheduleAheadKey = (start: string, end: string) => `schedule-ahead-v1-${start}-${end}`;
+/** The rest of the season's NBA schedule changes little: kept for a day (one schedule download, about ten requests). */
+const scheduleAheadTtl = 24 * 60 * MINUTE;
 
 /** This fantasy week's dates, from a snapshot, or null if Sleeper did not give the season start. */
 function weekOf(snapshot: LeagueSnapshot) {
@@ -374,6 +378,55 @@ app.get("/api/league/:leagueId/week", async (req, res) => {
       linesSyncedAt: syncedAt,
     };
     res.json(body);
+  } catch (error) {
+    sendError(res, error);
+  }
+});
+
+// Every finished week's final score per team, for the week-by-week chart on My team. Each
+// finished week is one Sleeper request, saved for a week (the last one for six hours).
+app.get("/api/league/:leagueId/history", async (req, res) => {
+  try {
+    const leagueId = req.params.leagueId.trim();
+    const snapshot = (await getSnapshot(leagueId)).value;
+    const finished = Array.from({ length: Math.max(0, snapshot.week - 1) }, (_, index) => index + 1);
+    const weeks = await Promise.all(
+      finished.map(async (week) => {
+        const points: Record<number, number> = {};
+        for (const matchup of await getWeekMatchups(leagueId, snapshot, week)) {
+          for (const side of matchup.sides) points[side.rosterId] = side.points;
+        }
+        return { week, points };
+      }),
+    );
+    const body: ScoreHistory = { weeks: weeks.filter((entry) => Object.keys(entry.points).length > 0) };
+    res.json(body);
+  } catch (error) {
+    sendError(res, error);
+  }
+});
+
+// The NBA games left in the fantasy regular season, from today, for the schedule on My team.
+app.get("/api/league/:leagueId/schedule-ahead", async (req, res) => {
+  try {
+    const leagueId = req.params.leagueId.trim();
+    const snapshot = (await getSnapshot(leagueId)).value;
+    const { today, weeks } = modelCalendar(snapshot);
+    const end = weeks.at(-1)?.end;
+    if (!stats.hasSchedule() || !end) {
+      res.json({ status: "unavailable", games: [] } satisfies ScheduleAhead);
+      return;
+    }
+    try {
+      const games = (
+        await cache.get(scheduleAheadKey(today, end), scheduleAheadTtl, () => stats.schedule(today, end), { background: true })
+      ).value;
+      const body: ScheduleAhead = { status: "ready", games: games.map(({ date, home, away }) => ({ date, home, away })) };
+      res.json(body);
+    } catch (error) {
+      console.error("[schedule-ahead]", error instanceof Error ? error.message : error);
+      res.json({ status: "unavailable", games: [] } satisfies ScheduleAhead);
+    }
   } catch (error) {
     sendError(res, error);
   }

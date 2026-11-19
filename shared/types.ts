@@ -53,6 +53,18 @@ export interface MatchupSide {
   bench: MatchupSlot[];
 }
 
+/** Every finished week's final score for each team (Sleeper's matchups). */
+export interface ScoreHistory {
+  weeks: { week: number; points: Record<number, number> }[];
+}
+
+/** The NBA games left in the fantasy regular season, from today. */
+export interface ScheduleAhead {
+  /** "unavailable" when the stats source has no schedule or could not be reached. */
+  status: "ready" | "unavailable";
+  games: { date: string; home: string | null; away: string | null }[];
+}
+
 export interface Matchup {
   matchupId: number;
   sides: MatchupSide[];
@@ -333,6 +345,11 @@ export interface StatsReport {
   unmatchedRostered: PlayerRef[];
   /** Keyed by Sleeper player ID. Only players with at least one game. */
   players: Record<string, PlayerStats>;
+  /**
+   * Fantasy points opponents score against each NBA team (by abbreviation), as a ratio to the
+   * league's average: above 1 is a soft matchup. Missing from reports saved before it was added.
+   */
+  allowed?: Record<string, number>;
 }
 
 /** One game in a player's game log. */
