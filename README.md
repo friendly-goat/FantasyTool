@@ -627,6 +627,7 @@ changes one (the app restarts).
 | `npm run check:stats` | Confirms the stats key works and shows player matching |
 | `npm run check:sleeper -- <league_id> --raw-matchup` | Also prints one team's raw matchup entry, to see every field Sleeper sends |
 | `npm run check:sleeper -- <league_id> --raw-rosters` | Also lists every roster, league and transaction field, to look for anything that records a lock |
+| `npm run check:sleeper -- <league_id> --weeks` | Compares every finished week's matchup scores with the standings' season totals (the official ones) and saves what Sleeper sent to `.cache/sleeper-weeks.json` |
 | `npm run check:stats -- <league_id> --schedule` | Prints this week's NBA schedule from the stats source |
 | `npm run check:stats -- <league_id> --injuries` | Prints the injury report and how the app reads each return date (add `--player "Name"` for one player's full note) |
 | `npm run db:import` | Copies `.cache/` into the database at `DATABASE_URL` |
