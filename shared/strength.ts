@@ -705,11 +705,11 @@ const PICKUP_CANDIDATES = 6;
 /**
  * In a trade's what-if, how many times a manager may swap his weakest active
  * player for a better free agent: a move he can make at any time, trade or
- * no trade, so both rosters make it and the trade is not credited with it.
+ * no trade. The swaps are made once, on the roster before the trade, and the
+ * trade is made on that roster, so it is never credited with them (nor with a
+ * swap that only becomes worth making by a hair once the roster changes).
  */
-export const FREE_UPGRADES = 2;
-/** A swap must add at least this much a week (on the trial weeks) to be worth making. */
-const UPGRADE_MIN = 0.05;
+export const FREE_UPGRADES = 5;
 
 /**
  * A player kept only for as long as `injured` is out: he plays only the
@@ -758,6 +758,8 @@ export interface FilledRoster {
   drops: ModelPlayer[];
   /** Players already on the roster who are dropped when a player on IR is back. */
   leaving: { player: ModelPlayer; when: ModelPlayer }[];
+  /** Everyone on the roster after the moves (pickups included, by their own IDs). */
+  kept: string[];
 }
 
 export function fillRoster(
@@ -769,7 +771,7 @@ export function fillRoster(
   prefer: string[] = [],
   /**
    * How many times the weakest active player may be swapped for a better free
-   * agent (FREE_UPGRADES in a trade's what-if; none for the roster as it is).
+   * agent (FREE_UPGRADES for the roster a trade is made on; none for the roster as it is).
    */
   upgrades = 0,
 ): FilledRoster {
@@ -823,7 +825,9 @@ export function fillRoster(
     const best = options
       .map((id) => ({ id, projected: projectedWeekly(model, [...without, id], PICKUP_TRIAL_WEEKS) }))
       .reduce((a, b) => (b.projected > a.projected ? b : a));
-    if (best.projected < current + UPGRADE_MIN) break;
+    // He is better on his own (see options); the swap is made unless it makes the roster worse,
+    // so the roster a trade is made on is the best the team can make freely.
+    if (best.projected < current) break;
     const player = model.players.get(best.id)!;
     // A free agent picked up a moment ago is simply not picked up; a rostered player is dropped.
     const pickedAt = picked.indexOf(weakest);
@@ -851,7 +855,8 @@ export function fillRoster(
     if (pickup) pickup.forInjured = injured;
     else leaving.push({ player: weakest, when: injured });
   }
-  return { ids, reserve, adds, drops, leaving };
+  const kept = [...active, ...picked, ...reserve].map((player) => player.id);
+  return { ids, reserve, adds, drops, leaving, kept };
 }
 
 /** Converts a projected weekly score to the 1 to 1000 scale. */

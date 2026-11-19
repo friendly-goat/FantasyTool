@@ -144,16 +144,16 @@ describe("injuries, IR and waiver pickups (against the mock league)", async () =
   it("splits a trade for an injured player into the weeks he is out and the weeks after", () => {
     let idea: ReturnType<typeof findTrades>["ideas"][number] | undefined;
     for (const { rosterId } of strengths) {
-      idea = findTrades(model, snapshot, rosterId, situations, { getInjured: true }).ideas.find((candidate) =>
-        tradePhases(model, candidate.result.a),
-      );
+      // One where he is all you get (in a package, someone else can matter more while he is out).
+      idea = findTrades(model, snapshot, rosterId, situations, { getInjured: true }).ideas.find((candidate) => {
+        const phases = tradePhases(model, candidate.result.a);
+        return phases && candidate.result.a.gets.length === 1 && candidate.result.a.gets[0] === phases.player;
+      });
       if (idea) break;
     }
     if (!idea) throw new Error("no trade for an injured player found");
     const phases = tradePhases(model, idea.result.a)!;
-    // The player the weeks split at is part of the trade (the most-out player, either way).
-    expect([...idea.result.a.gets, ...idea.result.a.gives].map((player) => player.id)).toContain(phases.player.id);
-    expect(idea.result.a.gets.some((player) => player.back && player.outShare > 0)).toBe(true);
+    expect(idea.result.a.gets.map((player) => player.id)).toContain(phases.player.id);
     expect(phases.weeksOut).toBeGreaterThan(0);
     // He gives you nothing until he is back, then his full level.
     expect(phases.afterBack).toBeGreaterThan(phases.whileOut);
@@ -280,13 +280,20 @@ describe("injuries, IR and waiver pickups (against the mock league)", async () =
         const { a } = evaluateTrade(model, snapshot, { teamA: rosterId, teamB: other, aGives, bGives: [target.id] });
         return a.projectedAfter - a.projectedBefore;
       };
-      expect(gain([mid.id, weakest.id])).toBeCloseTo(gain([mid.id]), 0);
+      expect(gain([mid.id, weakest.id])).toBeCloseTo(gain([mid.id]), 1);
       checked++;
     }
     expect(checked).toBeGreaterThan(2);
     // The roster as it stands takes no free upgrades: strength is the team as it is run today.
     const team = strengths.find(({ rosterId }) => fillRoster(model, ids(rosterId), new Set(), [], FREE_UPGRADES).adds.length > 0)!;
     expect(fillRoster(model, ids(team.rosterId)).adds.length).toBeLessThan(fillRoster(model, ids(team.rosterId), new Set(), [], FREE_UPGRADES).adds.length);
+    // The roster a trade is made on is never worse than the team as it stands (a team with more
+    // players out than IR slots once came out weaker, which made every trade look good to it).
+    for (const { rosterId } of strengths) {
+      const other = strengths.find((entry) => entry.rosterId !== rosterId)!.rosterId;
+      const { a } = evaluateTrade(model, snapshot, { teamA: rosterId, teamB: other, aGives: [ids(rosterId)[0]!], bGives: [ids(other)[0]!] });
+      expect(projectedWeekly(model, a.beforeIds)).toBeGreaterThanOrEqual(a.projectedBefore - 1e-9);
+    }
   }, 60_000);
 
   it("searches packages of up to two players a side, and keeps every rule for them", () => {

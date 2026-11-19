@@ -133,24 +133,30 @@ export function players(model: StrengthModel, ids: string[]): ModelPlayer[] {
 }
 
 // A team's roster before a trade is the same whatever is offered (the
-// players in a trade are never free agents), so it is worked out once.
-const baselines = new WeakMap<StrengthModel, Map<string, { filled: FilledRoster; current: number }>>();
+// players in a trade are never free agents), so it is worked out once: the
+// free upgrades the manager can make anyway (his weakest players for better
+// free agents), then IR and waivers as usual. The trade is made on that roster.
+const baselines = new WeakMap<StrengthModel, Map<string, { kept: string[]; filled: FilledRoster; current: number }>>();
 function baselineEntry(model: StrengthModel, before: string[]) {
   let cache = baselines.get(model);
   if (!cache) baselines.set(model, (cache = new Map()));
   const key = [...before].sort().join(",");
   let entry = cache.get(key);
   if (!entry) {
-    entry = {
-      filled: fillRoster(model, before, new Set(), [], FREE_UPGRADES),
-      current: projectedWeekly(model, fillRoster(model, before).ids),
-    };
+    const now = fillRoster(model, before);
+    const current = projectedWeekly(model, now.ids);
+    const { kept } = fillRoster(model, before, new Set(), [], FREE_UPGRADES);
+    const upgraded = fillRoster(model, kept);
+    // The swaps are tried on the weeks ahead without who leaves when a player on IR is back;
+    // if that makes the roster worse once it is run in full, the team keeps the roster it has.
+    entry =
+      projectedWeekly(model, upgraded.ids) >= current
+        ? { kept, filled: upgraded, current }
+        : { kept: now.kept, filled: fillRoster(model, now.kept), current };
     cache.set(key, entry);
   }
   return entry;
 }
-/** The roster before a trade as a trade's what-if runs it: IR, waivers and the free upgrades. */
-const baselineFor = (model: StrengthModel, before: string[]) => baselineEntry(model, before).filled;
 /** The team's projected weekly score as it is now, as Rankings shows it. */
 const currentFor = (model: StrengthModel, before: string[]) => baselineEntry(model, before).current;
 
@@ -167,32 +173,28 @@ export function measureSide(
   gets: string[],
   claimed: Set<string>,
 ): TradeSide {
-  // Both rosters are run the same way (IR, then waivers, then the free
-  // upgrades a manager can make at any time: his weakest player for a better
-  // free agent), so the trade is credited only with what it changes, never
-  // with a pickup the team would make anyway. See fillRoster.
-  const baseline = baselineFor(model, before);
-  const filled = fillRoster(
-    model,
-    [...before.filter((id) => !gives.includes(id)), ...gets],
-    new Set(claimed),
-    baseline.adds.map((add) => add.player.id),
-    FREE_UPGRADES,
-  );
+  // The trade is made on the roster after the free upgrades (see baselineEntry), and both
+  // rosters are run the same way (IR, then waivers), so the trade is credited only with what
+  // it changes, never with a pickup the team would make anyway. See fillRoster.
+  const baseline = baselineEntry(model, before);
+  const filled = fillRoster(model, [...baseline.kept.filter((id) => !gives.includes(id)), ...gets], new Set(claimed));
   // A pickup the team makes either way is not the trade's doing, even if it
   // now covers a different player on IR.
   const key = (add: Pickup) => add.player.id;
-  const already = new Set(baseline.adds.map(key));
+  const already = new Set(baseline.filled.adds.map(key));
   const pickups = filled.adds.filter((add) => !already.has(key(add)));
-  const drops = filled.drops.filter((player) => !baseline.drops.includes(player)).map((player) => player.id);
+  // A free agent the team would have picked up and now has no room for is not a drop.
+  const drops = filled.drops
+    .filter((player) => !baseline.filled.drops.includes(player) && (before.includes(player.id) || gets.includes(player.id)))
+    .map((player) => player.id);
   const adds = pickups.map((add) => add.player.id);
-  const toReserve = filled.reserve.filter((player) => !baseline.reserve.includes(player));
-  const leaving = filled.leaving.filter(({ player }) => !baseline.leaving.some((entry) => entry.player === player));
+  const toReserve = filled.reserve.filter((player) => !baseline.filled.reserve.includes(player));
+  const leaving = filled.leaving.filter(({ player }) => !baseline.filled.leaving.some((entry) => entry.player === player));
   const noReserve = filled.reserve.length > 0 ? players(model, gets).filter((player) => player.irEligible && !filled.reserve.includes(player)) : [];
 
   // The team as it is now (as Rankings shows it), plus what the trade changes.
   const projectedBefore = currentFor(model, before);
-  const projectedAfter = projectedBefore + projectedWeekly(model, filled.ids) - projectedWeekly(model, baseline.ids);
+  const projectedAfter = projectedBefore + projectedWeekly(model, filled.ids) - projectedWeekly(model, baseline.filled.ids);
   const strengthBefore = strengthScore(model, projectedBefore);
   const strengthAfter = strengthScore(model, projectedAfter);
   const grade = tradeGrade(projectedAfter - projectedBefore);
@@ -216,7 +218,7 @@ export function measureSide(
     leaving,
     noReserve,
     reserve: filled.reserve,
-    beforeIds: baseline.ids,
+    beforeIds: baseline.filled.ids,
     afterIds: filled.ids,
     strengthBefore,
     strengthAfter,
@@ -740,6 +742,12 @@ const SCREENED_PER_PLAYER = 24;
 const SHORTLIST = 6;
 /** Extra places on that list for the best packages (two players on a side). */
 const SHORTLIST_PACKAGES = 12;
+/** Fewer realistic ideas (35% or better) than this once measured, and the next best are measured too. */
+const ENOUGH_IDEAS = 6;
+/** But no more than this many per idea shown are measured in full in all. */
+const MEASURED_AT_MOST = 24;
+/** How many of the best estimates get a closer look (the whole trade on the same few weeks) before screening. */
+const CLOSER_LOOK = 1500;
 /** Weeks simulated for the first layer's estimates: few, since they only rank; the same weeks for every roster. */
 const ESTIMATE_WEEKS = 8;
 /** Estimates may fall this far (points a week) short of the gain needed and still be screened. */
@@ -752,7 +760,21 @@ export const BIG_LOSS = 20;
 // can go on IR with the best free agent standing in. The full evaluation
 // (fillRoster) does this properly for the ideas that make the shortlist.
 export function quickRosterAfter(model: StrengthModel, before: string[], gives: string[], gets: ModelPlayer[]): string[] {
-  let after = [...before.filter((id) => !gives.includes(id)), ...gets.map((player) => player.id)];
+  // The free upgrades a manager can make at any time come first, on the roster as it is (as a
+  // trade's what-if does): his weakest healthy player for a better free agent. The trade is
+  // then made on that roster.
+  let base = [...before];
+  const freeAgents = model.freeAgentIds.filter((id) => !before.includes(id) && !gets.some((player) => player.id === id));
+  for (let swap = 0; swap < FREE_UPGRADES; swap++) {
+    const freeAgent = model.players.get(freeAgents[0] ?? "");
+    const weakest = players(model, base)
+      .filter((player) => !player.irEligible)
+      .reduce<ModelPlayer | null>((low, player) => (!low || player.expected < low.expected ? player : low), null);
+    if (!freeAgent || !weakest || freeAgent.expected <= weakest.expected) break;
+    base = [...base.filter((id) => id !== weakest.id), freeAgent.id];
+    freeAgents.shift();
+  }
+  let after = [...base.filter((id) => !gives.includes(id)), ...gets.map((player) => player.id)];
   while (after.length > before.length) {
     const weakest = players(model, after)
       .filter((player) => !gets.includes(player))
@@ -760,24 +782,12 @@ export function quickRosterAfter(model: StrengthModel, before: string[], gives: 
     if (!weakest) break;
     after = after.filter((id) => id !== weakest.id);
   }
-  const freeAgents = model.freeAgentIds.filter((id) => !after.includes(id));
   while (after.length < before.length && freeAgents.length > 0) after = [...after, freeAgents.shift()!];
   for (const get of gets) {
     if (!(get.back && get.irEligible && get.outShare > 0)) continue;
     const onReserve = players(model, after).filter((player) => player.irEligible).length;
     const freeAgent = model.players.get(freeAgents[0] ?? "");
     if (onReserve <= model.rosterLimits.reserve && freeAgent) after = [...after, standIn(model, freeAgent, get).id];
-  }
-  // The free upgrades a manager can make at any time (as fillRoster does in a trade's what-if):
-  // his weakest healthy player for a better free agent.
-  for (let swap = 0; swap < FREE_UPGRADES; swap++) {
-    const freeAgent = model.players.get(freeAgents[0] ?? "");
-    const weakest = players(model, after)
-      .filter((player) => !player.irEligible)
-      .reduce<ModelPlayer | null>((low, player) => (!low || player.expected < low.expected ? player : low), null);
-    if (!freeAgent || !weakest || freeAgent.expected <= weakest.expected) break;
-    after = [...after.filter((id) => id !== weakest.id), freeAgent.id];
-    freeAgents.shift();
   }
   return after;
 }
@@ -950,15 +960,14 @@ export function findTrades(
     // nothing, so he goes first.
     const injured = players(model, after).filter((player) => player.irEligible).sort((x, y) => y.outShare - x.outShare);
     if (received.some((player) => player.irEligible && injured.indexOf(player) >= model.rosterLimits.reserve)) return true;
+    // No room for him: the quick read of the roster after the trade already let him go.
+    if (received.some((player) => !after.includes(player.id))) return true;
+    // The weakest healthy player goes when someone is back from IR.
     const healthy = players(model, after).filter((player) => !player.irEligible);
     if (healthy.length === 0) return false;
     const weakest = healthy.reduce((low, player) => (player.expected < low.expected ? player : low));
-    const newcomer = received.find((player) => !player.irEligible && player.expected <= weakest.expected);
-    if (!newcomer) return false;
-    const crowded = before.length - received.length + received.length > model.rosterLimits.active + model.rosterLimits.reserve;
-    const betterFreeAgent = model.freeAgentIds.some((id) => !after.includes(id) && (model.players.get(id)?.expected ?? 0) > newcomer.expected);
     const returning = players(model, before).some((player) => player.irEligible && player.back && player.outShare > 0 && player.outShare < 1);
-    return crowded || betterFreeAgent || returning;
+    return returning && received.includes(weakest);
   };
 
   const consider = (
@@ -1150,13 +1159,41 @@ export function findTrades(
     }
   }
   estimates.sort((x, y) => x.band - y.band || y.score - x.score);
+  // A second, closer look at the best few thousand: the whole trade on the same few weeks, both
+  // sides (the pairing above cannot see how two players fit together, or a player too many).
+  const beforeAt = (roster: string[]) => {
+    const rosterKey = roster.join(",");
+    let value = estimateBefore.get(rosterKey);
+    if (value === undefined) {
+      value = projectedWeekly(model, quickRoster(roster, [], []), ESTIMATE_WEEKS);
+      estimateBefore.set(rosterKey, value);
+    }
+    return value;
+  };
+  const closer = estimates.slice(0, CLOSER_LOOK).flatMap((estimate) => {
+    const info = infoFor(estimate.teamId);
+    const myAfter = quickRoster(mine, estimate.gives.map((player) => player.id), estimate.gets);
+    const theirAfter = quickRoster(info.theirs, estimate.gets.map((player) => player.id), estimate.gives);
+    if (disposable(mine, myAfter, estimate.gets) || disposable(info.theirs, theirAfter, estimate.gives)) return [];
+    const gain = projectedWeekly(model, myAfter, ESTIMATE_WEEKS) - beforeAt(mine);
+    if (gain < minGain - ESTIMATE_SLACK) return [];
+    const theirGain = projectedWeekly(model, theirAfter, ESTIMATE_WEEKS) - beforeAt(info.theirs);
+    const dropped =
+      estimate.gives.length > estimate.gets.length
+        ? info.byValue.filter((player) => !estimate.gets.includes(player)).slice(0, estimate.gives.length - estimate.gets.length)
+        : [];
+    const chance = chanceFrom(theirGain, sumAverage(estimate.gives) - sumAverage(dropped), sumAverage(estimate.gets), info.urgency);
+    if (chance < MISS_FLOOR) return [];
+    return [{ ...estimate, band: chance >= LIKELY ? 0 : chance >= POSSIBLE ? 1 : 2, score: rank(gain, chance) }];
+  });
+  closer.sort((x, y) => x.band - y.band || y.score - x.score);
   // Spread the screening: a few at most for the same players you would get, and no player in
   // too many, so the best ideas around every player get a look.
   const perGet = new Map<string, number>();
   const perPlayer = new Map<string, number>();
   const named = (id: string) => id === options.givePlayerId || id === options.getPlayerId;
   let screened = 0;
-  for (const estimate of estimates) {
+  for (const estimate of closer) {
     if (screened >= SCREENED) break;
     const count = perGet.get(estimate.getKey) ?? 0;
     if (count >= SCREENED_PER_GET) continue;
@@ -1219,8 +1256,9 @@ export function findTrades(
     // on to be measured in full, so the shortlist holds many different ideas, not one idea many
     // times; the second is a spare in case the first fails a rule once measured.
     const versions = new Map<string, number>();
+    // In the order the final list uses: likely first (by the quick read's chance), then gain times chance.
     const byQuick = [...candidates]
-      .sort((a, b) => b.quick - a.quick)
+      .sort((a, b) => order.indexOf(likelihood(a.chance)) - order.indexOf(likelihood(b.chance)) || b.quick - a.quick)
       .filter((candidate) => {
         const namedGive = options.givePlayerId ? candidate.gives.find((player) => player.id === options.givePlayerId) : undefined;
         const main = namedGive ?? candidate.gives.reduce((best, player) => (player.expected > best.expected ? player : best));
@@ -1236,7 +1274,7 @@ export function findTrades(
       ...byQuick.filter((candidate) => candidate.gives.length + candidate.gets.length > 2).slice(0, SHORTLIST_PACKAGES),
       ...byQuick.filter((candidate) => candidate.depth === newest).slice(0, limit * 2),
     ]);
-    const evaluated = [...shortlist]
+    const rankIdeas = (list: Candidate[]) => list
       .map(measure)
       // Worth it for you, and not a big loss for them: an offer they would see as robbery is no idea at any chance.
       .filter(({ result }) => gain(result.a) >= minGain && result.b.grade >= BIG_LOSS)
@@ -1264,6 +1302,19 @@ export function findTrades(
       )
       // Variety: no single player may appear in more than two ideas (a named player excepted).
       .filter(limitRepeats(({ offer }: { offer: TradeOffer }) => [...offer.aGives, ...offer.bGives], options));
+
+    // A quick read can be far off (a team with players out, or strong waivers), so when too few
+    // of the shortlist hold up once measured in full, the next best by the quick read are
+    // measured too, a batch at a time, up to a limit.
+    const looked = new Set(shortlist);
+    let evaluated = rankIdeas([...looked]);
+    const realistic = () => evaluated.filter((idea) => idea.chance >= POSSIBLE).length;
+    while (realistic() < ENOUGH_IDEAS && looked.size < limit * MEASURED_AT_MOST) {
+      const batch = byQuick.filter((candidate) => !looked.has(candidate)).slice(0, limit * SHORTLIST);
+      if (batch.length === 0) break;
+      for (const candidate of batch) looked.add(candidate);
+      evaluated = rankIdeas([...looked]);
+    }
 
     return pickIdeas(evaluated, limit, {
       targeted,

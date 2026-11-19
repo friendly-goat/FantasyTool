@@ -151,7 +151,7 @@ happens to its projected weekly score.
 | Re-evaluation date | when an injured player is back | read as the earliest return; the expected return is 10 days later |
 | Return window spread | when an injured player is back | at least 25% of the time away, centred on the expected day |
 | Injured reserve and waiver pickups | strength, trades | one player per IR slot; open spots filled from the 6 best free agents; the same rule before and after a trade |
-| Free upgrades (a trade's what-if only) | trades | at most 2 swaps of the weakest player for one of the 6 best free agents, each worth at least 0.05 a week; the same rule before and after a trade, so they cancel out unless the trade changes them |
+| Free upgrades (a trade's what-if only) | trades | at most 5 swaps of the weakest player for one of the 6 best free agents who is better on his own, unless it makes the roster worse; made once, on the roster before the trade, and the trade is made on that roster; never below the team as it stands |
 | What they see of an injured player | what they see on averages | his average less the share of weeks he will miss, plus 10% of that; at most 80% off |
 | Reluctance to trade at all | chance they accept | fixed: with the premium below, an even trade comes out at about a third |
 | Own-player premium (managers overvalue their own players) | what they see on averages | fixed: their players count 8% higher (`OWN_PLAYER_PREMIUM`) |
@@ -272,11 +272,12 @@ The search runs in layers, like a tree, and goes deeper only when it has to:
    estimate of every two-team trade of up to two players a side: one-for-two,
    two-for-one and two-for-two with every team. Each estimate pairs the
    players up by what each swap does to both rosters (a short run of 8
-   imaginary weeks), so it is cheap enough to cover all of them. The best 300
-   (at most 4 for the same players back and 24 for any one player, so every
-   player gets a look) are screened properly, and only packages that pass
-   the rules there (no received player dropped on arrival, not a big loss for
-   them) go on.
+   imaginary weeks), so it is cheap enough to cover all of them. The best
+   1,500 get a closer look (the whole trade on the same few weeks, both
+   sides, since pairing cannot see how two players fit together), and the
+   best 300 of those (at most 4 for the same players back and 24 for any one
+   player, so every player gets a look) are screened properly. Only packages
+   that pass the rules there (no received player dropped on arrival) go on.
 2. If nothing from layer 1 is likely to be accepted, the 12 most promising
    near-misses (ranked like ideas: your gain times their chance) each grow by
    one player: one of your 5 least valuable players added as a sweetener (you
@@ -285,10 +286,14 @@ The search runs in layers, like a tree, and goes deeper only when it has to:
 3. Still nothing likely: the best of layer 2 grow again (a second sweetener,
    or one of their least valuable players coming back as well).
 
-The best of all that are then measured in full, on all 200 weeks: 6 per idea
-shown (at most two versions of one idea, so the list holds many different
-ideas), plus 12 places for the best packages, which a quick read tends to
-undersell. A dev script, `npx tsx scripts/audit-trades.ts`, checks the
+The best of all that are then measured in full, on all 200 weeks, in the
+order the list uses (likely first by the quick read, then gain times
+chance): 6 per idea shown (at most two versions of one idea, so the list
+holds many different ideas), plus 12 places for the best packages. A quick
+read can be far off for some rosters (players out with more of them than IR
+slots, or strong waivers), so when fewer than 6 of those hold up as
+realistic (35% or better) once measured, the next best are measured too, 48
+at a time, up to 24 per idea shown. A dev script, `npx tsx scripts/audit-trades.ts`, checks the
 finder against a brute-force search of every trade of up to two players a
 side on the sample league (`--save` and `--load` keep the slow reference
 between runs); with these settings the finder gets about 90% of the
@@ -355,12 +360,15 @@ active player (a pickup or not) plays only until then; nobody goes for a
 player out for the season. Rosters are filled the same way before and after
 a trade, so a trade is credited only with the spots it opens, and a pickup
 the team makes either way is not counted as the trade's. For the same reason
-a trade's what-if lets each team make up to two free upgrades (its weakest
-player for a better free agent, when that adds at least 0.05 a week) before
-the trade and after it: a team could make those moves anyway, so a
-two-for-one that sends away a player worth less than a free agent is not
-credited with the free agent who replaces him. Team strength itself is the
-roster as it stands, without upgrades. Trade cards and Top
+a trade is made on the roster after the team's free upgrades: its weakest
+players swapped for better free agents, up to five, as long as the roster
+gets no worse. A team could make those moves anyway, so a two-for-one that
+sends away a player worth less than a free agent is not credited with the
+free agent who replaces him. The swaps are made once, before the trade, not
+again after it, so a trade never gets credit for a swap that only just
+becomes worth making. If the swaps would leave the team weaker once players
+come back from IR, the team keeps the roster it has. Team strength itself is
+the roster as it stands, without upgrades. Trade cards and Top
 moves list these follow-up moves (IR, pickups, drops) under "Team
 management", apart from the players in the offer.
 
