@@ -7,7 +7,8 @@ import { TeamCharts, useProfiles } from "./TeamCharts.tsx";
 import { bestNineLineup, type StrengthModel, type TeamStrength } from "../../shared/strength.ts";
 import type { TradeOffer } from "../../shared/trade.ts";
 import type { LeagueSnapshot, PlayerRef, StatsReport, Team } from "../../shared/types.ts";
-import { formatPoints, formatRecord, formatSigned, formatWholeChange, ordinal } from "../format.ts";
+import { formatPoints, formatRecord, formatSigned, formatStrength, formatStrengthChange, ordinal } from "../format.ts";
+import { StrengthStars } from "./StrengthStars.tsx";
 import { Avatar } from "./Avatar.tsx";
 import { ChanceTag } from "./TeamEffect.tsx";
 import { PlayerCell } from "./PlayerCell.tsx";
@@ -122,13 +123,32 @@ export function MyTeam({ snapshot, stats, model, strengths, team, onChangeTeam, 
           {strength ? (
             <>
               <div className="roster-strength-score">
-                <span className="num roster-strength-number">{strength.score}</span>
+                <span className="num roster-strength-number">{formatStrength(strength.score)}</span>
                 <span>
                   <span className="roster-strength-label">Team strength</span>
-                  <span className="quiet">
-                    of 1000, {ordinal(strength.rank)} of {snapshot.teams.length}
+                  <span className="roster-strength-rank">
+                    <StrengthStars score={strength.score} />
+                    <span className="quiet">
+                      {ordinal(strength.rank)} of {snapshot.teams.length}
+                    </span>
                   </span>
                 </span>
+              </div>
+              <div className="roster-strength-expect">
+                <span className="roster-strength-expect-label">Expect a week</span>
+                {profile?.ahead ? (
+                  <>
+                    <span className="num roster-strength-expect-value">{formatPoints(profile.ahead.average)}</span>
+                    <span className="quiet roster-strength-expect-note">
+                      {profile.rate.weeks > 0 ? `${percent.format(profile.rate.team)} of locks a week` : "As projected"}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="team-chart-placeholder roster-strength-expect-placeholder" />
+                    <span className="quiet roster-strength-expect-note">Working it out</span>
+                  </>
+                )}
               </div>
               <dl className="roster-strength-facts">
                 <div>
@@ -144,17 +164,15 @@ export function MyTeam({ snapshot, stats, model, strengths, team, onChangeTeam, 
                   <dd className="num">{formatSigned(strength.benchAdds)}</dd>
                 </div>
               </dl>
-              <span className="meter roster-strength-meter" aria-hidden="true">
-                <span className="meter-fill" style={{ width: `${strength.score / 10}%` }} />
-              </span>
               <p className="quiet roster-strength-note">
-                Points locked in an average week for the rest of the season, if you set the best lineup each day. The
-                bench adds by rotating into open slots and covering missed games.
+                Strength rates the roster for the rest of the season, out of 5. Locks a week is what it locks in an
+                average week if you set the best lineup each day; the bench adds by rotating into open slots and
+                covering missed games.
                 {profile?.ahead && profile.rate.weeks > 0 && (
                   <>
                     {" "}
-                    So far you have scored about {percent.format(profile.rate.team)} of your projections, so expect about{" "}
-                    {formatPoints(profile.ahead.average)} a week (week by week, above).
+                    Expect a week is that at the {percent.format(profile.rate.team)} of your projections you have really
+                    scored so far, the average on week by week above.
                   </>
                 )}
                 {model && " Below, your best nine by weekly value, which may differ from the lineup set in Sleeper."}
@@ -289,7 +307,7 @@ export function MyTeam({ snapshot, stats, model, strengths, team, onChangeTeam, 
                             <span
                               className={`move-strength ${move.strengthChange > 0 ? "up" : move.strengthChange < 0 ? "down" : ""}`}
                             >
-                              {formatWholeChange(move.strengthChange)}
+                              {formatStrengthChange(move.strengthChange)}
                             </span>
                             <span className="quiet move-weekly">{formatSigned(move.weeklyChange)} a week</span>
                           </td>

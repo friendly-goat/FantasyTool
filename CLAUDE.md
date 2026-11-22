@@ -72,6 +72,9 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   week. Rosters are always run through `fillRoster` (IR, waiver pickups,
   who leaves when a player is back) before and after a trade alike; never
   credit a trade with a pickup the team would make anyway.
+- Team strength is worked out 1 to 1000 but always shown out of 5 stars, a
+  hundredth of it (`formatStrength`, `formatStrengthChange`, `StrengthStars`;
+  never show the raw score). Grades, chances and searches use the raw score.
 - Team strength (1 to 1000) and trade grades come from the projected weekly
   score in `shared/strength.ts` and `shared/trade.ts`. It is a day-by-day
   lock-in simulation (`simulateWeek`): open slots rotate players daily, so the

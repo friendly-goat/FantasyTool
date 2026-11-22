@@ -1,7 +1,8 @@
 import { SIMULATED_WEEKS, type TeamStrength } from "../../shared/strength.ts";
 import type { LeagueSnapshot } from "../../shared/types.ts";
-import { formatPoints, formatSigned } from "../format.ts";
+import { formatPoints, formatSigned, formatStrength } from "../format.ts";
 import { Avatar } from "./Avatar.tsx";
+import { StrengthStars } from "./StrengthStars.tsx";
 
 interface Props {
   snapshot: LeagueSnapshot;
@@ -12,7 +13,7 @@ interface Props {
 
 const percent = new Intl.NumberFormat("en-US", { style: "percent", maximumFractionDigits: 0 });
 
-/** Every team's rest-of-season strength on the 1 to 1000 scale, with what is behind it. */
+/** Every team's rest-of-season strength, shown out of 5 (formatStrength), with what is behind it. */
 export function Strength({ snapshot, strengths, myRosterId, onOpenTeam }: Props) {
   if (!strengths) return <p className="quiet">Team strength appears once player stats have loaded.</p>;
   const teams = new Map(snapshot.teams.map((team) => [team.rosterId, team]));
@@ -54,10 +55,8 @@ export function Strength({ snapshot, strengths, myRosterId, onOpenTeam }: Props)
                   </th>
                   <td>
                     <div className="strength-cell">
-                      <span className="num strength-score">{strength.score}</span>
-                      <span className="meter" aria-hidden="true">
-                        <span className="meter-fill" style={{ width: `${strength.score / 10}%` }} />
-                      </span>
+                      <span className="num strength-score">{formatStrength(strength.score)}</span>
+                      <StrengthStars score={strength.score} size="sm" />
                     </div>
                   </td>
                   <td className="num strong">{formatPoints(strength.projected)}</td>
@@ -72,8 +71,9 @@ export function Strength({ snapshot, strengths, myRosterId, onOpenTeam }: Props)
       </div>
       <div className="quiet legend explain">
         <p>
-          Strength rates each roster for the rest of the season. 1 is a roster of the best free agents; 1000 is
-          the league's best players on one roster.
+          Strength rates each roster for the rest of the season, out of 5 stars. A roster of the best free agents
+          rates about 0, and the league's best players on one roster would rate 10, so real teams sit around 3 to
+          5; above 5 the stars turn gold.
         </p>
         <p>
           It comes from the projected weekly score: the points a team is expected to lock in an average week. The

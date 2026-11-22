@@ -25,7 +25,7 @@ import {
 import type { LeagueSnapshot, Team } from "../../shared/types.ts";
 import { searchTrades } from "../search.ts";
 import { IdeaSkeletons, SearchProgress } from "./SearchProgress.tsx";
-import { formatPoints, formatRecord, formatSigned, formatWholeChange as whole, ordinal } from "../format.ts";
+import { formatPoints, formatRecord, formatSigned, formatStrength, formatStrengthChange as whole, ordinal } from "../format.ts";
 import { Avatar } from "./Avatar.tsx";
 import { ChanceTag, EffectBar, RecordTag } from "./TeamEffect.tsx";
 import { PlayerName } from "./PlayerName.tsx";
@@ -296,7 +296,7 @@ function SideResult({ side, team, scale, model }: { side: TradeSide; team: Team 
         <EffectBar
           change={side.strengthChange}
           scale={scale}
-          label={`Team strength ${side.strengthBefore} to ${side.strengthAfter}`}
+          label={`Team strength ${formatStrength(side.strengthBefore)} to ${formatStrength(side.strengthAfter)} out of 5`}
         />
         <p className="quiet effect-note">
           Strength {side.strengthBefore} to {side.strengthAfter}. Projected weekly score{" "}

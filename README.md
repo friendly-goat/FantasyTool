@@ -172,7 +172,7 @@ buy-low one.
 Last season's stats download once, in the background, after this season's
 (several minutes). Until they arrive, projections work without them.
 
-### Team strength (1 to 1000)
+### Team strength (worked out 1 to 1000, shown out of 5)
 
 `shared/strength.ts`. The number behind it is a team's projected weekly score:
 the points it is expected to lock in an average week for the rest of the
@@ -198,7 +198,13 @@ how much the bench adds over the best nine alone.
 
 The average is put on a 1 to 1000 scale between two reference rosters from
 the same league: the best free agents (1) and the league's best players on one
-roster (1000). Each player sees the same imaginary weeks on any roster, so
+roster (1000). The app shows it out of 5 stars, a hundredth of the score
+(`formatStrength` in `src/format.ts`, `StrengthStars`): 404 reads 4.04 with
+four stars and a sliver of the fifth, and a change of 12 reads +0.12. In the
+owner's league teams rate about 3 to 4.6; the best players on one roster
+would rate 10, so above 5 is rare and shows five gold stars with a soft glow.
+Only the display changed: grades, chances and the trade search use the 1 to
+1000 score as before. Each player sees the same imaginary weeks on any roster, so
 before-and-after comparisons are not blurred by luck, and results are
 identical on every run. Trade searches rank swaps on a short run of weeks and
 re-check the shortlist on all 200.
@@ -422,12 +428,13 @@ while out, and the trade card says who holds the IR slot.
 
 ### My team
 
-The roster opens with the team's strength: the 1 to 1000 score and its rank,
-what the team locks in an average week, what its best nine alone would lock,
-and what the bench adds by rotating in. Once finished weeks are in, the note
-adds what the team can expect a week at the share of its projections it has
-really scored, the same figure as Week by week's average (see "Projected
-points as the league really scores them").
+The roster opens with the team's strength: its rating out of 5 with stars and
+its rank, what the team locks in an average week, what its best nine alone
+would lock, and what the bench adds by rotating in. Beside them, highlighted,
+Expect a week: what the team can expect a week at the share of its projections
+it has really scored, the same figure as Week by week's average (see
+"Projected points as the league really scores them"); on a phone it sits top
+right beside the rating, on wider screens at the right end of the facts.
 
 The table below is the roster as it is best set for the rest of the season,
 not the lineup set in Sleeper (managers shuffle players in on purpose so they

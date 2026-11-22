@@ -119,9 +119,22 @@ export function formatStatLine(stats: StatLine, minutes?: number): string {
   return parts.join(", ") || "No stats";
 }
 
-/** A whole-number change with its sign, as strength changes are shown: "+24", "−3", "0". */
-export function formatWholeChange(value: number): string {
-  return value > 0 ? `+${value}` : value < 0 ? `−${Math.abs(value)}` : "0";
+/**
+ * Team strength is worked out on a 1 to 1000 scale (shared/strength.ts) and shown out of 5:
+ * a hundredth of it, so 404 reads 4.04. The league's best players on one roster would rate
+ * 10; real teams rate about 3 to 5, and above 5 is rare.
+ */
+export const STRENGTH_STARS = 5;
+
+/** A team strength (1 to 1000) as its rating out of 5, such as "4.04". */
+export function formatStrength(score: number): string {
+  return (score / 100).toFixed(2);
+}
+
+/** A change in team strength (1 to 1000 points) as a change in the rating, such as "+0.12". */
+export function formatStrengthChange(change: number): string {
+  const size = (Math.abs(change) / 100).toFixed(2);
+  return change > 0 ? `+${size}` : change < 0 ? `−${size}` : "0.00";
 }
 
 /** A calendar day (YYYY-MM-DD) as "Jan 4", with the year when it is not the same year as `today`. */

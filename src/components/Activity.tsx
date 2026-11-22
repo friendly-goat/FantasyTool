@@ -3,7 +3,7 @@ import { moveEffect, type MoveEffect } from "../../shared/activity.ts";
 import { rosterPlayers } from "../../shared/analysis.ts";
 import type { StrengthModel } from "../../shared/strength.ts";
 import type { LeagueSnapshot, Team, Transaction, TransactionSide } from "../../shared/types.ts";
-import { formatDate, formatSigned, formatWholeChange } from "../format.ts";
+import { formatDate, formatSigned, formatStrength, formatStrengthChange } from "../format.ts";
 import { Avatar } from "./Avatar.tsx";
 import { type Move, PlayerMoves } from "./PlayerMoves.tsx";
 import { EffectBar, RecordTag } from "./TeamEffect.tsx";
@@ -91,12 +91,12 @@ function TeamEffect({ effect, scale, measuring }: { effect: MoveEffect | undefin
     <div className="activity-effect">
       <div className="effect-head">
         <span className="effect-title">Team effect</span>
-        <span className={`effect-value ${tone}`}>{formatWholeChange(effect.strengthChange)} strength</span>
+        <span className={`effect-value ${tone}`}>{formatStrengthChange(effect.strengthChange)} strength</span>
       </div>
       <EffectBar
         change={effect.strengthChange}
         scale={scale}
-        label={`Team strength ${effect.strengthWithout} without this move, ${effect.strengthWith} with it`}
+        label={`Team strength ${formatStrength(effect.strengthWithout)} without this move, ${formatStrength(effect.strengthWith)} with it, out of 5`}
       />
       <p className="quiet effect-note">{formatSigned(effect.change)} points a week</p>
     </div>

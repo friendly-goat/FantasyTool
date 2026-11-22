@@ -43,6 +43,9 @@
   --loss-soft: rgba(255, 122, 122, 0.14);
   --warn: #f6c453;
   --warn-soft: rgba(246, 196, 83, 0.16);
+  /* Team strength above 5 stars. */
+  --star-gold: #f7c95c;
+  --star-glow: rgba(247, 201, 92, 0.5);
   /* Dropdown chevron, drawn in --muted (an SVG in a URL cannot read variables). */
   --segment-on: #3a4664;
   /* Acceptance chance words, "Never" to "For sure": red through yellow to green. */
@@ -75,6 +78,8 @@
   --loss-soft: rgba(194, 47, 47, 0.09);
   --warn: #7a5200;
   --warn-soft: rgba(214, 158, 20, 0.2);
+  --star-gold: #d29a0e;
+  --star-glow: rgba(210, 154, 14, 0.35);
   --segment-on: #ffffff;
   --chance-0: #c22f2f;
   --chance-1: #c1491d;
@@ -1942,16 +1947,100 @@ th[aria-sort] .sort-button {
 
 .roster-strength {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas:
+    "score facts expect"
+    "note note note";
   align-items: center;
   gap: 0.75rem 2rem;
   padding: 1rem 1.25rem 1.1rem;
 }
 
 .roster-strength-score {
+  grid-area: score;
   display: flex;
   align-items: center;
   gap: 0.75rem;
+}
+
+.roster-strength-rank {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.15rem 0.5rem;
+  white-space: nowrap;
+}
+
+/* What the team can expect a week: the figure the week-by-week chart averages. */
+.roster-strength-expect {
+  grid-area: expect;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  padding-left: 1.5rem;
+  border-left: 1px solid var(--line);
+}
+
+.roster-strength-expect-label {
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.roster-strength-expect-value {
+  color: var(--accent);
+  font-size: 1.6rem;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+
+.roster-strength-expect-note {
+  font-size: 0.75rem;
+}
+
+.team-chart-placeholder.roster-strength-expect-placeholder {
+  width: 6rem;
+  height: 1.6rem;
+  margin: 0.1rem 0 0.15rem;
+}
+
+/* Team strength as five stars, filled to the rating; gold with a soft glow above 5. */
+.strength-stars {
+  display: inline-block;
+  flex: none;
+  width: 5.25rem;
+  height: 1.05rem;
+  vertical-align: middle;
+  overflow: visible;
+}
+
+.strength-stars-sm {
+  width: 4.25rem;
+  height: 0.85rem;
+}
+
+.strength-stars path {
+  stroke-width: 1.4;
+  stroke-linejoin: round;
+}
+
+.strength-stars-empty path {
+  fill: var(--line);
+  stroke: var(--line);
+}
+
+.strength-stars-full path {
+  fill: var(--accent);
+  stroke: var(--accent);
+}
+
+.strength-stars.is-beyond .strength-stars-full path {
+  fill: var(--star-gold);
+  stroke: var(--star-gold);
+}
+
+.strength-stars.is-beyond {
+  filter: drop-shadow(0 0 3px var(--star-glow));
 }
 
 .roster-strength-score > span:last-child {
@@ -1971,6 +2060,7 @@ th[aria-sort] .sort-button {
 }
 
 .roster-strength-facts {
+  grid-area: facts;
   display: flex;
   justify-content: flex-end;
   gap: 2rem;
@@ -1994,9 +2084,8 @@ th[aria-sort] .sort-button {
   font-weight: 700;
 }
 
-.roster-strength-meter,
 .roster-strength-note {
-  grid-column: 1 / -1;
+  grid-area: note;
 }
 
 .roster-strength-note {
@@ -2093,7 +2182,8 @@ th[aria-sort] .sort-button {
 
 .strength-cell {
   display: grid;
-  grid-template-columns: 3rem minmax(5rem, 1fr);
+  grid-template-columns: 3rem auto;
+  justify-content: start;
   align-items: center;
   gap: 0.75rem;
 }
@@ -4057,7 +4147,9 @@ th[aria-sort] .sort-button {
   }
 
   .strength-cell {
-    display: block;
+    grid-template-columns: auto;
+    justify-items: start;
+    gap: 0.2rem;
   }
 
   .team-cell .avatar {
@@ -4818,9 +4910,21 @@ th[aria-sort] .sort-button {
   }
 
   .roster-strength {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0.85rem;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "score expect"
+      "facts facts"
+      "note note";
+    gap: 0.85rem 0.75rem;
     padding: 0.9rem 1rem 1rem;
+  }
+
+  .roster-strength-expect {
+    padding-left: 0.75rem;
+  }
+
+  .roster-strength-expect-value {
+    font-size: 1.4rem;
   }
 
   .roster-strength-facts {

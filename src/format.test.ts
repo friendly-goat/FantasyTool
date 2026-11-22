@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatStatLine } from "./format.ts";
+import { formatStatLine, formatStrength, formatStrengthChange } from "./format.ts";
 
 const empty = { pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tov: 0, tpm: 0, tpa: 0, fgm: 0, fga: 0, ftm: 0, fta: 0, oreb: 0, dreb: 0, pf: 0 };
 
@@ -19,5 +19,16 @@ describe("formatDay", async () => {
   it("shows the year only when it differs from today's", () => {
     expect(formatDay("2026-12-09", "2026-11-18")).toBe("Dec 9");
     expect(formatDay("2027-01-04", "2026-11-18")).toBe("Jan 4, 2027");
+  });
+});
+
+describe("team strength out of 5", () => {
+  it("shows a hundredth of the 1 to 1000 score, and changes the same way", () => {
+    expect(formatStrength(404)).toBe("4.04");
+    expect(formatStrength(512)).toBe("5.12");
+    expect(formatStrength(1)).toBe("0.01");
+    expect(formatStrengthChange(12)).toBe("+0.12");
+    expect(formatStrengthChange(-3)).toBe("−0.03");
+    expect(formatStrengthChange(0)).toBe("0.00");
   });
 });
