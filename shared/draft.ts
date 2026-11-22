@@ -1,20 +1,19 @@
 // Letter grades for drafted players: how each pick turned out.
 //
-// Rule: every graded player is ranked by his lock-in value now (what he locks
-// in an average week at his projected level, allowing for missed games:
-// `expected` in the strength model; a week's bad games do not count against
-// him, only his best one). That rank is where he would go if the draft were
-// rerun today. It is compared with where he actually went (both counted among
-// the graded players), and the difference is measured in rounds (one pick per
-// team): a pick that turned out a round better than where he went is a round
-// up. Grades run F, D, C, B, A, S: C is within half a round
-// (ROUNDS_PER_GRADE / 2), each letter after that one more ROUNDS_PER_GRADE,
-// and S (beyond A) is open-ended, as F is below D. D, C, B and A carry a minus
-// or plus for the lower and upper third of their step.
+// Rule: every graded player's weekly value now (his lock-in value at his
+// projected level, allowing for missed games: `expected` in the strength
+// model) is compared with what the players picked around him are worth now:
+// the median value of the nearest round of picks (one pick per team), not
+// counting him. That is what that part of the draft returned, so a first
+// pick is held to what the top of the draft turned into, and a last pick to
+// what the end of it did.
 //
-// Ranks, not points: the gap in value between the 11th and 12th player is
-// several points at the top of a draft and a fraction of a point at the end,
-// but either way he went one pick from where he would go now.
+// The gap is measured in the draft's own typical gap (the median gap, scaled
+// to a standard deviation), so a grade means the same share of the draft in
+// any league. Grades run F, D, C, B, A, S: C is within GRADE_STEP / 2 of the
+// players around him, each letter after that one more GRADE_STEP, and S
+// (beyond A) is open-ended, as F is below D. D, C, B and A carry a minus or
+// plus for the lower and upper third of their step.
 //
 // An injury is luck, not the pick, so it never sets a grade. A player out for
 // a long stretch (LONG_INJURY_WEEKS or more of the weeks left, or the rest of
@@ -44,30 +43,34 @@ export function gradedValue(player: ModelPlayer): number | null {
   return player.back && player.outShare > 0 ? expectedOnceBack(player, player) : player.expected;
 }
 
-/** Rounds of difference between where he went and where he would go now, per letter. */
-export const ROUNDS_PER_GRADE = 1;
+/** Width of one letter, in the draft's typical gap. */
+export const GRADE_STEP = 0.8;
 
 export const GRADE_LETTERS = ["F", "D", "C", "B", "A", "S"] as const;
 export type GradeLetter = (typeof GRADE_LETTERS)[number];
 
 export interface DraftGrade {
-  /** His lock-in value now (`gradedValue`). */
+  /** His weekly value now. */
   value: number;
-  /** Where he went, among the graded players (1 = first). */
-  pickOrder: number;
-  /** Where his lock-in value now ranks among the same players (1 = most valuable). */
-  valueRank: number;
-  /** pickOrder minus valueRank, in rounds: positive means he would go earlier now. */
-  rounds: number;
+  /** Median weekly value now of the nearest round of picks around him. */
+  around: number;
+  /** value minus around, in the draft's typical gap. */
+  gap: number;
   letter: GradeLetter;
   /** The letter with its minus or plus, e.g. "B+". */
   grade: string;
 }
 
-/** The letter grade for how many rounds earlier (positive) or later he would go now. */
-export function gradeFor(rounds: number): { letter: GradeLetter; grade: string } {
-  // C spans half a step either side of zero; each step up or down is the next letter.
-  const steps = rounds / ROUNDS_PER_GRADE + 0.5;
+const median = (values: number[]): number => {
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1 ? sorted[middle]! : (sorted[middle - 1]! + sorted[middle]!) / 2;
+};
+
+/** The letter grade for a gap measured in the draft's typical gap. */
+export function gradeFor(gap: number): { letter: GradeLetter; grade: string } {
+  // C spans -GRADE_STEP/2 to +GRADE_STEP/2; each step up or down is the next letter.
+  const steps = (gap + GRADE_STEP / 2) / GRADE_STEP;
   const index = Math.floor(steps) + 2;
   if (index <= 0) return { letter: "F", grade: "F" };
   if (index >= GRADE_LETTERS.length - 1) return { letter: "S", grade: "S" };
@@ -78,7 +81,7 @@ export function gradeFor(rounds: number): { letter: GradeLetter; grade: string }
 
 export function draftGrades(
   picks: { pickNo: number; player: { id: string } }[],
-  /** His lock-in value (`gradedValue`), or null to leave him out (no value, or a long injury). */
+  /** His weekly value (`gradedValue`), or null to leave him out (no value, or a long injury). */
   valueOf: (playerId: string) => number | null,
   roundSize: number,
 ): Map<number, DraftGrade> {
@@ -86,16 +89,24 @@ export function draftGrades(
     .map((pick) => ({ pickNo: pick.pickNo, value: valueOf(pick.player.id) }))
     .filter((entry): entry is { pickNo: number; value: number } => entry.value !== null && Number.isFinite(entry.value))
     .sort((a, b) => a.pickNo - b.pickNo);
-  // Equal values keep draft order, so equal players go where they went.
-  const byValue = [...graded].sort((a, b) => b.value - a.value || a.pickNo - b.pickNo);
-  const valueRank = new Map(byValue.map((entry, index) => [entry.pickNo, index + 1]));
-  const round = Math.max(1, roundSize);
+  const neighbours = Math.max(1, roundSize);
   const grades = new Map<number, DraftGrade>();
+  // Too few players to compare anyone with a round of others.
+  if (graded.length <= neighbours) return grades;
+
+  const around = graded.map((entry) => {
+    const near = graded
+      .filter((other) => other !== entry)
+      .sort((a, b) => Math.abs(a.pickNo - entry.pickNo) - Math.abs(b.pickNo - entry.pickNo) || a.pickNo - b.pickNo)
+      .slice(0, neighbours);
+    return median(near.map((other) => other.value));
+  });
+  const gaps = graded.map((entry, index) => entry.value - around[index]!);
+  // The median gap, scaled to a standard deviation, so a few huge hits or busts do not set the scale.
+  const typical = 1.4826 * median(gaps.map(Math.abs)) || gaps.reduce((sum, gap) => sum + Math.abs(gap), 0) / gaps.length;
   graded.forEach((entry, index) => {
-    const pickOrder = index + 1;
-    const rank = valueRank.get(entry.pickNo)!;
-    const rounds = (pickOrder - rank) / round;
-    grades.set(entry.pickNo, { value: entry.value, pickOrder, valueRank: rank, rounds, ...gradeFor(rounds) });
+    const gap = typical > 0 ? gaps[index]! / typical : 0;
+    grades.set(entry.pickNo, { value: entry.value, around: around[index]!, gap, ...gradeFor(gap) });
   });
   return grades;
 }
