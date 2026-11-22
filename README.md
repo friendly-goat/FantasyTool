@@ -144,7 +144,8 @@ happens to its projected weekly score.
 | Recent games count more | projection | a game 15 games ago counts half |
 | Last season's level | projection | counts like 10 extra games, fading as this season grows |
 | Minutes rising or falling | projection | at most 8% either way |
-| Game-to-game spread | strength | his own, blended with the league's typical spread until he has 6 games; kept between 10% and 60% of his level |
+| Game-to-game spread | strength | his own (fitted to his real two-game lock-in value), blended with the typical spread for his level until he has 6 games (spread falls as level rises: about 0.28 for 40+ a game, 0.75 under 15); kept between 10% and 60% of his level |
+| Upper outliers (skewed games) | strength, every lock-in value | games drawn half lognormal, half normal, with the same average and spread (`UPPER_TAIL_SHARE` 0.5); about +1% on a typical weekly value, up to +2% for a boom-or-bust player in a four-game week |
 | Scattered missed games | availability | a rate, blended with a typical 90% early on |
 | Long absence (4+ games in a row) | availability | a current one with no return date is expected to last as long again; finished ones are not held against him |
 | Return date buffer (`shared/injury.ts`) | when an injured player is back | none within 7 days; beyond that, 10% of the time away later (4 weeks: about 2 days; 8 weeks: about 5) |
@@ -182,7 +183,13 @@ week is managed:
 1. each NBA team has 2, 3 or 4 games on set days, and a player plays each as
    often as he is expected to (see the availability rows above);
 2. each game's score is drawn around his projected level, with his own
-   game-to-game spread;
+   game-to-game spread and the skew of real games: a big night runs further
+   above his average than a bad night falls below it ("Upper outliers" in the
+   balance table). Checked against real games (Nov 2026, 213 players with 10+
+   games), the model's three- and four-game lock-in values match each player's
+   own within half a percent at every level; before, a symmetric shape and one
+   league-wide spread had stars about 2-3% too high and everyone's upper tail
+   about 1% too short;
 3. each day, the players with a game go into the open starting slots, best
    first, tightest slots first. The lineup set in Sleeper is ignored: the app
    assumes the best lineup every day;

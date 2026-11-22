@@ -8,6 +8,11 @@ import { lockInValues } from "./lockin.ts";
 import {
   bestNineLineup,
   buildModel,
+  fittedSpread,
+  gameScoreFor,
+  skewedDraw,
+  typicalSpreads,
+  waitValues,
   leagueStrength,
   projectedWeekly,
   projectRoster,
@@ -18,6 +23,7 @@ import {
   type StrengthModel,
 } from "./strength.ts";
 import { topMoves } from "./moves.ts";
+import type { PlayerStats } from "./types.ts";
 import { deepestSpot, freeAgentPickups, POSITIONS, positionProfile, teamSituations, thinnestSpot } from "./insight.ts";
 import { availabilityOutlook, projectPlayer } from "./projection.ts";
 import {
@@ -664,5 +670,52 @@ describe("a lock-in week, on made-up players", () => {
 
   it("averages weeks in projectRoster", () => {
     expect(projectRoster(model, [player("a", [[2, 25]])])).toBe(25);
+  });
+});
+
+describe("game shape and spread", () => {
+  it("draws games with the average and spread asked for, and a longer upper tail", () => {
+    const z = Array.from({ length: 2001 }, (_, index) => -4 + (8 * index) / 2000);
+    const weight = z.map((value) => Math.exp((-value * value) / 2));
+    const total = weight.reduce((sum, value) => sum + value, 0);
+    const spread = 0.4;
+    const draws = z.map((value) => skewedDraw(value, spread));
+    const mean = draws.reduce((sum, value, index) => sum + value * weight[index]!, 0) / total;
+    const variance = draws.reduce((sum, value, index) => sum + (value - mean) ** 2 * weight[index]!, 0) / total;
+    expect(mean).toBeCloseTo(0, 2);
+    expect(Math.sqrt(variance)).toBeCloseTo(1, 1);
+    // The same distance from the middle in a draw: a big night runs further above than a bad night falls below.
+    expect(skewedDraw(1.645, spread)).toBeGreaterThan(-skewedDraw(-1.645, spread));
+    expect(gameScoreFor(30, spread, -10)).toBeGreaterThanOrEqual(0);
+  });
+
+  it("fits a player's spread to his real two-game value, and his longer weeks follow", () => {
+    for (const [one, two] of [
+      [30, 34],
+      [45, 50],
+      [15, 18],
+    ] as const) {
+      const spread = fittedSpread(one, two);
+      const values = waitValues(one, spread);
+      expect(values[1]).toBeCloseTo(one, 0);
+      expect(values[2]).toBeCloseTo(two, 1);
+      expect(values[3]!).toBeGreaterThan(values[2]!);
+    }
+    expect(fittedSpread(30, 30)).toBe(0);
+  });
+
+  it("leans each player's spread on the typical spread for his level, lower for higher scorers", () => {
+    // Real games: a player averaging x spreads by about 3 / sqrt(x) (0.95 at 10, 0.55 at 30, 0.42 at 50).
+    const players = Array.from({ length: 40 }, (_, index) => {
+      const one = 8 + index;
+      const spread = 3 / Math.sqrt(one);
+      return { games: 20, lockInByGames: [one, waitValues(one, spread)[2]!] } as unknown as PlayerStats;
+    });
+    const typical = typicalSpreads(players);
+    expect(typical(45)).toBeLessThan(typical(20));
+    expect(typical(30)).toBeCloseTo(Math.min(0.6, 3 / Math.sqrt(30)), 1);
+    // Too few players to fit: one middle value for everyone.
+    const flat = typicalSpreads(players.slice(0, 5));
+    expect(flat(45)).toBe(flat(20));
   });
 });

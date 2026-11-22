@@ -59,10 +59,43 @@ const RELIABILITY_GAMES = 3;
  */
 const SPREAD_WEIGHT_GAMES = 6;
 const SPREAD_LIMITS = [0.1, 0.6] as const;
-/** E[(X - mean)+] for a normal distribution is 0.3989 standard deviations. */
-const HALF_MEAN_DEVIATION = 0.3989;
 /** Standard normal quantiles used to turn a spread into lock-in values. */
 const QUANTILES = Array.from({ length: 25 }, (_, index) => normalQuantile((index + 0.5) / 25));
+
+/**
+ * Upper outliers. A fantasy game is skewed: a big night (and the bonuses for 40
+ * points, 20 rebounds or a triple-double) runs further above a player's average
+ * than a bad night falls below it, and in lock-in the big nights are the ones
+ * that get locked. A game is drawn as this share of a lognormal (the skewed shape,
+ * with the same average and spread) and the rest a normal (symmetric).
+ *
+ * Measured from real games (Nov 2026, 213 players with 10+ games): with each
+ * player's spread fitted to his real two-game lock-in value, a normal shape came
+ * out about 1% under his real three- and four-game values and a lognormal about
+ * 1-2% over; allowing for what a 13-game sample hides, the real shape sits about
+ * half to two thirds of the way to the lognormal. Half is taken, the cautious end.
+ * It adds about 1% to a typical weekly value, up to 2% for a boom-or-bust player
+ * in a four-game week; a player's spread is still fitted to his real games.
+ */
+export const UPPER_TAIL_SHARE = 0.5;
+
+/** A standard draw `z` as a game's distance from his level, in units of his spread (mean 0, spread 1). */
+export function skewedDraw(z: number, spread: number): number {
+  if (spread <= 0) return z;
+  const s = Math.sqrt(Math.log(1 + spread * spread));
+  const lognormal = (Math.exp(s * z - (s * s) / 2) - 1) / spread;
+  return (1 - UPPER_TAIL_SHARE) * z + UPPER_TAIL_SHARE * lognormal;
+}
+
+/** A game's fantasy score for a standard draw `z`, never below zero. */
+export function gameScoreFor(level: number, spread: number, z: number): number {
+  return Math.max(0, level * (1 + spread * skewedDraw(z, spread)));
+}
+
+/** E[(game - level)+] in units of level × spread: what waiting for one more game is worth. */
+function upsideShare(spread: number): number {
+  return QUANTILES.reduce((sum, z) => sum + Math.max(0, skewedDraw(z, spread)), 0) / QUANTILES.length;
+}
 
 export interface ModelPlayer extends PlayerRef {
   games: number;
@@ -164,8 +197,8 @@ function normalQuantile(p: number): number {
 }
 
 /** Expected locked score with 0 to 4 games left, for a level and spread. */
-function waitValues(level: number, spread: number): Float64Array {
-  const scores = QUANTILES.map((z) => Math.max(0, level * (1 + spread * z)));
+export function waitValues(level: number, spread: number): Float64Array {
+  const scores = QUANTILES.map((z) => gameScoreFor(level, spread, z));
   const values = new Float64Array(MAX_GAMES + 1);
   for (let games = 1; games <= MAX_GAMES; games++) values[games] = lockInValue(scores, games);
   return values;
@@ -234,12 +267,12 @@ function finishPlayer(
     for (let game = 0; game < MAX_GAMES; game++) {
       const day = schedule[week * MAX_GAMES + game]!;
       if (day < 0 || uniform(seed, week, 10 + game) >= playing) continue;
-      // A normal draw around his level, never below zero.
+      // A draw around his level with his spread and the skew of real games, never below zero.
       const u1 = Math.max(1e-9, uniform(seed, week, 20 + 2 * game));
       const u2 = uniform(seed, week, 21 + 2 * game);
       const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
       gameDay[week * MAX_GAMES + slot] = day;
-      gameScore[week * MAX_GAMES + slot] = Math.max(0, level * (1 + spread * z));
+      gameScore[week * MAX_GAMES + slot] = gameScoreFor(level, spread, z);
       slot++;
     }
   }
@@ -276,10 +309,58 @@ function finishPlayer(
 }
 
 /** Spread from a player's own games: lock-in value with two games minus one. */
+/**
+ * The league's typical spread for a player's level, which a player's own spread leans on until he
+ * has played enough games. Spread falls as level rises (in Nov 2026 about 0.28 for players
+ * scoring 40+ a game against 0.45 at 15 to 22 and 0.75 below 15), so one league-wide figure
+ * would lend a steady star the ups and downs of a bench player and overrate his lock-ins. Fitted
+ * as log(spread) = a + b log(level) over players with enough games; the league's middle value
+ * when there are too few of them, or the fit runs the wrong way.
+ */
+const SPREAD_FIT_PLAYERS = 20;
+
+export function typicalSpreads(all: PlayerStats[]): (level: number) => number {
+  const points = all
+    .filter((player) => player.games >= SPREAD_WEIGHT_GAMES && (player.lockInByGames[0] ?? 0) >= 5)
+    .flatMap((player) => {
+      const spread = ownSpread(player);
+      return spread && spread > 0 ? [{ x: Math.log(player.lockInByGames[0]!), y: Math.log(spread) }] : [];
+    });
+  const sorted = points.map((point) => Math.exp(point.y)).sort((a, b) => a - b);
+  const middle = sorted[Math.floor(sorted.length / 2)] ?? 0.25;
+  const clamp = (spread: number) => Math.min(SPREAD_LIMITS[1], Math.max(SPREAD_LIMITS[0], spread));
+  if (points.length < SPREAD_FIT_PLAYERS) return () => clamp(middle);
+  const meanX = points.reduce((sum, point) => sum + point.x, 0) / points.length;
+  const meanY = points.reduce((sum, point) => sum + point.y, 0) / points.length;
+  const varX = points.reduce((sum, point) => sum + (point.x - meanX) ** 2, 0);
+  const slope = varX > 0 ? points.reduce((sum, point) => sum + (point.x - meanX) * (point.y - meanY), 0) / varX : 0;
+  if (!(slope < 0)) return () => clamp(middle);
+  return (level: number) => (level > 0 ? clamp(Math.exp(meanY + slope * (Math.log(level) - meanX))) : clamp(middle));
+}
+
+/**
+ * His spread, fitted to his real games: the spread at which a two-game week is worth what his
+ * own games say (one game, plus what waiting for a second adds), in the model's game shape.
+ */
 function ownSpread(stats: PlayerStats): number | null {
   const [one, two] = stats.lockInByGames;
   if (one === undefined || two === undefined || one <= 0 || stats.games < 2) return null;
-  return (two - one) / HALF_MEAN_DEVIATION / one;
+  return fittedSpread(one, two);
+}
+
+/** The spread at which a player averaging `one` a game is worth `two` in a two-game week. */
+export function fittedSpread(one: number, two: number): number {
+  if (one <= 0) return 0;
+  const target = (two - one) / one;
+  if (target <= 0) return 0;
+  let low = 0;
+  let high = 3;
+  for (let step = 0; step < 40; step++) {
+    const middle = (low + high) / 2;
+    if (middle * upsideShare(middle) < target) low = middle;
+    else high = middle;
+  }
+  return (low + high) / 2;
 }
 
 /**
@@ -349,12 +430,7 @@ export function buildModel(
     .sort((a, b) => b.projection.perGame - a.projection.perGame)
     .slice(0, Math.max(1, snapshot.teams.length));
   const replacementLevel = bestFree[Math.floor(bestFree.length / 2)]?.projection.perGame ?? 0;
-  // The league's typical spread: the middle value among players with enough games.
-  const spreads = all
-    .filter((player) => player.games >= SPREAD_WEIGHT_GAMES)
-    .flatMap((player) => ownSpread(player) ?? [])
-    .sort((a, b) => a - b);
-  const typicalSpread = spreads[Math.floor(spreads.length / 2)] ?? 0.25;
+  const typicalSpread = typicalSpreads(all);
 
   const schedules = new Map<string, Int8Array>();
   const scheduleFor = (team: string) => {
@@ -371,7 +447,7 @@ export function buildModel(
     }
     const own = ownSpread(stats);
     const weight = own === null ? 0 : stats.games / (stats.games + SPREAD_WEIGHT_GAMES);
-    const spread = Math.min(SPREAD_LIMITS[1], Math.max(SPREAD_LIMITS[0], weight * (own ?? 0) + (1 - weight) * typicalSpread));
+    const spread = Math.min(SPREAD_LIMITS[1], Math.max(SPREAD_LIMITS[0], weight * (own ?? 0) + (1 - weight) * typicalSpread(level)));
     // With a return date, his usual share of games once back, week by week.
     // Marked out with no date: out as long again as he has been (half a week
     // if he has only just been ruled out). Otherwise the share that allows

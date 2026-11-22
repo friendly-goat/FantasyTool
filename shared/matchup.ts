@@ -14,6 +14,7 @@
 // score a few whole foul deductions below a game still matches it.
 
 import { nbaTeam } from "./nbaTeams.ts";
+import { gameScoreFor } from "./strength.ts";
 import type { NbaGame, WeekLine } from "./types.ts";
 
 export type SlotState =
@@ -347,7 +348,7 @@ function finishSlot(slot: SimSlot, random: () => number): number {
     }
     const u1 = Math.max(1e-9, random());
     const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * random());
-    const score = Math.max(0, player.projected * (1 + player.spread * z));
+    const score = gameScoreFor(player.projected, player.spread, z);
     if (last || score >= worth(game + 1)) return score;
   }
   return 0;

@@ -75,6 +75,11 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
 - Team strength is worked out 1 to 1000 but always shown out of 5 stars, a
   hundredth of it (`formatStrength`, `formatStrengthChange`, `StrengthStars`;
   never show the raw score). Grades, chances and searches use the raw score.
+- Game scores in the model are skewed (`skewedDraw`, `UPPER_TAIL_SHARE`, half
+  lognormal) and a player's spread is fitted to his real two-game lock-in
+  value, leaning on the typical spread for his level (`typicalSpreads`), not
+  one league-wide figure. Check any change to either against players' real
+  three- and four-game lock-in values (`lockInByGames`).
 - Team strength (1 to 1000) and trade grades come from the projected weekly
   score in `shared/strength.ts` and `shared/trade.ts`. It is a day-by-day
   lock-in simulation (`simulateWeek`): open slots rotate players daily, so the
