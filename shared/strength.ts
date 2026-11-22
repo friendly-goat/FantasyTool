@@ -1,7 +1,8 @@
 import { assignSlots, rosterPlayers, slotAccepts, startingSlots } from "./analysis.ts";
 import { lockInValue } from "./lockin.ts";
 import { returnOutlook, weeklyChanceBack } from "./injury.ts";
-import type { LeagueSnapshot, PlayerRef, PlayerStats, ReserveAllows, StatsReport } from "./types.ts";
+import { nbaTeam } from "./nbaTeams.ts";
+import type { LeagueSnapshot, PlayerRef, PlayerStats, ReserveAllows, ScheduleAhead, StatsReport } from "./types.ts";
 import { weekRange } from "./weeks.ts";
 
 const POSITIONS = ["PG", "SG", "SF", "PF", "C"];
@@ -12,9 +13,12 @@ const POSITIONS = ["PG", "SG", "SF", "PF", "C"];
 // expected to lock in an average week. It is found by playing out many
 // imaginary weeks, day by day, the way a lock-in week is actually managed:
 //
-//   * Each NBA team has 2, 3 or 4 games on set days. A player plays each of
-//     his team's games as often as he is expected to, and scores around his
-//     projected level, with his own game-to-game spread.
+//   * Each NBA team plays its real games: imaginary week w is real week w mod
+//     the weeks left, on the days that team really plays that week (from the
+//     stats source's schedule; a made-up week of 2, 3 or 4 games only when the
+//     schedule cannot be loaded). A player plays each of his team's games as
+//     often as he is expected to, and scores around his projected level, with
+//     his own game-to-game spread.
 //   * Each day, the manager puts the players who have a game into the open
 //     starting slots, best first. The lineup set in Sleeper is ignored: the
 //     model assumes the best possible lineup every day.
@@ -43,8 +47,9 @@ const POSITIONS = ["PG", "SG", "SF", "PF", "C"];
 
 export const SIMULATED_WEEKS = 200;
 const DAYS = 7;
-const MAX_GAMES = 4;
-/** Share of weeks in which an NBA team plays this many games. */
+/** At most this many games in a week (a real NBA team can play five in seven days, rarely). */
+const MAX_GAMES = 5;
+/** Share of weeks in which an NBA team plays this many games, when the real schedule cannot be loaded. */
 const WEEK_SHAPES = [
   { games: 2, share: 0.1 },
   { games: 3, share: 0.55 },
@@ -137,6 +142,8 @@ export interface ModelCalendar {
 }
 
 export interface StrengthModel {
+  /** Whether the weeks are played on the real NBA schedule, or on made-up weeks (no schedule). */
+  schedule: "real" | "made-up";
   slots: string[];
   /** Slot indices from the most restrictive (one position) to the least (UTIL). */
   slotOrder: number[];
@@ -237,6 +244,45 @@ function teamSchedule(team: string, weeks: number): Int8Array {
   return days;
 }
 
+/**
+ * Each NBA team's real games, week by week over the weeks left: for each real week, the days
+ * (0 Monday to 6 Sunday) it plays, at most MAX_GAMES. Teams with no game left are absent.
+ */
+type RealSchedule = Map<string, number[][]>;
+
+function realSchedule(schedule: ScheduleAhead | null | undefined, calendar: ModelCalendar): RealSchedule | null {
+  if (!schedule || schedule.status !== "ready" || calendar.weeks.length === 0) return null;
+  const byTeam: RealSchedule = new Map();
+  const starts = calendar.weeks.map((week) => Date.parse(`${week.start}T00:00:00Z`));
+  const dayMs = 24 * 60 * 60 * 1000;
+  for (const game of schedule.games) {
+    const at = Date.parse(`${game.date}T00:00:00Z`);
+    const week = starts.findIndex((start) => at >= start && at < start + DAYS * dayMs);
+    if (week < 0) continue;
+    const day = Math.round((at - starts[week]!) / dayMs);
+    for (const side of [game.home, game.away]) {
+      const team = side ? (nbaTeam(side)?.abbr ?? side.toUpperCase()) : null;
+      if (!team) continue;
+      const weeks = byTeam.get(team) ?? calendar.weeks.map(() => [] as number[]);
+      if (!weeks[week]!.includes(day)) weeks[week]!.push(day);
+      byTeam.set(team, weeks);
+    }
+  }
+  for (const weeks of byTeam.values()) for (const days of weeks) days.sort((a, b) => a - b).splice(MAX_GAMES);
+  return byTeam.size > 0 ? byTeam : null;
+}
+
+/** A team's games in each imaginary week from its real weeks (imaginary week w is real week w mod the weeks left). */
+function scheduleFromReal(days: number[][], weeks: number): Int8Array {
+  const schedule = new Int8Array(weeks * MAX_GAMES).fill(-1);
+  for (let week = 0; week < weeks; week++) {
+    days[week % days.length]!.forEach((day, game) => {
+      schedule[week * MAX_GAMES + game] = day;
+    });
+  }
+  return schedule;
+}
+
 interface PlayerInputs {
   level: number;
   spread: number;
@@ -245,6 +291,8 @@ interface PlayerInputs {
   back?: number[] | null;
   returnExpected?: string | null;
   irEligible?: boolean;
+  /** His team's real games in each real week left; absent on made-up weeks. */
+  realGames?: number[] | null;
 }
 
 function finishPlayer(
@@ -276,20 +324,28 @@ function finishPlayer(
       slot++;
     }
   }
-  const expectedAt = (rate: number) => {
+  // A week of `games` games when he plays each with chance `rate`: the locked score expected.
+  const weekValue = (games: number, rate: number) => {
     let total = 0;
-    for (const shape of WEEK_SHAPES) {
-      for (let played = 1; played <= shape.games; played++) {
-        total += shape.share * binomial(played, shape.games, rate) * waitValue[played]!;
-      }
-    }
+    for (let played = 1; played <= games; played++) total += binomial(played, games, rate) * waitValue[played]!;
     return total;
   };
-  let healthy = 0;
-  for (const shape of WEEK_SHAPES) healthy += shape.share * waitValue[shape.games]!;
-  // An average week over the weeks left: with an injury, the weeks he is out count as zero.
+  const expectedAt = (rate: number) => WEEK_SHAPES.reduce((sum, shape) => sum + shape.share * weekValue(shape.games, rate), 0);
   const meanBack = back ? back.reduce((sum, chance) => sum + chance, 0) / back.length : 1;
-  const expected = back ? back.reduce((sum, chance) => sum + expectedAt(availability * chance), 0) / back.length : expectedAt(availability);
+  const real = inputs.realGames && inputs.realGames.length > 0 ? inputs.realGames : null;
+  let healthy: number;
+  let expected: number;
+  if (real) {
+    // On the real schedule: each real week left with its own number of games (none in a week
+    // his team does not play), and with an injury his chance of being back that week.
+    healthy = real.reduce((sum, games) => sum + waitValue[games]!, 0) / real.length;
+    expected =
+      real.reduce((sum, games, week) => sum + weekValue(games, availability * (back ? back[week % back.length]! : 1)), 0) / real.length;
+  } else {
+    healthy = WEEK_SHAPES.reduce((sum, shape) => sum + shape.share * waitValue[shape.games]!, 0);
+    // An average week over the weeks left: with an injury, the weeks he is out count as zero.
+    expected = back ? back.reduce((sum, chance) => sum + expectedAt(availability * chance), 0) / back.length : expectedAt(availability);
+  }
   return {
     ...ref,
     ...base,
@@ -415,6 +471,7 @@ export function buildModel(
   snapshot: LeagueSnapshot,
   report: StatsReport,
   weeks: number = SIMULATED_WEEKS,
+  schedule: ScheduleAhead | null = null,
 ): StrengthModel {
   const calendar = modelCalendar(snapshot);
   const slots = startingSlots(snapshot);
@@ -432,11 +489,20 @@ export function buildModel(
   const replacementLevel = bestFree[Math.floor(bestFree.length / 2)]?.projection.perGame ?? 0;
   const typicalSpread = typicalSpreads(all);
 
+  // The real schedule when there is one; a team missing from it (no games left, or a player
+  // with no team) plays made-up weeks, as every team does without a schedule.
+  const real = realSchedule(schedule, calendar);
   const schedules = new Map<string, Int8Array>();
+  const teamKey = (team: string) => nbaTeam(team)?.abbr ?? team;
   const scheduleFor = (team: string) => {
-    if (!schedules.has(team)) schedules.set(team, teamSchedule(team, weeks));
-    return schedules.get(team)!;
+    const key = teamKey(team);
+    if (!schedules.has(key)) {
+      const days = real?.get(key);
+      schedules.set(key, days ? scheduleFromReal(days, weeks) : teamSchedule(key, weeks));
+    }
+    return schedules.get(key)!;
   };
+  const realGamesFor = (team: string | null | undefined) => (team ? (real?.get(teamKey(team))?.map((days) => days.length) ?? null) : null);
 
   const players = new Map<string, ModelPlayer>();
   for (const stats of all) {
@@ -476,6 +542,7 @@ export function buildModel(
           back,
           returnExpected: outlook?.kind === "season" ? "season" : outlook?.kind === "window" ? outlook.window.expected : null,
           irEligible,
+          realGames: realGamesFor(stats.team),
         },
         slots,
         scheduleFor(stats.team ?? `none:${stats.id}`),
@@ -490,7 +557,13 @@ export function buildModel(
       finishPlayer(
         ref,
         { games: 0, average: 0, projected: 0, longTermOut: false },
-        { level: 0, spread: 0, availability: 0, irEligible: reserveEligible(ref.injuryStatus, snapshot.league.reserveAllows) },
+        {
+          level: 0,
+          spread: 0,
+          availability: 0,
+          irEligible: reserveEligible(ref.injuryStatus, snapshot.league.reserveAllows),
+          realGames: realGamesFor(ref.team),
+        },
         slots,
         scheduleFor(ref.team ?? `none:${ref.id}`),
         weeks,
@@ -507,6 +580,7 @@ export function buildModel(
   const positions = snapshot.league.rosterPositions.filter((slot) => slot !== "IR");
   const reserve = snapshot.league.reserveSlots ?? 0;
   const model: StrengthModel = {
+    schedule: real ? "real" : "made-up",
     slots, slotOrder, weeks, players, freeAgentIds, replacementProjection: 0, idealProjection: 0,
     replacementWeekly: 0,
     calendar,

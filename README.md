@@ -180,7 +180,15 @@ the points it is expected to lock in an average week for the rest of the
 season. The app plays out 200 imaginary weeks, day by day, the way a lock-in
 week is managed:
 
-1. each NBA team has 2, 3 or 4 games on set days, and a player plays each as
+1. each NBA team plays its real games: imaginary week w is real week w mod
+   the weeks left, on the days that team really plays that week (the
+   schedule from the stats source, from this Monday to the end of the
+   regular season; up to five games, none in a week it does not play, such
+   as the All-Star break). A team missing from the schedule, or every team
+   when it cannot be loaded, plays made-up weeks of 2, 3 or 4 games
+   (`teamSchedule`; `model.schedule` says which). The page waits up to six
+   seconds for the schedule before building the model, and builds it again
+   if the schedule arrives later. A player plays each game as
    often as he is expected to (see the availability rows above);
 2. each game's score is drawn around his projected level, with his own
    game-to-game spread and the skew of real games: a big night runs further
@@ -502,9 +510,10 @@ charts fade in; while newer data is measured the last charts stay on screen.
   Over weeks 1 to 4 the real high averaged 421 and the low 287; the likely
   high and low ahead come to about 408 and 289. The note gives your average
   and rank so far, and your projected average from here and its rank, as a
-  share of your locks a week (the team strength figure under it). The projections still use the model's own spread of games
-  (`teamSchedule`), not the real schedule, so a single projected week's ups
-  and downs are mostly noise; only injuries move them for real.
+  share of your locks a week (the team strength figure under it). The
+  projections play each team's real games, so a week's ups and downs are
+  real: how many games your players have that week, and who is back from
+  injury.
 
 On the radars 0 is the league's lowest team and 10 its highest, and the
 dashed shape is the league average. Display only: nothing here feeds
@@ -605,7 +614,7 @@ schedule); the header shows it.
 | Player list | Sleeper | 24 hours | Sleeper asks for it at most once a day |
 | Draft | Sleeper | 7 days once finished, else as the league | A finished draft never changes |
 | A finished week's matchups (one request a week) | Sleeper | 6 hours for last week, 7 days for older weeks | Only Sleeper's stat corrections change them, in the days after a week |
-| The rest of the season's NBA schedule, for the team charts (about ten requests) | balldontlie | 24 hours | Games are rarely moved; only the count left and the opponents are used |
+| The rest of the season's NBA schedule, from this Monday, for the strength model and the team charts (about ten requests) | balldontlie | 24 hours | Games are rarely moved |
 | A finished week's NBA schedule (one request a week) | balldontlie | 7 days | Every game is final; saved apart from the current week's copy so a game-night copy is never shown as final |
 | NBA schedule (one request) | balldontlie | 30 min, 3 min while games are on (`SCHEDULE_CACHE_MINUTES`, `LIVE_SCHEDULE_MINUTES`) | Scores and game states change on game nights |
 | Box scores, while a matchup is open | balldontlie | 30 min, 10 min while games are on (`WEEK_STATS_MINUTES`, `LIVE_WEEK_STATS_MINUTES`) | balldontlie updates live stats about every 10 minutes |
@@ -909,8 +918,8 @@ scripts/  One-off tools
    upgrades, team strength.
 4. **Trade analyzer.** In progress. Done: grades and strength change for any
    two-team trade; a trade finder with reasons; projections using last
-   season. To do: each player's real schedule (also for the matchup view),
-   playoff weeks, two-for-two ideas.
+   season; each team's real schedule in the model. To do: playoff weeks
+   (on hold until the owner decides how they should count).
 5. **Deeper analysis.** Past seasons as a guide to who is likely to rise or
    fade, and other ways to surface moves that are easy to miss. No chatbot:
    everything is computed from data.

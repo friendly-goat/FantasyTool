@@ -276,7 +276,7 @@ function noteProjections(leagueId: string, snapshot: LeagueSnapshot): Promise<Pr
     if (ledger.weeks[snapshot.week] || snapshot.week < 1) return ledger;
     const report = await stats.report(snapshot, (await getPlayers()).value, await getInjuries());
     if (report.status !== "ready" || Object.keys(report.players).length === 0) return ledger;
-    const projected = projectedThisWeek(snapshot, buildModel(snapshot, report));
+    const projected = projectedThisWeek(snapshot, buildModel(snapshot, report, undefined, await scheduleAhead(snapshot)));
     if (Object.keys(projected).length === 0) return ledger;
     const next: ProjectionLedger = { weeks: { ...ledger.weeks, [snapshot.week]: { projected, savedAt: new Date().toISOString() } } };
     await storage.writeEntry(projectionsKey(leagueId), { savedAt: Date.now(), value: next });
@@ -285,6 +285,25 @@ function noteProjections(leagueId: string, snapshot: LeagueSnapshot): Promise<Pr
   })().finally(() => projectionsPending.delete(leagueId));
   projectionsPending.set(leagueId, work);
   return work;
+}
+
+/**
+ * The NBA games of the fantasy regular season from the start of this week (Monday) to its end:
+ * the schedule the strength model plays its weeks on, and the games left for the Schedule axis.
+ * Saved for a day; "unavailable" when the stats source has no schedule or it cannot be loaded.
+ */
+async function scheduleAhead(snapshot: LeagueSnapshot): Promise<ScheduleAhead> {
+  const { weeks } = modelCalendar(snapshot);
+  const start = weeks[0]?.start;
+  const end = weeks.at(-1)?.end;
+  if (!stats.hasSchedule() || !start || !end) return { status: "unavailable", games: [] };
+  try {
+    const games = (await cache.get(scheduleAheadKey(start, end), scheduleAheadTtl, () => stats.schedule(start, end), { background: true })).value;
+    return { status: "ready", games: games.map(({ date, home, away }) => ({ date, home, away })) };
+  } catch (error) {
+    console.error("[schedule-ahead]", error instanceof Error ? error.message : error);
+    return { status: "unavailable", games: [] };
+  }
 }
 
 /** The mock league's finished weeks, from its own matchups (it has no real standings to split). */
@@ -486,23 +505,7 @@ app.get("/api/league/:leagueId/history", async (req, res) => {
 app.get("/api/league/:leagueId/schedule-ahead", async (req, res) => {
   try {
     const leagueId = req.params.leagueId.trim();
-    const snapshot = (await getSnapshot(leagueId)).value;
-    const { today, weeks } = modelCalendar(snapshot);
-    const end = weeks.at(-1)?.end;
-    if (!stats.hasSchedule() || !end) {
-      res.json({ status: "unavailable", games: [] } satisfies ScheduleAhead);
-      return;
-    }
-    try {
-      const games = (
-        await cache.get(scheduleAheadKey(today, end), scheduleAheadTtl, () => stats.schedule(today, end), { background: true })
-      ).value;
-      const body: ScheduleAhead = { status: "ready", games: games.map(({ date, home, away }) => ({ date, home, away })) };
-      res.json(body);
-    } catch (error) {
-      console.error("[schedule-ahead]", error instanceof Error ? error.message : error);
-      res.json({ status: "unavailable", games: [] } satisfies ScheduleAhead);
-    }
+    res.json(await scheduleAhead((await getSnapshot(leagueId)).value));
   } catch (error) {
     sendError(res, error);
   }

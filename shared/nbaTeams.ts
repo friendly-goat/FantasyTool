@@ -1,7 +1,8 @@
 // The 30 NBA teams: the abbreviation the app shows, and the NBA's own team
 // ID, which is what the NBA's logo images are filed under.
 //
-// This is a lookup table for display only. Nothing in the analysis reads it.
+// Used for display, and by the strength model only to match team names between
+// the stats source's schedule and its players (nbaTeam's aliases).
 
 export interface NbaTeam {
   abbr: string;

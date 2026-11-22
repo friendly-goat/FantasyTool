@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { getHistory, getScheduleAhead } from "../api.ts";
+import { getHistory } from "../api.ts";
+import { loadScheduleAhead } from "../scheduleAhead.ts";
 import { formatPoints, ordinal } from "../format.ts";
 import type { StrengthModel, TeamStrength } from "../../shared/strength.ts";
 import { extremes, leagueProfiles, type ProfileAxis, type TeamProfile, type WeekPoint } from "../../shared/teamProfile.ts";
@@ -33,7 +34,7 @@ function useExtras(leagueId: string, week: number): Extras | null {
     let live = true;
     let pending = pendingExtras.get(key);
     if (!pending) {
-      pending = Promise.all([getHistory(leagueId).catch(() => null), getScheduleAhead(leagueId).catch(() => null)]).then(([history, schedule]) => {
+      pending = Promise.all([getHistory(leagueId).catch(() => null), loadScheduleAhead(leagueId, week)]).then(([history, schedule]) => {
         const value = { history, schedule };
         if (history && schedule) loadedExtras.set(key, value);
         pendingExtras.delete(key);
@@ -45,7 +46,7 @@ function useExtras(leagueId: string, week: number): Extras | null {
     return () => {
       live = false;
     };
-  }, [key, leagueId]);
+  }, [key, leagueId, week]);
   return extras;
 }
 

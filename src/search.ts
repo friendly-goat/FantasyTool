@@ -9,7 +9,7 @@ import { findTrades } from "../shared/trade.ts";
 import { type Move, topMoves } from "../shared/moves.ts";
 import type { TeamSituation } from "../shared/insight.ts";
 import type { StrengthModel } from "../shared/strength.ts";
-import type { LeagueSnapshot, StatsReport } from "../shared/types.ts";
+import type { LeagueSnapshot, ScheduleAhead, StatsReport } from "../shared/types.ts";
 
 export type SearchRequest =
   | { kind: "trades"; rosterId: number; options: FinderOptions }
@@ -17,7 +17,7 @@ export type SearchRequest =
 
 /** Messages to the worker: the data for a model, or a search on it. */
 export type ToWorker =
-  | { type: "data"; source: number; snapshot: LeagueSnapshot; report: StatsReport }
+  | { type: "data"; source: number; snapshot: LeagueSnapshot; report: StatsReport; schedule: ScheduleAhead | null }
   | { type: "search"; id: number; source: number; request: SearchRequest };
 
 /** Messages back: how far a search has got, its answer, or why it failed. */
@@ -30,14 +30,15 @@ interface Source {
   id: number;
   snapshot: LeagueSnapshot;
   report: StatsReport;
+  schedule: ScheduleAhead | null;
 }
 
 const sources = new WeakMap<StrengthModel, Source>();
 let nextSource = 0;
 
 /** Call when a model is built, with what it was built from, so the worker can build the same one. */
-export function registerModel(model: StrengthModel, snapshot: LeagueSnapshot, report: StatsReport): void {
-  if (!sources.has(model)) sources.set(model, { id: ++nextSource, snapshot, report });
+export function registerModel(model: StrengthModel, snapshot: LeagueSnapshot, report: StatsReport, schedule: ScheduleAhead | null): void {
+  if (!sources.has(model)) sources.set(model, { id: ++nextSource, snapshot, report, schedule });
 }
 
 let worker: Worker | null | undefined;
@@ -109,7 +110,7 @@ function run(
   const target = source ? getWorker() : null;
   if (!source || !target) return here(model, snapshot, situations, request, progress);
   if (sent !== source.id) {
-    target.postMessage({ type: "data", source: source.id, snapshot: source.snapshot, report: source.report } satisfies ToWorker);
+    target.postMessage({ type: "data", source: source.id, snapshot: source.snapshot, report: source.report, schedule: source.schedule } satisfies ToWorker);
     sent = source.id;
   }
   const id = ++nextId;

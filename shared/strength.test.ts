@@ -114,6 +114,41 @@ describe("team strength and trades (against the mock league)", async () => {
   const ids = (rosterId: number) =>
     rosterPlayers(snapshot.teams.find((team) => team.rosterId === rosterId)!).map((player) => player.id);
 
+  it("plays each team's real games when it has the schedule, and made-up weeks otherwise", () => {
+    expect(model.schedule).toBe("made-up");
+    const calendar = model.calendar;
+    expect(calendar.weeks.length).toBeGreaterThan(1);
+    const rostered = Object.values(report.players).filter((stats) => stats.games > 3 && stats.team);
+    const busy = rostered[0]!;
+    const quiet = rostered.find((stats) => stats.team !== busy.team)!;
+    const day = (start: string, offset: number) => new Date(Date.parse(`${start}T00:00:00Z`) + offset * 86_400_000).toISOString().slice(0, 10);
+    // The busy team plays four games every week (Mon, Wed, Fri, Sun), the quiet team two, except
+    // the second week, when the quiet team plays none (a break).
+    const games = calendar.weeks.flatMap((week, index) => [
+      ...[0, 2, 4, 6].map((offset) => ({ date: day(week.start, offset), home: busy.team, away: "XXX" })),
+      ...(index === 1 ? [] : [1, 3].map((offset) => ({ date: day(week.start, offset), home: "YYY", away: quiet.team }))),
+    ]);
+    const real = buildModel(snapshot, report, undefined, { status: "ready", games });
+    expect(real.schedule).toBe("real");
+    const busyPlayer = real.players.get(busy.id)!;
+    const quietPlayer = real.players.get(quiet.id)!;
+    const weeks = calendar.weeks.length;
+    // His imaginary weeks are his team's real weeks, in turn.
+    for (let week = 0; week < real.weeks; week++) {
+      const count = (player: typeof busyPlayer) => Array.from({ length: 5 }, (_, game) => player.gameDay[week * 5 + game]!).filter((d) => d >= 0).length;
+      expect(count(busyPlayer)).toBeLessThanOrEqual(4);
+      expect(count(quietPlayer)).toBeLessThanOrEqual(week % weeks === 1 ? 0 : 2);
+    }
+    // Worth a four-game week when fit; the other team's player loses the week with no games.
+    expect(busyPlayer.healthy).toBeCloseTo(busyPlayer.waitValue[4]!);
+    expect(quietPlayer.healthy).toBeCloseTo((quietPlayer.waitValue[2]! * (weeks - 1)) / weeks);
+    // A team missing from the schedule keeps its made-up weeks, as on the model without one.
+    const other = rostered.find((stats) => stats.team !== busy.team && stats.team !== quiet.team)!;
+    expect(real.players.get(other.id)!.healthy).toBeCloseTo(model.players.get(other.id)!.healthy);
+    // The same schedule gives the same model every time.
+    expect(buildModel(snapshot, report, undefined, { status: "ready", games }).players.get(busy.id)!.expected).toBe(busyPlayer.expected);
+  });
+
   it("reports how often each player plays", () => {
     for (const stats of Object.values(report.players)) {
       expect(stats.teamGames).toBeGreaterThanOrEqual(stats.games);
@@ -624,6 +659,7 @@ describe("availabilityOutlook", () => {
 describe("a lock-in week, on made-up players", () => {
   // One UTIL slot keeps the arithmetic easy to follow.
   const model: StrengthModel = {
+    schedule: "made-up",
     slots: ["UTIL"],
     slotOrder: [0],
     weeks: 1,

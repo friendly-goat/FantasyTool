@@ -14,7 +14,7 @@ let current: { source: number; build: () => ReturnType<typeof prepare> } | null 
 let prepared: { source: number; data: ReturnType<typeof prepare> } | null = null;
 
 function prepare(message: Extract<ToWorker, { type: "data" }>) {
-  const model = buildModel(message.snapshot, message.report);
+  const model = buildModel(message.snapshot, message.report, undefined, message.schedule);
   const situations = teamSituations(message.snapshot, model, leagueStrength(message.snapshot, model));
   return { snapshot: message.snapshot, model, situations };
 }

@@ -25,7 +25,8 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   for playoffs. Code reads `playoffs` (start week, team count) from the
   league's Sleeper settings (`playoffSettings` in `server/snapshot.ts`); never
   hard-code these numbers. Ask the owner before weighting playoff weeks in
-  strength or trade grades.
+  strength or trade grades. The owner has put playoff features (title odds,
+  playoff weeks) on hold (Nov 2026): do not build them unless asked.
 
 ## Rules for this repo
 
@@ -69,7 +70,10 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   read in `shared/injury.ts` as a return window (buffer, re-evaluation,
   spread). The model's imaginary weeks stand for the real weeks left (week
   w is real week w mod the weeks left), so a return date counts week by
-  week. Rosters are always run through `fillRoster` (IR, waiver pickups,
+  week, and each team plays its real games that week (`buildModel`'s
+  schedule, `/schedule-ahead` from this Monday; made-up weeks only without
+  it). The page, the search worker and the server's saved projections must
+  all build the model with the same schedule. Rosters are always run through `fillRoster` (IR, waiver pickups,
   who leaves when a player is back) before and after a trade alike; never
   credit a trade with a pickup the team would make anyway.
 - Team strength is worked out 1 to 1000 but always shown out of 5 stars, a

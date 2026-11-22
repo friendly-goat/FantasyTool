@@ -2,8 +2,9 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { teamSituations } from "../shared/insight.ts";
 import { buildModel, leagueStrength } from "../shared/strength.ts";
 import { registerModel } from "./search.ts";
+import { loadScheduleAhead, loadedScheduleAhead } from "./scheduleAhead.ts";
 import type { TradeOffer } from "../shared/trade.ts";
-import type { AppConfig, LeagueSnapshot, PlayerRef, StatsReport } from "../shared/types.ts";
+import type { AppConfig, LeagueSnapshot, PlayerRef, ScheduleAhead, StatsReport } from "../shared/types.ts";
 import {
   getConfig,
   getLeague,
@@ -49,6 +50,8 @@ const LEAGUE_POLL_MS = 2 * 60_000;
 const REFRESHING_RECHECK_MS = 5_000;
 /** How often to ask the server for progress while stats are downloading. */
 const STATS_POLL_MS = 2500;
+/** How long the model waits for the NBA schedule before playing made-up weeks. */
+const SCHEDULE_WAIT_MS = 6000;
 const LAST_SEASON_POLL_MS = 20000;
 type View = (typeof VIEWS)[number];
 // On a phone, the tab bar holds these (Trades in the middle, set apart); the rest sit under More.
@@ -205,20 +208,45 @@ export function App() {
     setMyRosterId(owned?.rosterId ?? null);
   }, [snapshot, pickedUserId]);
 
+  // The NBA schedule the model plays its weeks on. The model waits for it a few seconds at most:
+  // without it (still loading on the server, or no schedule) it plays made-up weeks, and is
+  // rebuilt once if the schedule arrives later.
+  const scheduleWeek = snapshot?.week ?? 0;
+  const [schedule, setSchedule] = useState<ScheduleAhead | null | undefined>(undefined);
+  useEffect(() => {
+    if (!loadedLeagueId) return;
+    const ready = loadedScheduleAhead(loadedLeagueId, scheduleWeek);
+    if (ready) {
+      setSchedule(ready);
+      return;
+    }
+    setSchedule(undefined);
+    let live = true;
+    const timer = window.setTimeout(() => live && setSchedule((current) => (current === undefined ? null : current)), SCHEDULE_WAIT_MS);
+    void loadScheduleAhead(loadedLeagueId, scheduleWeek).then((loaded) => {
+      if (live && loaded) setSchedule(loaded);
+      else if (live) setSchedule((current) => (current === undefined ? null : current));
+    });
+    return () => {
+      live = false;
+      window.clearTimeout(timer);
+    };
+  }, [loadedLeagueId, scheduleWeek]);
+
   // The strength model behind the Strength and Trades tabs. Rebuilt only
-  // when the league or the stats change.
+  // when the league, the stats or the schedule change.
   const statsPlayers = stats?.players;
   const model = useMemo(
     () =>
       {
-        if (!snapshot || !stats || !statsPlayers || Object.keys(statsPlayers).length === 0) return null;
-        const built = buildModel(snapshot, stats);
+        if (!snapshot || !stats || !statsPlayers || Object.keys(statsPlayers).length === 0 || schedule === undefined) return null;
+        const built = buildModel(snapshot, stats, undefined, schedule);
         // So the trade search can build the same model off the page's thread.
-        registerModel(built, snapshot, stats);
+        registerModel(built, snapshot, stats, schedule);
         return built;
       },
-    // Rebuilt only when the league or the player data change, not on progress updates.
-    [snapshot, statsPlayers],
+    // Rebuilt only when the league, the player data or the schedule change, not on progress updates.
+    [snapshot, statsPlayers, schedule],
   );
   const strengths = useMemo(() => (snapshot && model ? leagueStrength(snapshot, model) : null), [snapshot, model]);
 
