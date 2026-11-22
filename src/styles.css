@@ -1767,12 +1767,32 @@ th[aria-sort] .sort-button {
   padding: 1.25rem 1.5rem 1.5rem;
 }
 
+/* The Close button stays at the top right while the panel scrolls. The bar
+   takes no height, so the button sits over the header's top right corner,
+   which the header leaves free. */
+.panel-close {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  height: 0;
+  padding: 0 1.5rem;
+}
+
+.panel-close-button {
+  margin-top: 1rem;
+  box-shadow: 0 0.25rem 0.75rem rgba(8, 12, 22, 0.25);
+}
+
 .panel-head {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 1rem;
   margin-bottom: 1rem;
+  padding-right: 5rem;
 }
 
 /* A player's injury report entry in his panel: status, predicted return, and the note behind an info button. */
@@ -5096,6 +5116,14 @@ th[aria-sort] .sort-button {
   .player-panel .panel-body {
     padding: 1rem max(1rem, env(safe-area-inset-right)) calc(1.5rem + env(safe-area-inset-bottom))
       max(1rem, env(safe-area-inset-left));
+  }
+
+  .player-panel .panel-close {
+    padding-right: max(1rem, env(safe-area-inset-right));
+  }
+
+  .panel-close-button {
+    margin-top: 0.75rem;
   }
 
   .sheet-body {

@@ -32,3 +32,29 @@ describe("team strength out of 5", () => {
     expect(formatStrengthChange(0)).toBe("0.00");
   });
 });
+
+describe("fantasyTone", async () => {
+  const { fantasyTone, toneColor } = await import("./format.ts");
+  it("leans left: yellow a little under his average, mostly green at it, full green well above", () => {
+    expect(fantasyTone(85, 100)).toBeCloseTo(3);
+    expect(fantasyTone(100, 100)).toBeCloseTo(5);
+    expect(fantasyTone(130, 100)).toBe(6);
+    expect(fantasyTone(200, 100)).toBe(6);
+    expect(fantasyTone(40, 100)).toBe(0);
+    expect(fantasyTone(0, 100)).toBe(0);
+    // Between stops, in proportion.
+    expect(fantasyTone(92.5, 100)).toBeCloseTo(4);
+    expect(fantasyTone(115, 100)).toBeCloseTo(5.5);
+  });
+
+  it("gives no tone without an average", () => {
+    expect(fantasyTone(30, 0)).toBeNull();
+    expect(fantasyTone(Number.NaN, 30)).toBeNull();
+  });
+
+  it("blends the two nearest colors", () => {
+    expect(toneColor(3)).toBe("var(--chance-3)");
+    expect(toneColor(6)).toBe("var(--chance-6)");
+    expect(toneColor(4.25)).toBe("color-mix(in oklab, var(--chance-5) 25%, var(--chance-4))");
+  });
+});

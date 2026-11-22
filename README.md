@@ -417,6 +417,13 @@ management on a trade card lists IR moves against what Sleeper shows now:
 moving a player marked out onto a free IR slot, or a player off IR (no longer
 out, or making room for one out longer).
 
+A player's panel keeps its Close button at the top right while it scrolls.
+His game log puts fantasy points (Fpts) first, after the date and opponent,
+colored red to green against his own season average (`fantasyTone` in
+`src/format.ts`). Matching his average is a good game, so the scale leans
+left: 85% of his average is yellow, his average itself is mostly green, 130%
+or more is full green and 40% or less full red. Display only.
+
 A player's panel shows his injury report entry: the predicted return date as
 the report gives it, when the app plans on him being back (later for far-off
 dates and re-evaluations), and the report's note behind the info button. His

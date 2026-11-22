@@ -159,3 +159,41 @@ export function formatDay(date: string, today: string): string {
     timeZone: "UTC",
   });
 }
+
+/**
+ * Where one game's fantasy points sit on the red-to-green scale (0 red, 3 yellow, 6 green; the
+ * `--chance-0` to `--chance-6` colors), against the player's own average. Matching his average is
+ * a good game, so the scale leans left: yellow is FPTS_TONE_STOPS' 85% of his average, his average
+ * itself is mostly green, and 130% or more is full green. Null without an average to compare with.
+ */
+export const FPTS_TONE_STOPS: readonly (readonly [share: number, tone: number])[] = [
+  [0.4, 0],
+  [0.85, 3],
+  [1, 5],
+  [1.3, 6],
+];
+
+export function fantasyTone(points: number, average: number): number | null {
+  if (!(average > 0) || !Number.isFinite(points)) return null;
+  const share = points / average;
+  const stops = FPTS_TONE_STOPS;
+  if (share <= stops[0]![0]) return stops[0]![1];
+  for (let i = 1; i < stops.length; i++) {
+    const [toShare, toTone] = stops[i]!;
+    if (share <= toShare) {
+      const [fromShare, fromTone] = stops[i - 1]!;
+      return fromTone + ((share - fromShare) / (toShare - fromShare)) * (toTone - fromTone);
+    }
+  }
+  return stops[stops.length - 1]![1];
+}
+
+/** The color for a tone from fantasyTone: a blend of the two nearest `--chance-*` colors. */
+export function toneColor(tone: number): string {
+  const clamped = Math.min(6, Math.max(0, tone));
+  const low = Math.floor(clamped);
+  const high = Math.min(6, low + 1);
+  const toward = Math.round((clamped - low) * 100);
+  if (toward === 0 || low === high) return `var(--chance-${low})`;
+  return `color-mix(in oklab, var(--chance-${high}) ${toward}%, var(--chance-${low}))`;
+}

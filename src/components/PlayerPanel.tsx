@@ -3,7 +3,7 @@ import { returnOutlook } from "../../shared/injury.ts";
 import type { LeagueSnapshot, PlayerDetail, PlayerRef, StatsReport } from "../../shared/types.ts";
 import { getPlayerDetail } from "../api.ts";
 import { closeDialog } from "../closeDialog.ts";
-import { formatAverage, formatDay, formatGameDate, formatPoints, formatSigned } from "../format.ts";
+import { fantasyTone, formatAverage, formatDay, formatGameDate, formatPoints, formatSigned, toneColor } from "../format.ts";
 
 const percent = new Intl.NumberFormat("en-US", { style: "percent", maximumFractionDigits: 0 });
 import { PositionChip } from "./PositionChip.tsx";
@@ -39,6 +39,16 @@ const details = new Map<string, { detail: PlayerDetail; at: number }>();
  * comes with the league's stats report, so the panel opens at its full size
  * at once; only the game scores and log rows fill in when they arrive.
  */
+/** One game's fantasy points, colored red to green against his own average (see fantasyTone). */
+function FantasyCell({ points, average }: { points: number; average: number }) {
+  const tone = fantasyTone(points, average);
+  return (
+    <td className="num strong log-fpts" style={tone === null ? undefined : { color: toneColor(tone) }}>
+      {formatPoints(points)}
+    </td>
+  );
+}
+
 export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [detail, setDetail] = useState<PlayerDetail | null>(null);
@@ -98,6 +108,12 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
         if (event.target === dialog.current) closeDialog(dialog.current);
       }}
     >
+      {/* Stays at the top right while the panel scrolls. */}
+      <div className="panel-close">
+        <button type="button" className="button button-plain panel-close-button" onClick={() => closeDialog(dialog.current)}>
+          Close
+        </button>
+      </div>
       <div className="panel-body">
         <div className="panel-head">
           <div>
@@ -113,9 +129,6 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
             </p>
             <p className="quiet">{fantasyTeam ? `On ${fantasyTeam}` : "Free agent in this league"}</p>
           </div>
-          <button type="button" className="button button-plain" onClick={() => closeDialog(dialog.current)}>
-            Close
-          </button>
         </div>
 
         {injury && <InjuryNote injury={injury} />}
@@ -216,6 +229,7 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
                   <tr>
                     <th scope="col">Date</th>
                     <th scope="col">Opponent</th>
+                    <th scope="col" className="num">Fpts</th>
                     <th scope="col" className="num">Min</th>
                     <th scope="col" className="num">Pts</th>
                     <th scope="col" className="num">Reb</th>
@@ -223,7 +237,6 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
                     <th scope="col" className="num">Stl</th>
                     <th scope="col" className="num">Blk</th>
                     <th scope="col" className="num">TO</th>
-                    <th scope="col" className="num">Fantasy</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -250,6 +263,7 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
                       <td>
                         {game.opponent ? `${game.home === false ? "at" : "vs"} ${game.opponent}` : "–"}
                       </td>
+                      <FantasyCell points={game.fantasyPoints} average={season.fantasyAvg} />
                       <td className="num">{Math.round(game.minutes)}</td>
                       <td className="num">{game.stats.pts}</td>
                       <td className="num">{game.stats.reb}</td>
@@ -257,7 +271,6 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
                       <td className="num">{game.stats.stl}</td>
                       <td className="num">{game.stats.blk}</td>
                       <td className="num">{game.stats.tov}</td>
-                      <td className="num strong">{formatPoints(game.fantasyPoints)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -266,6 +279,7 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
                     <th scope="row" colSpan={2}>
                       Season average
                     </th>
+                    <td className="num strong">{formatPoints(season.fantasyAvg)}</td>
                     <td className="num">{formatAverage(season.minutes)}</td>
                     <td className="num">{formatAverage(season.averages.pts)}</td>
                     <td className="num">{formatAverage(season.averages.reb)}</td>
@@ -273,7 +287,6 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
                     <td className="num">{formatAverage(season.averages.stl)}</td>
                     <td className="num">{formatAverage(season.averages.blk)}</td>
                     <td className="num">{formatAverage(season.averages.tov)}</td>
-                    <td className="num strong">{formatPoints(season.fantasyAvg)}</td>
                   </tr>
                 </tfoot>
               </table>
