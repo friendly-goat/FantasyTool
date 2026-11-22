@@ -4643,7 +4643,7 @@ th[aria-sort] .sort-button {
       "last last";
     align-content: start;
     align-items: center;
-    gap: 0 0.25rem;
+    gap: 0.1rem 0.25rem;
     line-height: 1.2;
     padding: 0.3rem 0.35rem 0.25rem;
   }

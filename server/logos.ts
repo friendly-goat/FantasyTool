@@ -1,4 +1,5 @@
 import type { Cache } from "./cache.ts";
+import { normalizeLogo } from "./logoShape.ts";
 
 // NBA team logos, from the NBA's own image server. Each team has two
 // versions: one drawn for light backgrounds and one for dark ones. They are
@@ -6,8 +7,9 @@ import type { Cache } from "./cache.ts";
 // same format.
 //
 // The browser asks this server (GET /api/logos/:abbr/:variant); this server
-// fetches each logo once and keeps it in the cache. Logo files are never
-// stored in the repo.
+// fetches each logo once, reframes it so every team's logo shows at the same
+// visual size (`normalizeLogo`, server/logoShape.ts), and keeps it in the
+// cache. Logo files are never stored in the repo.
 
 export type LogoVariant = "light" | "dark";
 
@@ -33,7 +35,7 @@ export async function downloadLogo(
   variant: LogoVariant,
   fetchText: (url: string) => Promise<string> = defaultFetchText,
 ): Promise<string> {
-  return checkSvg(await fetchText(logoUrl(nbaId, variant)));
+  return normalizeLogo(checkSvg(await fetchText(logoUrl(nbaId, variant))));
 }
 
 async function defaultFetchText(url: string): Promise<string> {
@@ -58,7 +60,8 @@ export function createLogoSource(
   const failedAt = new Map<string, number>();
 
   return async function getLogo(nbaId: number, variant: LogoVariant): Promise<string | null> {
-    const key = `logo-${nbaId}-${variant}`;
+    // v2: reframed to the same visual size (logos saved before that are downloaded again).
+    const key = `logo-v2-${nbaId}-${variant}`;
     const failed = failedAt.get(key);
     if (failed !== undefined && now() - failed < RETRY_AFTER) {
       // Use a saved copy if there is one, even an old one, without asking again.

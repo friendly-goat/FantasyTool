@@ -885,11 +885,13 @@ gap, scaled to a standard deviation): C is within 0.4 of the players around
 him, each letter after that 0.8 more (`GRADE_STEP`), and S and F are
 open-ended. It is a display label only and feeds nothing else.
 
-A card shows one mark: the grade, or a medical cross when the player is
-injured for a real stretch: out at least 5% of the weeks left (`INJURED_SHARE`,
-the same line the trade search uses), not a game or two. Hover over it for his
-predicted return. An injured player is not graded, and not part of anyone
-else's comparison, since his weekly value counts the games he will miss.
+A card shows one mark: the grade, or a medical cross when the player is out
+for a long stretch: about a month or more of the weeks left
+(`LONG_INJURY_WEEKS`, 4), or the rest of the season. Hover over it for his
+predicted return. A big injury is luck, not the manager's drafting, so that
+player is not graded and is not part of anyone else's comparison. A player out
+for a shorter while is graded on his value in the weeks he is back
+(`gradedValue`), so a short injury never lowers a grade either.
 
 ## Look
 
@@ -910,7 +912,14 @@ is close at hand.
 
 Next to each player's NBA team abbreviation is the team's logo. Logos come
 from the NBA's own image server as SVG files, so every team's logo is equally
-sharp and sits in the same square box at the same size. Each team has a version
+sharp. The NBA's files leave very different amounts of empty space around the
+drawing (from about 60% to 94% of the frame filled) and range from wide
+wordmarks to tall crests, so the backend reframes each one when it downloads
+it (`server/logoShape.ts`): it measures what is drawn and puts it in a square
+sized so every logo covers about the same area (a round logo fills 86% of its
+box, `AREA_FILL`) and none runs past 90% of the box's width or height
+(`EDGE_FILL`), so it never touches what sits beside it. A file it cannot
+measure safely is served as it came. Each team has a version
 drawn for light backgrounds and one for dark backgrounds, and the app shows the
 one that matches the theme. The browser asks the backend
 (`/api/logos/:team/:light|dark`), which downloads each logo once and caches it

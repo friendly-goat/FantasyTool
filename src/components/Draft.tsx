@@ -1,7 +1,6 @@
 import { type CSSProperties, useEffect, useMemo, useState } from "react";
-import { type DraftGrade, draftGrades, GRADE_LETTERS, type GradeLetter } from "../../shared/draft.ts";
+import { type DraftGrade, draftGrades, GRADE_LETTERS, type GradeLetter, gradedValue, longInjury } from "../../shared/draft.ts";
 import type { ModelPlayer, StrengthModel } from "../../shared/strength.ts";
-import { INJURED_SHARE } from "../../shared/trade.ts";
 import type { DraftBoard, DraftSelection, LeagueSnapshot } from "../../shared/types.ts";
 import { getDraft } from "../api.ts";
 import { formatDay, formatPoints } from "../format.ts";
@@ -35,10 +34,10 @@ export function InjuryIcon() {
   );
 }
 
-/** The model's injured players: out at least INJURED_SHARE of the weeks left, the same line the trade search uses. */
+/** Players out for a long stretch (about a month or more, see longInjury): shown with the cross and not graded. */
 function injuryOf(model: StrengthModel | null, id: string): ModelPlayer | null {
   const player = model?.players.get(id);
-  return player && player.outShare >= INJURED_SHARE ? player : null;
+  return player && longInjury(player) ? player : null;
 }
 
 function injuryLabel(player: ModelPlayer, status: string | null | undefined): string {
@@ -51,7 +50,7 @@ function injuryLabel(player: ModelPlayer, status: string | null | undefined): st
 }
 
 function gradeLabel(pick: DraftSelection, grade: DraftGrade): string {
-  return `Taken with pick ${pick.pickNo}, grade ${grade.grade}: weekly value now ${formatPoints(grade.value)}, against ${formatPoints(grade.around)} for the players picked around him.`;
+  return `Taken with pick ${pick.pickNo}, grade ${grade.grade}: weekly value ${formatPoints(grade.value)}, against ${formatPoints(grade.around)} for the players picked around him.`;
 }
 
 function splitName(name: string): [string, string] {
@@ -136,8 +135,15 @@ export function Draft({ leagueId, snapshot, model, myRosterId }: Props) {
 
   const grades = useMemo(() => {
     if (!board || !model) return new Map<number, DraftGrade>();
-    // Injured players are left out: their value counts the games they will miss.
-    return draftGrades(board.picks, (id) => (injuryOf(model, id) ? null : (model.players.get(id)?.expected ?? null)), board.teams);
+    // A long injury gets no grade; a short one is graded on his value in the weeks he is back.
+    return draftGrades(
+      board.picks,
+      (id) => {
+        const player = model.players.get(id);
+        return player ? gradedValue(player) : null;
+      },
+      board.teams,
+    );
   }, [board, model]);
 
   if (error) {
@@ -207,13 +213,13 @@ export function Draft({ leagueId, snapshot, model, myRosterId }: Props) {
             ))}
           </span>
           <span className="draft-legend-item">
-            <InjuryIcon /> Injured, out more than a game or two, not graded ({hurt})
+            <InjuryIcon /> Out about a month or more, not graded ({hurt})
           </span>
         </p>
       )}
       <p className="quiet legend">
         {model
-          ? "Each pick is graded on his weekly value now (what he locks in an average week at his projected level, allowing for missed games) against the players picked around him, the nearest round of picks. C is about what that part of the draft turned into; B, A and then S, in gold, are better by more each step, and D and F worse. An injured player is not graded, since his value counts the games he will miss. Hover over a grade for the numbers, or select a card for the player's details."
+          ? "Each pick is graded on his weekly value now (what he locks in an average week at his projected level, allowing for missed games) against the players picked around him, the nearest round of picks. C is about what that part of the draft turned into; B, A and then S, in gold, are better by more each step, and D and F worse. An injury is luck, not the pick: a player out about a month or more is not graded, and one out for a shorter while is graded on his value once he is back. Hover over a grade for the numbers, or select a card for the player's details."
           : "Grades for each pick appear once player stats have loaded."}
       </p>
     </section>

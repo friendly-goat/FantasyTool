@@ -168,12 +168,15 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
 - The Draft tab's letter grades (`shared/draft.ts`, F to S with +/- on D to A,
   S in the stars' gold) are a display label only: weekly value now against the
   median of the nearest round of picks, in the draft's typical gap. A card shows
-  one mark, the grade or the injury cross; injured players get no grade and
-  are left out of others' comparisons. Never feed them into strength, trade grades
+  one mark, the grade or the injury cross. Only a long injury (`longInjury`,
+  about a month or more) shows the cross, gets no grade and is left out of
+  others' comparisons; a shorter one is graded on his value once back. Never feed them into strength, trade grades
   or trade ideas.
 - An NBA team is shown with `TeamTag` (logo and abbreviation). Logos come
-  through `/api/logos/:team/:variant` (`server/logos.ts`, cached); the NBA
-  team table is `shared/nbaTeams.ts`. Never commit logo files to the repo.
+  through `/api/logos/:team/:variant` (`server/logos.ts`, cached), reframed on
+  download to the same visual size (`server/logoShape.ts`; bump the cache key
+  and `LOGO_VERSION` in `TeamTag.tsx` if that changes); the NBA team table is
+  `shared/nbaTeams.ts`. Never commit logo files to the repo.
 - Positions are always colored chips (`PositionChip`, `PositionChips`), never
   plain text like "PF/C". Colors are the `--pos-*` tokens in `src/styles.css`,
   matching Sleeper's: PG pink, SG orange, SF green, PF blue, C purple.

@@ -1,6 +1,10 @@
 import { type ReactNode, useState } from "react";
 import { nbaTeam } from "../../shared/nbaTeams.ts";
 
+// Bumped when the server changes how logos are drawn (v2: reframed to the same
+// visual size), so browsers do not keep showing a week-old copy.
+const LOGO_VERSION = 2;
+
 // Teams whose logo could not be loaded. Shared by every tag on the page, so
 // once a logo fails, the rest show the abbreviation alone without trying again.
 const failed = new Set<string>();
@@ -35,7 +39,7 @@ export function TeamLogo({
         <img
           key={variant}
           className={`team-logo-${variant}`}
-          src={`/api/logos/${info.abbr}/${variant}`}
+          src={`/api/logos/${info.abbr}/${variant}?v=${LOGO_VERSION}`}
           alt=""
           loading="lazy"
           decoding="async"

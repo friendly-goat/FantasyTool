@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { draftGrades, GRADE_STEP, gradeFor } from "./draft.ts";
+import { draftGrades, GRADE_STEP, gradedValue, gradeFor, LONG_INJURY_WEEKS, longInjury } from "./draft.ts";
+import type { ModelPlayer } from "./strength.ts";
 
 const pick = (pickNo: number, id: string) => ({ pickNo, player: { id } });
 const medianOf = (numbers: number[]) => {
@@ -65,5 +66,40 @@ describe("draftGrades", () => {
   it("gives everyone a C when every pick is worth the same", () => {
     const flat = draftGrades(picks, () => 30, 4);
     expect([...flat.values()].every((grade) => grade.grade === "C")).toBe(true);
+  });
+});
+
+describe("injuries on the draft board", () => {
+  const weeks = 20;
+  // A player worth 40 a week when he plays, out for `out` weeks of the weeks left.
+  const injured = (out: number) => {
+    const back = Float32Array.from({ length: weeks }, (_, week) => (week < out ? 0 : 1));
+    const weekly = Float32Array.from(back, (chance) => 40 * chance);
+    return {
+      back,
+      outShare: out / weeks,
+      weekly,
+      expected: weekly.reduce((sum, value) => sum + value, 0) / weeks,
+    } as unknown as ModelPlayer;
+  };
+
+  it("leaves a player ungraded only when he is out about a month or more", () => {
+    expect(longInjury(injured(1))).toBe(false);
+    expect(longInjury(injured(LONG_INJURY_WEEKS - 1))).toBe(false);
+    expect(longInjury(injured(LONG_INJURY_WEEKS))).toBe(true);
+    expect(longInjury(injured(weeks))).toBe(true);
+    expect(gradedValue(injured(LONG_INJURY_WEEKS))).toBeNull();
+  });
+
+  it("grades a player out for a short while on his value once he is back, not his weeks out", () => {
+    const short = injured(2);
+    expect(short.expected).toBeCloseTo(36);
+    expect(gradedValue(short)).toBeCloseTo(40);
+  });
+
+  it("grades a healthy player on his value now", () => {
+    const healthy = { back: null, outShare: 0, expected: 33, weekly: Float32Array.of(33) } as unknown as ModelPlayer;
+    expect(longInjury(healthy)).toBe(false);
+    expect(gradedValue(healthy)).toBe(33);
   });
 });

@@ -15,11 +15,33 @@
 // (beyond A) is open-ended, as F is below D. D, C, B and A carry a minus or
 // plus for the lower and upper third of their step.
 //
-// Players left out (injured for a real stretch, whose value counts the games
-// they will miss, or with no known value) get no grade and are not part of
-// anyone else's comparison.
+// An injury is luck, not the pick, so it never sets a grade. A player out for
+// a long stretch (LONG_INJURY_WEEKS or more of the weeks left, or the rest of
+// the season) gets no grade and is not part of anyone else's comparison; one
+// out for a shorter while is graded on his value in the weeks he is back
+// (`gradedValue`). Players with no known value are left out too.
 //
 // This is a display label only. Nothing else in the analysis reads it.
+
+import { expectedOnceBack, type ModelPlayer } from "./strength.ts";
+
+/** Weeks out (of the weeks left) from which a drafted player is left ungraded: about a month. */
+export const LONG_INJURY_WEEKS = 4;
+
+/** Out long enough to leave ungraded: LONG_INJURY_WEEKS or more of the weeks left, or the rest of the season. */
+export function longInjury(player: Pick<ModelPlayer, "back" | "outShare">): boolean {
+  if (!player.back || player.outShare <= 0) return false;
+  return player.outShare >= 0.95 || player.outShare * player.back.length >= LONG_INJURY_WEEKS;
+}
+
+/**
+ * The weekly value a pick is graded on: his value now, or, out for a short while, his value in the
+ * weeks he is back. Null for a long injury (no grade).
+ */
+export function gradedValue(player: ModelPlayer): number | null {
+  if (longInjury(player)) return null;
+  return player.back && player.outShare > 0 ? expectedOnceBack(player, player) : player.expected;
+}
 
 /** Width of one letter, in the draft's typical gap. */
 export const GRADE_STEP = 0.8;
@@ -59,7 +81,7 @@ export function gradeFor(gap: number): { letter: GradeLetter; grade: string } {
 
 export function draftGrades(
   picks: { pickNo: number; player: { id: string } }[],
-  /** His weekly value now, or null to leave him out (no value, or injured for a real stretch). */
+  /** His weekly value (`gradedValue`), or null to leave him out (no value, or a long injury). */
   valueOf: (playerId: string) => number | null,
   roundSize: number,
 ): Map<number, DraftGrade> {
