@@ -121,19 +121,31 @@ export function formatStatLine(stats: StatLine, minutes?: number): string {
 
 /**
  * Team strength is worked out on a 1 to 1000 scale (shared/strength.ts) and shown out of 5:
- * a hundredth of it, so 404 reads 4.04. The league's best players on one roster would rate
- * 10; real teams rate about 3 to 5, and above 5 is rare.
+ * one star for every STRENGTH_PER_STAR points, so five stars is 600, three fifths of the way
+ * from a roster of the best free agents (1) to the league's best players on one roster (1000,
+ * about 8.3 stars). A fixed scale, chosen once: in the owner's league teams rate about 2.7 to
+ * 4.6 and above 5 is rare. (It was a hundredth until the model moved to the real NBA schedule
+ * in Nov 2026: every team moved up by about one star and three topped five, most likely because
+ * the all-star roster's games clash on the same nights, so it lost more of its edge than real
+ * teams did.)
+ * Display only: grades, chances and the search use the 1 to 1000 score.
  */
 export const STRENGTH_STARS = 5;
+export const STRENGTH_PER_STAR = 120;
+
+/** A team strength (1 to 1000) as its rating out of 5, unrounded. */
+export function strengthRating(score: number): number {
+  return score / STRENGTH_PER_STAR;
+}
 
 /** A team strength (1 to 1000) as its rating out of 5, such as "4.04". */
 export function formatStrength(score: number): string {
-  return (score / 100).toFixed(2);
+  return strengthRating(score).toFixed(2);
 }
 
 /** A change in team strength (1 to 1000 points) as a change in the rating, such as "+0.12". */
 export function formatStrengthChange(change: number): string {
-  const size = (Math.abs(change) / 100).toFixed(2);
+  const size = (Math.abs(change) / STRENGTH_PER_STAR).toFixed(2);
   return change > 0 ? `+${size}` : change < 0 ? `−${size}` : "0.00";
 }
 

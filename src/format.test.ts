@@ -23,12 +23,12 @@ describe("formatDay", async () => {
 });
 
 describe("team strength out of 5", () => {
-  it("shows a hundredth of the 1 to 1000 score, and changes the same way", () => {
-    expect(formatStrength(404)).toBe("4.04");
-    expect(formatStrength(512)).toBe("5.12");
-    expect(formatStrength(1)).toBe("0.01");
-    expect(formatStrengthChange(12)).toBe("+0.12");
-    expect(formatStrengthChange(-3)).toBe("−0.03");
+  it("shows a star for every 120 points of the 1 to 1000 score, and changes the same way", () => {
+    expect(formatStrength(600)).toBe("5.00");
+    expect(formatStrength(554)).toBe("4.62");
+    expect(formatStrength(1000)).toBe("8.33");
+    expect(formatStrengthChange(12)).toBe("+0.10");
+    expect(formatStrengthChange(-6)).toBe("−0.05");
     expect(formatStrengthChange(0)).toBe("0.00");
   });
 });

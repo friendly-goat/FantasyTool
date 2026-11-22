@@ -76,9 +76,12 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   all build the model with the same schedule. Rosters are always run through `fillRoster` (IR, waiver pickups,
   who leaves when a player is back) before and after a trade alike; never
   credit a trade with a pickup the team would make anyway.
-- Team strength is worked out 1 to 1000 but always shown out of 5 stars, a
-  hundredth of it (`formatStrength`, `formatStrengthChange`, `StrengthStars`;
-  never show the raw score). Grades, chances and searches use the raw score.
+- Team strength is worked out 1 to 1000 but always shown out of 5 stars, one
+  star per `STRENGTH_PER_STAR` (120) points (`strengthRating`,
+  `formatStrength`, `formatStrengthChange`, `StrengthStars`; never show the
+  raw score). A fixed scale, never rescaled to the league: if a model change
+  makes 5+ common again, ask the owner before changing the constant. Grades,
+  chances and searches use the raw score.
 - Game scores in the model are skewed (`skewedDraw`, `UPPER_TAIL_SHARE`, half
   lognormal) and a player's spread is fitted to his real two-game lock-in
   value, leaning on the typical spread for his level (`typicalSpreads`), not

@@ -1,5 +1,5 @@
 import { useId } from "react";
-import { formatStrength, STRENGTH_STARS } from "../format.ts";
+import { formatStrength, STRENGTH_STARS, strengthRating } from "../format.ts";
 
 // Team strength as stars: five, filled to the rating (a 4.04 fills four and a sliver of the
 // fifth). Above 5 the five are full and turn gold with a soft glow: rarer than a full set.
@@ -10,7 +10,7 @@ const WIDTH = 24 * STRENGTH_STARS;
 export function StrengthStars({ score, size = "md" }: { score: number; size?: "sm" | "md" }) {
   // React's ids contain colons, which a url(#…) reference does not always accept.
   const clip = `stars-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
-  const rating = score / 100;
+  const rating = strengthRating(score);
   const beyond = rating > STRENGTH_STARS;
   const filled = Math.max(0, Math.min(1, rating / STRENGTH_STARS)) * WIDTH;
   const stars = Array.from({ length: STRENGTH_STARS }, (_, index) => (

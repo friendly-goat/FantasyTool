@@ -87,8 +87,8 @@ export function Strength({ snapshot, strengths, model, stats, myRosterId, onOpen
       <div className="quiet legend explain">
         <p>
           Strength rates each roster for the rest of the season, out of 5 stars. A roster of the best free agents
-          rates about 0, and the league's best players on one roster would rate 10, so real teams sit around 3 to
-          5; above 5 the stars turn gold.
+          rates about 0, and the league's best players on one roster would rate over 8, so real teams sit around 3
+          to 4.5; above 5 is rare, and the stars turn gold.
         </p>
         <p>
           Projected weekly is what each team can expect a week: its locks a week at the share of its projections

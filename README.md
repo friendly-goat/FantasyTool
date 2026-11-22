@@ -213,11 +213,16 @@ how much the bench adds over the best nine alone.
 
 The average is put on a 1 to 1000 scale between two reference rosters from
 the same league: the best free agents (1) and the league's best players on one
-roster (1000). The app shows it out of 5 stars, a hundredth of the score
-(`formatStrength` in `src/format.ts`, `StrengthStars`): 404 reads 4.04 with
-four stars and a sliver of the fifth, and a change of 12 reads +0.12. In the
-owner's league teams rate about 3 to 4.6; the best players on one roster
-would rate 10, so above 5 is rare and shows five gold stars with a soft glow.
+roster (1000). The app shows it out of 5 stars, one star for every 120 points
+(`STRENGTH_PER_STAR`, `formatStrength` in `src/format.ts`, `StrengthStars`):
+five stars is 600, three fifths of the way to the all-star roster, and a
+change of 12 reads +0.10. It is a fixed scale, chosen once so that in the
+owner's league teams rate about 2.7 to 4.6 and above 5 (five gold stars with
+a soft glow) is rare; the best players on one roster would rate 8.3. It was a
+hundredth of the score until the model moved to the real NBA schedule, when
+every team rose about one star and three passed five (most likely because the
+all-star roster's games clash on the same nights, so it lost more of its edge
+than real teams did).
 Only the display changed: grades, chances and the trade search use the 1 to
 1000 score as before. Each player sees the same imaginary weeks on any roster, so
 before-and-after comparisons are not blurred by luck, and results are
