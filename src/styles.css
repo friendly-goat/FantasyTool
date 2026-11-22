@@ -114,9 +114,29 @@ ul {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
   color: inherit;
+}
+
+/* On a phone, iOS zooms in on any text field or dropdown under 16px when it is
+   tapped, and a home-screen app stays zoomed afterwards. */
+@media (max-width: 720px), (pointer: coarse) {
+  input,
+  select,
+  textarea {
+    font-size: max(16px, 1em);
+  }
+}
+
+/* A phone never scrolls the page sideways: wide tables and carousels scroll
+   inside their own boxes. This is only a backstop; nothing should be wider
+   than the screen in the first place. */
+@media (max-width: 720px) {
+  html {
+    overflow-x: clip;
+  }
 }
 
 /* Every dropdown draws its own chevron, with room on the right. */
@@ -3054,11 +3074,11 @@ th[aria-sort] .sort-button {
   .team-charts {
     display: flex;
     gap: 0.75rem;
-    margin: 0 -1rem;
-    padding: 0 1rem;
+    margin: 0 calc(-1 * var(--gutter-right)) 0 calc(-1 * var(--gutter-left));
+    padding: 0 var(--gutter-right) 0 var(--gutter-left);
     overflow-x: auto;
     scroll-snap-type: x mandatory;
-    scroll-padding: 0 1rem;
+    scroll-padding: 0 var(--gutter-right) 0 var(--gutter-left);
     scrollbar-width: none;
     -webkit-overflow-scrolling: touch;
   }
@@ -4685,8 +4705,12 @@ th[aria-sort] .sort-button {
        on phones without one). */
     --tab-bar-height: 3.25rem;
     --tab-bar-bottom: max(0.5rem, calc(env(safe-area-inset-bottom) - 0.75rem));
-    padding: 1rem max(0.9rem, env(safe-area-inset-right))
-      calc(var(--tab-bar-height) + 2.3rem + var(--tab-bar-bottom)) max(0.9rem, env(safe-area-inset-left));
+    /* The page's side margins. Anything that runs to the screen's edges (the chart
+       carousel) pulls out by exactly these, or the page is a pixel or two wider
+       than the screen and a home-screen app opens slightly zoomed in. */
+    --gutter-left: max(0.9rem, env(safe-area-inset-left));
+    --gutter-right: max(0.9rem, env(safe-area-inset-right));
+    padding: 1rem var(--gutter-right) calc(var(--tab-bar-height) + 2.3rem + var(--tab-bar-bottom)) var(--gutter-left);
   }
 
   /* The bar becomes a plain header that scrolls away: the app's name and
