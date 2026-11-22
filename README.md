@@ -297,7 +297,24 @@ measured or ranked); long shots appear only when there is
 nothing better, at most three, with a plain note saying so. Versions of one offer
 (the same team, the same players back and the same main piece sent, with
 only the filler changed) count as one idea: only the best version is shown.
-When you named a player to trade away, he is the main piece.
+When you named a player to trade away, he is the main piece. A player you would
+get appears in one idea at most, and one of yours in two at most (a named
+player excepted, `limitRepeats`): two versions of a trade for the same star
+read as one idea, and the best stays. When you trade away one named player,
+at least half the ideas send him alone (one for one or one for two), as long
+as enough such offers clear the same bars (worth it to you, not a big loss
+for them, nobody dropped on arrival, a realistic chance when the list has
+realistic ideas); they take the places of the lowest-ranked packages
+(display only).
+
+Injured stars come up often, and for sound reasons: moving an injured player
+creates more value than moving a healthy one (Nov 2026, on the owner's
+league: a player out a real share of the weeks left was worth a median 36%
+more to other teams than he cost his own, against 9% for healthy players),
+mostly because a team with an open IR slot carries him for free while he is
+out, and his owner, who has his stand-in already, loses only the weeks after
+he is back. The search is not tilted toward them beyond that: managers'
+small overreaction to injuries changed none of the ideas when tested.
 
 The search runs in layers, like a tree, and goes deeper only when it has to:
 

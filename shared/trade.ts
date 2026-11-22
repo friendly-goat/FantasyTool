@@ -779,6 +779,8 @@ const FIRST_LOOK_SLACK = 0.5;
 const FINALISTS = 8;
 /** One-for-ones measured in full to find one for the open search's list (see findTrades). */
 const ONE_FOR_ONE_LOOKS = 60;
+/** Single-player offers measured in full when a named player needs more of them shown. */
+const SINGLE_LOOKS = 60;
 /** Fewer realistic ideas (40% or better) than this once measured, and the next best are measured too. */
 const ENOUGH_IDEAS = 6;
 /** But no more than this many per idea shown are measured in full in all. */
@@ -820,12 +822,26 @@ function setsOfUpTo2<T>(list: T[]): T[][] {
  * Variety: a filter that lets no single player appear in more than two ideas
  * (a player you named excepted). Use it on ideas in ranked order.
  */
-export function limitRepeats<T>(idsOf: (idea: T) => string[], named: { givePlayerId?: string; getPlayerId?: string }) {
+/**
+ * Variety: a player you would get appears in one idea at most, and one of yours in two at most
+ * (a named player excepted). Different versions of a trade for the same player are one idea to
+ * the person reading the list, and the best version is kept; sending the same player in two
+ * different packages is a real choice.
+ */
+export const REPEATS = { mine: 2, theirs: 1 } as const;
+
+export function limitRepeats<T>(
+  sidesOf: (idea: T) => { mine: string[]; theirs: string[] },
+  named: { givePlayerId?: string; getPlayerId?: string },
+) {
   const seen = new Map<string, number>();
   return (idea: T) => {
-    const ids = idsOf(idea).filter((id) => id !== named.givePlayerId && id !== named.getPlayerId);
-    if (ids.some((id) => (seen.get(id) ?? 0) >= 2)) return false;
-    for (const id of ids) seen.set(id, (seen.get(id) ?? 0) + 1);
+    const { mine, theirs } = sidesOf(idea);
+    const free = (id: string) => id !== named.givePlayerId && id !== named.getPlayerId;
+    const ours = mine.filter(free);
+    const others = theirs.filter(free);
+    if (ours.some((id) => (seen.get(id) ?? 0) >= REPEATS.mine) || others.some((id) => (seen.get(id) ?? 0) >= REPEATS.theirs)) return false;
+    for (const id of [...ours, ...others]) seen.set(id, (seen.get(id) ?? 0) + 1);
     return true;
   };
 }
@@ -1364,8 +1380,8 @@ export function findTrades(
           };
         })(),
       )
-      // Variety: no single player may appear in more than two ideas (a named player excepted).
-      .filter(limitRepeats(({ offer }: { offer: TradeOffer }) => [...offer.aGives, ...offer.bGives], options));
+      // Variety: a player you would get in one idea at most, one of yours in two (a named player excepted).
+      .filter(limitRepeats(({ offer }: { offer: TradeOffer }) => ({ mine: offer.aGives, theirs: offer.bGives }), options));
 
     // A quick read can be far off (a team with players out, or strong waivers), so when too few
     // of the shortlist hold up once measured in full, the next best by the quick read are
@@ -1430,13 +1446,59 @@ export function findTrades(
           idea.result.b.grade >= BIG_LOSS &&
           !droppedOnArrival(idea.result.a) &&
           !droppedOnArrival(idea.result.b) &&
-          [...idea.offer.aGives, ...idea.offer.bGives].every((id) => (appearances.get(id) ?? 0) < 2),
+          idea.offer.aGives.every((id) => (appearances.get(id) ?? 0) < REPEATS.mine) &&
+          idea.offer.bGives.every((id) => (appearances.get(id) ?? 0) < REPEATS.theirs),
       )
       .sort((a, b) => rank(gain(b.result.a), b.chance) - rank(gain(a.result.a), a.chance))[0];
     if (swap) {
       chosen = [...shown.slice(0, Math.max(0, limit - 1)), swap].sort(
         (a, b) => order.indexOf(a.likelihood) - order.indexOf(b.likelihood) || rank(gain(b.result.a), b.chance) - rank(gain(a.result.a), a.chance),
       );
+    }
+  }
+
+  // Trading away one named player: at least half the ideas send him alone (one for one, or one
+  // for two), when enough such offers hold up. Someone set on moving one player wants to see what
+  // he fetches by himself, not only packages built around him. The best single-player offers
+  // that pass the same bars (worth it to you, not a big loss for them, no player dropped on
+  // arrival, the same variety limits, and a realistic chance when the list has realistic ideas)
+  // take the places of the lowest-ranked packages. Display only: nothing is measured differently.
+  if (options.givePlayerId && chosen.length > 0) {
+    const alone = (offer: TradeOffer) => offer.aGives.length === 1;
+    const need = Math.ceil(chosen.length / 2) - chosen.filter((idea) => alone(idea.offer)).length;
+    if (need > 0) {
+      const key = (offer: TradeOffer) => `${offer.teamB}:${offer.aGives.join("+")}:${offer.bGives.join("+")}`;
+      const shownKeys = new Set(chosen.map((idea) => key(idea.offer)));
+      const floor = outlook === "likely" || outlook === "possible" ? POSSIBLE : SCREEN_FLOOR;
+      const repeats = limitRepeats(({ offer }: { offer: TradeOffer }) => ({ mine: offer.aGives, theirs: offer.bGives }), options);
+      // The ideas staying count toward the variety limits first: the single-player ones, and the
+      // packages that keep their places (all but the lowest-ranked, as many as must make room).
+      const staying = chosen.filter((idea) => alone(idea.offer));
+      const packages = chosen.filter((idea) => !alone(idea.offer));
+      const room = Math.max(0, limit - chosen.length);
+      const keptFor = (added: number) => packages.slice(0, Math.max(0, packages.length - Math.max(0, added - room)));
+      for (const idea of [...staying, ...keptFor(need)]) repeats(idea);
+      const singles = candidates
+        .filter((candidate) => alone(candidate.offer) && !shownKeys.has(key(candidate.offer)) && candidate.chance >= SCREEN_FLOOR)
+        .sort((a, b) => b.quick - a.quick)
+        .slice(0, SINGLE_LOOKS)
+        .map((candidate) => measure(candidate))
+        .filter(
+          (idea) =>
+            gain(idea.result.a) >= minGain &&
+            idea.chance >= floor &&
+            idea.result.b.grade >= BIG_LOSS &&
+            !droppedOnArrival(idea.result.a) &&
+            !droppedOnArrival(idea.result.b),
+        )
+        .sort((a, b) => order.indexOf(a.likelihood) - order.indexOf(b.likelihood) || rank(gain(b.result.a), b.chance) - rank(gain(a.result.a), a.chance))
+        .filter(repeats)
+        .slice(0, need);
+      if (singles.length > 0) {
+        chosen = [...staying, ...keptFor(singles.length), ...singles].sort(
+          (a, b) => order.indexOf(a.likelihood) - order.indexOf(b.likelihood) || rank(gain(b.result.a), b.chance) - rank(gain(a.result.a), a.chance),
+        );
+      }
     }
   }
 

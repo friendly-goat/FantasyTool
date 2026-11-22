@@ -38,6 +38,7 @@ import {
   letterGrade,
   ideaRank,
   likelihood,
+  limitRepeats,
   playerValue,
   tradeKind,
   tradeStory,
@@ -361,6 +362,11 @@ describe("team strength and trades (against the mock league)", async () => {
     const sending = findTrades(model, snapshot, mine, situations, { givePlayerId: send.id }).ideas;
     expect(sending.length).toBeGreaterThan(0);
     for (const idea of sending) expect(idea.offer.aGives).toContain(send.id);
+    // At least half send him alone (one for one or one for two), when enough such offers hold up.
+    expect(sending.filter((idea) => idea.offer.aGives.length === 1).length).toBeGreaterThanOrEqual(Math.ceil(sending.length / 2));
+    // A player you would get is in one idea at most.
+    const received = sending.flatMap((idea) => idea.offer.bGives);
+    expect(new Set(received).size).toBe(received.length);
 
     // A mid-level target on another team.
     const other = strengths[0]!.rosterId === mine ? strengths[1]!.rosterId : strengths[0]!.rosterId;
@@ -706,6 +712,17 @@ describe("a lock-in week, on made-up players", () => {
 
   it("averages weeks in projectRoster", () => {
     expect(projectRoster(model, [player("a", [[2, 25]])])).toBe(25);
+  });
+});
+
+describe("variety in the ideas shown", () => {
+  it("lets a player you would get appear once, one of yours twice, and a named player always", () => {
+    const keep = limitRepeats((idea: { mine: string[]; theirs: string[] }) => idea, { givePlayerId: "named" });
+    expect(keep({ mine: ["a", "named"], theirs: ["x"] })).toBe(true);
+    expect(keep({ mine: ["a", "named"], theirs: ["x", "y"] })).toBe(false); // x again
+    expect(keep({ mine: ["a", "named"], theirs: ["y"] })).toBe(true); // a twice is fine
+    expect(keep({ mine: ["a"], theirs: ["z"] })).toBe(false); // a a third time
+    expect(keep({ mine: ["named", "b"], theirs: ["w"] })).toBe(true); // named player any number of times
   });
 });
 

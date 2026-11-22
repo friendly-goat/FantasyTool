@@ -180,7 +180,7 @@ function reference(rosterId: number, options: FinderOptions) {
         };
       })(),
     )
-    .filter(limitRepeats((idea: Idea) => [...idea.offer.aGives, ...idea.offer.bGives], options));
+    .filter(limitRepeats((idea: Idea) => ({ mine: idea.offer.aGives, theirs: idea.offer.bGives }), options));
   const picked = pickIdeas(kept, 8, { targeted, yourChange: gain, theirWorstGrade: (idea) => idea.result.b.grade });
   return { ...picked, considered, screened: quick.length, measured: measured.length };
 }
