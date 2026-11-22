@@ -882,15 +882,19 @@ round fits down the page and a swipe moves between teams, stopping on a
 column.
 
 Each pick carries a letter grade: F, D, C, B, A, then S in gold, with a minus
-or plus for the lower and upper third of D to A. A player's weekly value now
-(what he locks in an average week at his projected level, allowing for missed
-games) is compared with the median value of the players picked around him,
-the nearest round of picks, not counting him (`shared/draft.ts`). So a first
-pick is held to what the top of the draft turned into and a last pick to what
-the end of it did. The gap is measured in the draft's typical gap (its median
-gap, scaled to a standard deviation): C is within 0.4 of the players around
-him, each letter after that 0.8 more (`GRADE_STEP`), and S and F are
-open-ended. It is a display label only and feeds nothing else.
+or plus for the lower and upper third of D to A. Every graded player is ranked
+by his lock-in value now (what he locks in an average week at his projected
+level, so a week's bad games do not count against him, only his best one).
+That rank is where he would go if the draft were rerun today; it is compared
+with where he went, and the difference is counted in rounds
+(`shared/draft.ts`). C is within half a round; each round earlier is a step up
+(B, A, then S, open-ended) and each round later a step down (D, then F)
+(`ROUNDS_PER_GRADE`). Ranks rather than points, because values are spread far
+apart at the top of a draft and bunched at the end: going one pick from where
+he would go now is the same either way. A top pick can do no better than stay
+at the top, so the first round mostly shows C's; the high grades go to players
+who turned out far better than where they went. It is a display label only and
+feeds nothing else.
 
 A card shows one mark: the grade, or a medical cross when the player is out
 for a long stretch: about a month or more of the weeks left

@@ -3,7 +3,7 @@ import { type DraftGrade, draftGrades, GRADE_LETTERS, type GradeLetter, gradedVa
 import type { ModelPlayer, StrengthModel } from "../../shared/strength.ts";
 import type { DraftBoard, DraftSelection, LeagueSnapshot } from "../../shared/types.ts";
 import { getDraft } from "../api.ts";
-import { formatDay, formatPoints } from "../format.ts";
+import { formatDay, formatPoints, ordinal } from "../format.ts";
 import { Avatar } from "./Avatar.tsx";
 import { PlayerButton } from "./PlayerName.tsx";
 import { TeamTag } from "./TeamTag.tsx";
@@ -49,8 +49,19 @@ function injuryLabel(player: ModelPlayer, status: string | null | undefined): st
     : `${what}, no predicted return date.`;
 }
 
-function gradeLabel(pick: DraftSelection, grade: DraftGrade): string {
-  return `Taken with pick ${pick.pickNo}, grade ${grade.grade}: weekly value ${formatPoints(grade.value)}, against ${formatPoints(grade.around)} for the players picked around him.`;
+/** How far from where he went he would go now, in plain words. */
+function shiftText(grade: DraftGrade, roundSize: number): string {
+  const picks = grade.pickOrder - grade.valueRank;
+  if (picks === 0) return "right where he went";
+  const way = picks > 0 ? "earlier" : "later";
+  const size = Math.abs(picks);
+  if (size < roundSize) return `${size} ${size === 1 ? "pick" : "picks"} ${way}`;
+  const rounds = Math.round((size / roundSize) * 10) / 10;
+  return `${rounds} ${rounds === 1 ? "round" : "rounds"} ${way}`;
+}
+
+function gradeLabel(pick: DraftSelection, grade: DraftGrade, roundSize: number): string {
+  return `Taken with pick ${pick.pickNo}, grade ${grade.grade}. By lock-in value now (${formatPoints(grade.value)} a week) he ranks ${ordinal(grade.valueRank)} of the graded players: ${shiftText(grade, roundSize)}.`;
 }
 
 function splitName(name: string): [string, string] {
@@ -62,18 +73,20 @@ function splitName(name: string): [string, string] {
 function DraftCard({
   pick,
   grade,
+  roundSize,
   injury,
   pickedBy,
 }: {
   pick: DraftSelection;
   grade: DraftGrade | undefined;
+  roundSize: number;
   injury: ModelPlayer | null;
   pickedBy: string | null;
 }) {
   const positions = pick.player.positions.length > 0 ? pick.player.positions : ["?"];
   // One mark per card: the injury, or else the grade (an injured player is not graded).
   const injuryText = injury ? injuryLabel(injury, pick.player.injuryStatus) : undefined;
-  const gradeText = !injury && grade ? gradeLabel(pick, grade) : undefined;
+  const gradeText = !injury && grade ? gradeLabel(pick, grade, roundSize) : undefined;
   const label = injuryText ?? gradeText;
   const [first, last] = splitName(pick.player.name);
   return (
@@ -197,6 +210,7 @@ export function Draft({ leagueId, snapshot, model, myRosterId }: Props) {
                   key={`${round}-${slot}`}
                   pick={pick}
                   grade={grades.get(pick.pickNo)}
+                  roundSize={board.teams}
                   injury={injuryOf(model, pick.player.id)}
                   pickedBy={pickedBy}
                 />
@@ -219,7 +233,7 @@ export function Draft({ leagueId, snapshot, model, myRosterId }: Props) {
       )}
       <p className="quiet legend">
         {model
-          ? "Each pick is graded on his weekly value now (what he locks in an average week at his projected level, allowing for missed games) against the players picked around him, the nearest round of picks. C is about what that part of the draft turned into; B, A and then S, in gold, are better by more each step, and D and F worse. An injury is luck, not the pick: a player out about a month or more is not graded, and one out for a shorter while is graded on his value once he is back. Hover over a grade for the numbers, or select a card for the player's details."
+          ? "Each pick is graded on where he would go if the draft were rerun today, ranked by lock-in value (what he locks in an average week at his projected level, so only his best game of the week counts), against where he went. C is within half a round of it; each round earlier is a step up to B, A and then S in gold, and each round later a step down to D and F. An injury is luck, not the pick: a player out about a month or more is not graded, and one out for a shorter while is graded on his value once he is back. Hover over a grade for the numbers, or select a card for the player's details."
           : "Grades for each pick appear once player stats have loaded."}
       </p>
     </section>

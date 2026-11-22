@@ -166,8 +166,9 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   so a league-wide rate changes nothing there). Cards
   keep their full size while loading (no layout shift).
 - The Draft tab's letter grades (`shared/draft.ts`, F to S with +/- on D to A,
-  S in the stars' gold) are a display label only: weekly value now against the
-  median of the nearest round of picks, in the draft's typical gap. A card shows
+  S in the stars' gold) are a display label only: rank by lock-in value now
+  (where he would go in a redraft) against where he went, in rounds (C within
+  half a round, one letter per round). A card shows
   one mark, the grade or the injury cross. Only a long injury (`longInjury`,
   about a month or more) shows the cross, gets no grade and is left out of
   others' comparisons; a shorter one is graded on his value once back. Never feed them into strength, trade grades
