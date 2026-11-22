@@ -1,5 +1,5 @@
-import type { TeamStrength } from "../../shared/strength.ts";
-import type { LeagueSnapshot } from "../../shared/types.ts";
+import type { StrengthModel, TeamStrength } from "../../shared/strength.ts";
+import type { LeagueSnapshot, StatsReport } from "../../shared/types.ts";
 import { Standings } from "./Standings.tsx";
 import { Strength } from "./Strength.tsx";
 
@@ -15,12 +15,14 @@ interface Props {
   onModeChange: (mode: RankingMode) => void;
   snapshot: LeagueSnapshot;
   strengths: TeamStrength[] | null;
+  model: StrengthModel | null;
+  stats: StatsReport | null;
   myRosterId: number | null;
   onOpenTeam: (rosterId: number) => void;
 }
 
 /** The league's teams ranked two ways: the standings as they are, and strength over the rest of the season. */
-export function Rankings({ mode, onModeChange, snapshot, strengths, myRosterId, onOpenTeam }: Props) {
+export function Rankings({ mode, onModeChange, snapshot, strengths, model, stats, myRosterId, onOpenTeam }: Props) {
   return (
     <section aria-label="Rankings">
       <div className="segmented" role="group" aria-label="Rank teams by">
@@ -39,7 +41,14 @@ export function Rankings({ mode, onModeChange, snapshot, strengths, myRosterId, 
       {mode === "standings" ? (
         <Standings snapshot={snapshot} myRosterId={myRosterId} onOpenTeam={onOpenTeam} />
       ) : (
-        <Strength snapshot={snapshot} strengths={strengths} myRosterId={myRosterId} onOpenTeam={onOpenTeam} />
+        <Strength
+          snapshot={snapshot}
+          strengths={strengths}
+          model={model}
+          stats={stats}
+          myRosterId={myRosterId}
+          onOpenTeam={onOpenTeam}
+        />
       )}
     </section>
   );

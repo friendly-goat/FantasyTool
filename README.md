@@ -434,7 +434,9 @@ would lock, and what the bench adds by rotating in. Beside them, highlighted,
 Expect a week: what the team can expect a week at the share of its projections
 it has really scored, the same figure as Week by week's average (see
 "Projected points as the league really scores them"); on a phone it sits top
-right beside the rating, on wider screens at the right end of the facts.
+right beside the rating, on wider screens at the right end of the facts. The
+Rankings tab's Team strength table shows the same figure as Projected weekly,
+with locks a week beside it on wider screens.
 
 The table below is the roster as it is best set for the rest of the season,
 not the lineup set in Sleeper (managers shuffle players in on purpose so they

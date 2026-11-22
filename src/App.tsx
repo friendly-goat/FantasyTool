@@ -431,6 +431,8 @@ export function App() {
                 onModeChange={setRankingMode}
                 snapshot={snapshot}
                 strengths={strengths}
+                model={model}
+                stats={stats}
                 myRosterId={myRosterId}
                 onOpenTeam={openTeam}
               />

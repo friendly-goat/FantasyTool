@@ -1998,6 +1998,13 @@ th[aria-sort] .sort-button {
   font-size: 0.75rem;
 }
 
+.team-chart-placeholder.strength-expect-placeholder {
+  display: inline-block;
+  width: 3.75rem;
+  height: 0.9em;
+  vertical-align: middle;
+}
+
 .team-chart-placeholder.roster-strength-expect-placeholder {
   width: 6rem;
   height: 1.6rem;
@@ -4934,7 +4941,8 @@ th[aria-sort] .sort-button {
   }
 
   .roster-strength-facts div {
-    align-items: flex-start;
+    align-items: center;
+    text-align: center;
   }
 
   .roster-strength-facts dt {
