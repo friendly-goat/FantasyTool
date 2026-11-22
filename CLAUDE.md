@@ -74,7 +74,7 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   schedule, `/schedule-ahead` from this Monday; made-up weeks only without
   it). The page, the search worker and the server's saved projections must
   all build the model with the same schedule. Rosters are always run through `fillRoster` (IR, waiver pickups,
-  who leaves when a player is back) before and after a trade alike; never
+  who leaves when a player is back, judged on the weeks from his return, `expectedOnceBack`) before and after a trade alike; never
   credit a trade with a pickup the team would make anyway.
 - Team strength is worked out 1 to 1000 but always shown out of 5 stars, one
   star per `STRENGTH_PER_STAR` (120) points (`strengthRating`,

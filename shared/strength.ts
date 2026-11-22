@@ -117,6 +117,12 @@ export interface ModelPlayer extends PlayerRef {
   healthy: number;
   /** Expected locked score on his own in an average week, allowing for missed games. */
   expected: number;
+  /**
+   * Expected locked score in each real week left (the model's calendar), the weeks he is out
+   * counting as zero: `expected` is their average. Who leaves when a player is back from IR is
+   * judged on the weeks from then on (expectedOnceBack), not on weeks already behind the team.
+   */
+  weekly: Float32Array;
   /** Which lineup slots he may fill, in slot order. */
   eligible: boolean[];
   /** Expected locked score with 0, 1, 2, 3 or 4 games left to choose from. */
@@ -334,18 +340,18 @@ function finishPlayer(
   const meanBack = back ? back.reduce((sum, chance) => sum + chance, 0) / back.length : 1;
   const real = inputs.realGames && inputs.realGames.length > 0 ? inputs.realGames : null;
   let healthy: number;
-  let expected: number;
+  let weekly: Float32Array;
   if (real) {
     // On the real schedule: each real week left with its own number of games (none in a week
     // his team does not play), and with an injury his chance of being back that week.
     healthy = real.reduce((sum, games) => sum + waitValue[games]!, 0) / real.length;
-    expected =
-      real.reduce((sum, games, week) => sum + weekValue(games, availability * (back ? back[week % back.length]! : 1)), 0) / real.length;
+    weekly = Float32Array.from(real, (games, week) => weekValue(games, availability * (back ? back[week % back.length]! : 1)));
   } else {
     healthy = WEEK_SHAPES.reduce((sum, shape) => sum + shape.share * waitValue[shape.games]!, 0);
     // An average week over the weeks left: with an injury, the weeks he is out count as zero.
-    expected = back ? back.reduce((sum, chance) => sum + expectedAt(availability * chance), 0) / back.length : expectedAt(availability);
+    weekly = back ? Float32Array.from(back, (chance) => expectedAt(availability * chance)) : Float32Array.of(expectedAt(availability));
   }
+  const expected = weekly.reduce((sum, value) => sum + value, 0) / weekly.length;
   return {
     ...ref,
     ...base,
@@ -353,6 +359,7 @@ function finishPlayer(
     spread,
     healthy,
     expected,
+    weekly,
     eligible: slots.map((slot) => slotAccepts(slot, ref.positions)),
     waitValue,
     gameDay,
@@ -888,15 +895,35 @@ export function standIn(model: StrengthModel, player: ModelPlayer, injured: Mode
     }
   }
   const share = back ? injured.outShare : 1;
+  const weekly = Float32Array.from(player.weekly, (value, week) => value * (back ? 1 - back[week % back.length]! : 1));
   const made: ModelPlayer = {
     ...player,
     id,
     gameDay,
+    weekly,
     expected: player.expected * share,
     availability: player.availability * share,
   };
   model.extra.set(id, made);
   return made;
+}
+
+/**
+ * A player's expected locked score in an average week once `injured` is back: his real weeks left,
+ * each weighted by the chance `injured` is back that week. With no return window, all weeks count.
+ */
+export function expectedOnceBack(player: ModelPlayer, injured: ModelPlayer): number {
+  const back = injured.back;
+  if (!back || back.length === 0) return player.expected;
+  const weeks = Math.max(back.length, player.weekly.length);
+  let total = 0;
+  let weight = 0;
+  for (let week = 0; week < weeks; week++) {
+    const chance = back[week % back.length]!;
+    total += chance * player.weekly[week % player.weekly.length]!;
+    weight += chance;
+  }
+  return weight > 0 ? total / weight : player.expected;
 }
 
 export interface Pickup {
@@ -1000,7 +1027,9 @@ export function fillRoster(
     ids = [...without, player.id];
   }
 
-  // Each player on IR who is back this season pushes out the least valuable active player then.
+  // Each player on IR who is back this season pushes out the least valuable active player then:
+  // valued on the weeks once he is back, so a player who is himself out for now but back by then
+  // is not the one to go (a pickup made for the open spot is).
   const adds: Pickup[] = picked.map((player) => ({ player, forInjured: null }));
   const leaving: FilledRoster["leaving"] = [];
   const going = new Set<string>();
@@ -1008,7 +1037,8 @@ export function fillRoster(
   for (const injured of returning) {
     const candidates = [...active, ...picked].filter((player) => !going.has(player.id));
     if (candidates.length === 0) break;
-    const weakest = candidates.reduce((low, player) => (player.expected < low.expected ? player : low));
+    const worth = new Map(candidates.map((player) => [player, expectedOnceBack(player, injured)]));
+    const weakest = candidates.reduce((low, player) => (worth.get(player)! < worth.get(low)! ? player : low));
     going.add(weakest.id);
     ids = ids.map((id) => (id === weakest.id ? standIn(model, weakest, injured).id : id));
     const pickup = adds.find((add) => add.player === weakest);

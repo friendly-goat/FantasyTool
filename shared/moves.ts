@@ -65,7 +65,9 @@ export function topMoves(
           forInjured ? `Pick up ${player.name} until ${forInjured.name} is back` : `Pick up ${player.name}`,
         ),
         ...idea.result.a.drops.map((player) => `Drop ${player.name}`),
-        ...idea.result.a.leaving.map(({ player, when }) => `Drop ${player.name} when ${when.name} is back`),
+        ...idea.result.a.leaving.map(({ player, when, pickedUp }) =>
+          pickedUp ? `Pick up ${player.name} until ${when.name} is back` : `Drop ${player.name} when ${when.name} is back`,
+        ),
       ],
       gets: idea.result.a.gets,
       gives: idea.result.a.gives,

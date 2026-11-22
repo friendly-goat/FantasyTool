@@ -5,7 +5,16 @@ import { createMockStats, mockInjuries } from "../server/stats/mock.ts";
 import { StatsService } from "../server/stats/service.ts";
 import { rosterPlayers } from "./analysis.ts";
 import { teamSituations } from "./insight.ts";
-import { buildModel, fillRoster, FREE_UPGRADES, leagueStrength, type ModelPlayer, projectedWeekly, reserveEligible } from "./strength.ts";
+import {
+  buildModel,
+  expectedOnceBack,
+  fillRoster,
+  FREE_UPGRADES,
+  leagueStrength,
+  type ModelPlayer,
+  projectedWeekly,
+  reserveEligible,
+} from "./strength.ts";
 import {
   acceptance,
   chanceWord,
@@ -255,14 +264,62 @@ describe("injuries, IR and waiver pickups (against the mock league)", async () =
       for (const { player, when } of goes) {
         expect(when.outShare).toBeLessThan(1);
         expect(filled.ids).toContain(`${player.id}~${when.id}`);
-        // Everyone who stays is worth at least as much as whoever goes first.
+        // Everyone who stays is worth at least as much as whoever goes first, once he is back.
+        const first = goes[0]!;
         const staying = filled.ids.flatMap((id) => model.players.get(id) ?? []).filter((p) => !filled.reserve.includes(p));
-        expect(staying.every((p) => p.expected >= goes[0]!.player.expected)).toBe(true);
+        expect(staying.every((p) => expectedOnceBack(p, first.when) >= expectedOnceBack(first.player, first.when))).toBe(true);
       }
       const active = filled.ids.filter((id) => !filled.reserve.some((p) => p.id === id));
       expect(active.length).toBeLessThanOrEqual(model.rosterLimits.active);
     }
   });
+  it("never drops a player who is out for now but back before the player who takes his IR slot", () => {
+    // A team with a good player out for a few weeks on IR sends two for one to get a player out
+    // longer. The newcomer takes the IR slot and the first player waits on the bench; when the
+    // newcomer is back, the one to go is the pickup made for the open spot, never the first player,
+    // even though his weeks out make his average over the season lower than the pickup's.
+    const local = buildModel(snapshot, { ...stats, players: { ...stats.players } });
+    const weeks = local.calendar.weeks.length;
+    const team = snapshot.teams.find((candidate) => candidate.rosterId === strengths[2]!.rosterId)!;
+    const other = snapshot.teams.find((candidate) => candidate.rosterId === strengths[5]!.rosterId)!;
+    for (const id of [...ids(team.rosterId), ...ids(other.rosterId)]) local.players.get(id)!.irEligible = false;
+    const injure = (player: ModelPlayer, out: number) => {
+      const back = Float32Array.from({ length: weeks }, (_, week) => (week < out ? 0 : 1));
+      player.irEligible = true;
+      player.back = back;
+      player.outShare = out / weeks;
+      const weekly = player.weekly;
+      player.weekly = Float32Array.from(back, (chance, week) => weekly[week % weekly.length]! * chance);
+      player.expected = player.weekly.reduce((sum, value) => sum + value, 0) / player.weekly.length;
+    };
+    const roster = ids(team.rosterId).map((id) => local.players.get(id)!).sort((a, b) => b.expected - a.expected);
+    const bestFree = Math.max(...local.freeAgentIds.slice(0, 20).map((id) => local.players.get(id)!.expected));
+    // A player clearly better than any free agent, out long enough to average less this season than
+    // anyone staying on the roster and any free agent.
+    const first = roster.find((p) => p.expected > bestFree * 1.1 && p.expected < bestFree * 1.6)!;
+    // The roster the trade is made on (after the free upgrades a two-for-one allows), less the two
+    // mid-roster players the team sends.
+    const kept = fillRoster(local, ids(team.rosterId), new Set(), [], FREE_UPGRADES).kept.map((id) => local.players.get(id)!);
+    const others = roster.filter((p) => p !== first && kept.includes(p));
+    const two = others.slice(Math.floor(others.length / 2) - 1, Math.floor(others.length / 2) + 1);
+    const lowest = Math.min(bestFree, ...kept.filter((p) => p !== first && !two.includes(p)).map((p) => p.expected));
+    const out = Math.ceil(weeks * (1 - (lowest * 0.9) / first.expected));
+    expect(out).toBeLessThan(weeks - 4);
+    injure(first, out);
+    expect(first.expected).toBeLessThan(lowest);
+    const target = rosterPlayers(other).map((ref) => local.players.get(ref.id)!).sort((a, b) => b.expected - a.expected)[0]!;
+    injure(target, out + 3);
+    const result = evaluateTrade(local, snapshot, { teamA: team.rosterId, teamB: other.rosterId, aGives: two.map((p) => p.id), bGives: [target.id] });
+    expect(result.a.reserve).toEqual([target]);
+    expect(result.a.leaving.some((entry) => entry.player === first)).toBe(false);
+    expect(result.a.drops).not.toContain(first);
+    // Sending two for one, nobody on the roster now goes, then or later.
+    expect(result.a.leaving.filter((entry) => !entry.pickedUp)).toHaveLength(0);
+    expect(result.a.drops).toHaveLength(0);
+    const onIr = [{ id: first.id, name: first.name }];
+    expect(reserveMoves(result.a, onIr, local).join(" ")).toContain(`${first.name} waits on the bench until he is back`);
+  });
+
   it("never credits a trade with a free agent the team could pick up anyway", () => {
     // Adding a player worth less than the best free agent to a trade changes nothing: either way
     // the team swaps him for that free agent (a free upgrade), before the trade and after it.

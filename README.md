@@ -427,8 +427,10 @@ Every roster is run as its manager would: a player marked out goes on IR
 (most out first, one per IR slot) and takes no active spot; open spots are
 filled with the free agent who helps most; too many active players means
 dropping the least valuable. When a player on IR is back, the least valuable
-active player (a pickup or not) plays only until then; nobody goes for a
-player out for the season. Rosters are filled the same way before and after
+active player (a pickup or not) plays only until then, valued on the weeks
+from that return on: a player who is out now but back by then (moved off IR
+to make room for someone out longer) waits on the bench and is not the one
+to go. Nobody goes for a player out for the season. Rosters are filled the same way before and after
 a trade, so a trade is credited only with the spots it opens, and a pickup
 the team makes either way is not counted as the trade's. For the same reason
 a trade that opens a roster spot for a team is made on its roster after

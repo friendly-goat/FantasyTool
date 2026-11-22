@@ -238,10 +238,10 @@ function TeamManagement({ side, model, team }: { side: TradeSide; model: Strengt
       value: value(pickup.player),
     })),
     ...side.drops.map((player) => ({ player, joins: false, note: "Dropped to make room", value: value(player) })),
-    ...side.leaving.map(({ player, when }) => ({
+    ...side.leaving.map(({ player, when, pickedUp }) => ({
       player,
-      joins: false,
-      note: `Dropped when ${when.name} is back`,
+      joins: pickedUp,
+      note: pickedUp ? pickupLabel({ player, forInjured: when }) : `Dropped when ${when.name} is back`,
       value: value(player),
     })),
   ];
@@ -299,7 +299,8 @@ function SideResult({ side, team, scale, model }: { side: TradeSide; team: Team 
           label={`Team strength ${formatStrength(side.strengthBefore)} to ${formatStrength(side.strengthAfter)} out of 5`}
         />
         <p className="quiet effect-note">
-          Strength {side.strengthBefore} to {side.strengthAfter}. Projected weekly score{" "}
+          Strength {formatStrength(side.strengthBefore)} to {formatStrength(side.strengthAfter)} out of 5. Projected weekly
+          score{" "}
           {formatPoints(side.projectedAfter)} ({formatSigned(side.teamChange)}).
         </p>
         {phases && (

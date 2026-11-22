@@ -50,8 +50,12 @@ export interface TradeSide {
   pickups: Pickup[];
   /** Players the trade puts on injured reserve. */
   toReserve: ModelPlayer[];
-  /** Players already on the roster who, after the trade, are dropped when a player on IR is back. */
-  leaving: { player: ModelPlayer; when: ModelPlayer }[];
+  /**
+   * Players who, after the trade, are dropped when a player on IR is back. `pickedUp`: he is not on
+   * the team now but a free agent its free upgrades pick up anyway, so after the trade he is a
+   * waiver pickup only until then (shown that way; never counted as the trade's pickup).
+   */
+  leaving: { player: ModelPlayer; when: ModelPlayer; pickedUp: boolean }[];
   /** Players received who could go on IR, but every IR slot is taken (by `reserve`), so they use a bench spot. */
   noReserve: ModelPlayer[];
   /** Who is on IR after the trade. */
@@ -213,7 +217,9 @@ export function measureSide(
     .map((player) => player.id);
   const adds = pickups.map((add) => add.player.id);
   const toReserve = filled.reserve.filter((player) => !baseline.filled.reserve.includes(player));
-  const leaving = filled.leaving.filter(({ player }) => !baseline.filled.leaving.some((entry) => entry.player === player));
+  const leaving = filled.leaving
+    .filter(({ player }) => !baseline.filled.leaving.some((entry) => entry.player === player))
+    .map((entry) => ({ ...entry, pickedUp: !before.includes(entry.player.id) && !gets.includes(entry.player.id) }));
   const noReserve = filled.reserve.length > 0 ? players(model, gets).filter((player) => player.irEligible && !filled.reserve.includes(player)) : [];
 
   // The team as it is now (as Rankings shows it), plus what the trade changes.
@@ -439,7 +445,12 @@ export function tradeStory(
     );
   }
   for (const pickup of a.pickups) notes.push(pickupNote(pickup));
-  for (const { player, when } of a.leaving) notes.push(`${player.name} is dropped when ${when.name} is back from IR.`);
+  for (const { player, when, pickedUp } of a.leaving)
+    notes.push(
+      pickedUp
+        ? pickupNote({ player, forInjured: when })
+        : `${player.name} is dropped when ${when.name} is back from IR.`,
+    );
   for (const player of a.noReserve) notes.push(noReserveNote(player, a.reserve));
 
   if (profiles) {
@@ -698,7 +709,7 @@ export function reserveMoves(
     const stillOut = model.players.get(player.id)?.irEligible ?? false;
     lines.push(
       stillOut && kept
-        ? `Move ${player.name} off IR to make room for ${kept}, who is out longer.`
+        ? `Move ${player.name} off IR to make room for ${kept}, who is out longer. ${player.name} waits on the bench until he is back.`
         : `Move ${player.name} off IR: he is no longer out.`,
     );
   }
