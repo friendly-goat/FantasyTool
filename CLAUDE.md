@@ -99,6 +99,10 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   `settings.reserve_slots`, not `roster_positions`.
 - The owner wants analysis that finds what he would not notice himself, done
   with data in code. No chatbot or LLM inside the app.
+- My team's roster table shows the best lineup for the rest of the season
+  (`bestNineLineup`, picked by weekly value, the nine "best nine alone"
+  counts), never the lineup set in Sleeper; full health (used by the
+  acceptance chance) still picks its nine by value when fit.
 - The user's own team is chosen once per league (`myRosterId` in `src/App.tsx`).
   Features that give advice take that team's point of view.
 - Player stats come through the `StatsProvider` interface
@@ -137,9 +141,12 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   leaves out locks and drifts after the week): they are the change in the
   standings' points for (`shared/weekScores.ts`, ledger in storage), or weeks
   recorded from Sleeper's app (`server/recordedWeeks.ts`, checked against
-  points for and against). Projected weeks on the charts are scaled by
-  each team's rate of real scores to projections, the shape's points by the
-  league's rate only (`shared/realisation.ts`, projections saved weekly by
+  points for and against). Projected weeks on the charts take off each
+  team's shortfall from a perfectly run week (average times one less its
+  rate of real scores to projections; taken off, not scaled, so weekly swings
+  keep their size), the shape's points the league's shortfall only, and the
+  weeks-ahead range is the likely high and low score, not the spread of team
+  averages (`shared/realisation.ts`, projections saved weekly by
   the server); display only, never strength (the 1-1000 scale is relative,
   so a league-wide rate changes nothing there). Cards
   keep their full size while loading (no layout shift).

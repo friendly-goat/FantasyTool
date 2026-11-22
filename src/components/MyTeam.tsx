@@ -1,9 +1,10 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import { rosterPlayers } from "../../shared/analysis.ts";
 import type { TeamSituation } from "../../shared/insight.ts";
 import type { Move } from "../../shared/moves.ts";
 import { searchMoves } from "../search.ts";
-import { TeamCharts } from "./TeamCharts.tsx";
-import type { StrengthModel, TeamStrength } from "../../shared/strength.ts";
+import { TeamCharts, useProfiles } from "./TeamCharts.tsx";
+import { bestNineLineup, type StrengthModel, type TeamStrength } from "../../shared/strength.ts";
 import type { TradeOffer } from "../../shared/trade.ts";
 import type { LeagueSnapshot, PlayerRef, StatsReport, Team } from "../../shared/types.ts";
 import { formatPoints, formatRecord, formatSigned, formatWholeChange, ordinal } from "../format.ts";
@@ -86,11 +87,9 @@ export function MyTeam({ snapshot, stats, model, strengths, team, onChangeTeam, 
   const teamName = (rosterId: number | null) =>
     snapshot.teams.find((candidate) => candidate.rosterId === rosterId)?.teamName ?? "another team";
 
-  const rows: { slot: string; player: PlayerRef | null }[] = [
-    ...team.starters,
-    ...team.bench.map((player) => ({ slot: "BN", player })),
-    ...team.reserve.map((player) => ({ slot: "IR", player })),
-  ];
+  const profiles = useProfiles(snapshot, model, strengths, players, stats?.allowed);
+  const profile = profiles?.get(team.rosterId) ?? null;
+  const rows = useMemo(() => bestLineup(model, team), [model, team]);
 
   return (
     <section aria-label="My team">
@@ -115,7 +114,7 @@ export function MyTeam({ snapshot, stats, model, strengths, team, onChangeTeam, 
         </button>
       </div>
 
-      <TeamCharts snapshot={snapshot} model={model} strengths={strengths} stats={players} allowed={stats?.allowed} rosterId={team.rosterId} />
+      <TeamCharts snapshot={snapshot} profile={profile} />
 
       <h3 className="panel-heading">Roster</h3>
       <div className="roster-card">
@@ -151,6 +150,14 @@ export function MyTeam({ snapshot, stats, model, strengths, team, onChangeTeam, 
               <p className="quiet roster-strength-note">
                 Points locked in an average week for the rest of the season, if you set the best lineup each day. The
                 bench adds by rotating into open slots and covering missed games.
+                {profile?.ahead && profile.rate.weeks > 0 && (
+                  <>
+                    {" "}
+                    So far you have scored about {percent.format(profile.rate.team)} of your projections, so expect about{" "}
+                    {formatPoints(profile.ahead.average)} a week (week by week, above).
+                  </>
+                )}
+                {model && " Below, your best nine by weekly value, which may differ from the lineup set in Sleeper."}
               </p>
             </>
           ) : (
@@ -338,4 +345,30 @@ export function MyTeam({ snapshot, stats, model, strengths, team, onChangeTeam, 
       )}
     </section>
   );
+}
+
+/**
+ * The roster as it is best set for the rest of the season: the best nine by weekly value in
+ * their slots (bestNineLineup, the nine team strength counts), then the rest of the active
+ * roster by weekly value, then injured reserve. Sleeper's own lineup until the stats load.
+ */
+function bestLineup(model: StrengthModel | null, team: Team): { slot: string; player: PlayerRef | null }[] {
+  if (!model) {
+    return [
+      ...team.starters,
+      ...team.bench.map((player) => ({ slot: "BN", player })),
+      ...team.reserve.map((player) => ({ slot: "IR", player })),
+    ];
+  }
+  const refs = new Map(rosterPlayers(team).map((player) => [player.id, player]));
+  const nine = bestNineLineup(model, [...refs.keys()]);
+  const used = new Set(nine.flatMap((row) => (row.player ? [row.player.id] : [])));
+  const value = (player: PlayerRef) => model.players.get(player.id)?.expected ?? 0;
+  const reserve = new Set(team.reserve.map((player) => player.id));
+  const rest = [...refs.values()].filter((player) => !used.has(player.id));
+  return [
+    ...nine.map((row) => ({ slot: row.slot, player: row.player ? (refs.get(row.player.id) ?? null) : null })),
+    ...rest.filter((player) => !reserve.has(player.id)).sort((a, b) => value(b) - value(a)).map((player) => ({ slot: "BN", player })),
+    ...rest.filter((player) => reserve.has(player.id)).map((player) => ({ slot: "IR", player })),
+  ];
 }

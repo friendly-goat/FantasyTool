@@ -424,8 +424,21 @@ while out, and the trade card says who holds the IR slot.
 
 The roster opens with the team's strength: the 1 to 1000 score and its rank,
 what the team locks in an average week, what its best nine alone would lock,
-and what the bench adds by rotating in. The week's matchup is no longer shown
-here (see [Live matchup](#live-matchup)).
+and what the bench adds by rotating in. Once finished weeks are in, the note
+adds what the team can expect a week at the share of its projections it has
+really scored, the same figure as Week by week's average (see "Projected
+points as the league really scores them").
+
+The table below is the roster as it is best set for the rest of the season,
+not the lineup set in Sleeper (managers shuffle players in on purpose so they
+are eligible to lock a big game): the best nine by weekly value in their slots
+(`bestNineLineup`, the same nine as "best nine alone"), then the rest of the
+active roster by weekly value, then injured reserve. Weekly value is a
+player's expected locked score in an average week, missed games and injury
+return dates included, so a player out for a long time drops to the bench on
+his own. (Full health, which the acceptance chance uses for how much of a
+team is out, still picks its nine by what each is worth when fit.) The week's
+matchup is no longer shown here (see [Live matchup](#live-matchup)).
 
 ### Team charts (My team)
 
@@ -465,9 +478,15 @@ charts fade in; while newer data is measured the last charts stay on screen.
   (`/api/league/:id/history`, from `shared/weekScores.ts`; see "Finished
   weeks' scores" below), in a shaded band with solid dots,
   then your projected score in each real week left (lighter line, open dots,
-  after a dotted line), against the league's average and range. The note
-  gives your average and rank so far, and your projected average from here
-  and its rank. The projections still use the model's own spread of games
+  after a dotted line), against the league's average and range. The range
+  reads the same both sides of the line: for a finished week the real high
+  and low score, for a week ahead the likely high and low (the best and worst
+  of the teams' scores in each imaginary week standing for it, averaged; the
+  spread of the teams' averages alone was far narrower than any real week).
+  Over weeks 1 to 4 the real high averaged 421 and the low 287; the likely
+  high and low ahead come to about 408 and 289. The note gives your average
+  and rank so far, and your projected average from here and its rank, as a
+  share of your locks a week (the team strength figure under it). The projections still use the model's own spread of games
   (`teamSchedule`), not the real schedule, so a single projected week's ups
   and downs are mostly noise; only injuries move them for real.
 
@@ -480,14 +499,19 @@ strength, grades or trade ideas.
 The lock-in simulation plays every team as a manager who rotates the bench
 into each open slot every day and locks well. That is what a team can score,
 not what most do: over weeks 1 to 4 the owner's league scored about 87% of it
-(the owner's team about 97%). So the team charts scale projected points by
-how much of its projection a team really scores (`shared/realisation.ts`):
-each finished week's real score against the projection for that week. The
-weeks ahead take the team's own rate (a forecast of its scores). The shape's
-ceiling, floor and depth take the league's rate, the same for everyone: the
-shape compares rosters, and a team's own rate would move it past teams with
-better rosters (a 5% rate is as wide as the league's whole spread of
-ceilings). The server saves every team's
+(the owner's team about 97%). So the team charts take off what a team falls
+short of a perfectly run week (`shared/realisation.ts`): its average times
+one less the share of its projections it really scores, measured from each
+finished week's real score against the projection for that week. It is taken
+off, not scaled: a team's good and bad weeks swing as widely as the model's
+(real weeks 1 to 4 swung by 36 points within a team, the model's by 33), so
+scaling would have squeezed the range. The weeks ahead take the team's own
+rate (a forecast of its scores; their average is the team's locks a week less
+its shortfall, so it ties to the figure on the roster card). The shape's
+ceiling and floor take the league's shortfall and depth the league's rate,
+the same for everyone: the shape compares rosters, and a team's own rate
+would move it past teams with better rosters (a 5% rate is as wide as the
+league's whole spread of ceilings). The server saves every team's
 projection once a week (`projections-v1-<league>`, with the same model the
 page builds); weeks before it began use today's projection at half weight. A
 team's rate starts from the league's as if it had 2 weeks of its own and

@@ -65,7 +65,7 @@ function cachedProfiles(model: StrengthModel | null, extras: Extras | null, allo
  * Every team's profile. Worked out after the page has painted (it takes a moment), so the empty
  * frames show first; while a newer model is being measured the last profiles stay on screen.
  */
-function useProfiles(
+export function useProfiles(
   snapshot: LeagueSnapshot,
   model: StrengthModel | null,
   strengths: TeamStrength[] | null,
@@ -128,24 +128,8 @@ function shapeNote(axis: ProfileAxis, rate: number): string {
   }
 }
 
-export function TeamCharts({
-  snapshot,
-  model,
-  strengths,
-  stats,
-  allowed,
-  rosterId,
-}: {
-  snapshot: LeagueSnapshot;
-  model: StrengthModel | null;
-  strengths: TeamStrength[] | null;
-  stats: Record<string, PlayerStats>;
-  /** How many fantasy points each NBA team gives up, against the league average (StatsReport.allowed). */
-  allowed: Record<string, number> | undefined;
-  rosterId: number;
-}) {
-  const profiles = useProfiles(snapshot, model, strengths, stats, allowed);
-  const profile = profiles?.get(rosterId);
+/** The charts for one team; `profile` is null while the figures load (useProfiles, called by the page so the roster card can use them too). */
+export function TeamCharts({ snapshot, profile }: { snapshot: LeagueSnapshot; profile: TeamProfile | null }) {
   const teams = snapshot.teams.length;
   const scroller = useRef<HTMLDivElement>(null);
   const [page, setPage] = useState(0);
@@ -191,7 +175,7 @@ export function TeamCharts({
         : "",
     profile.ahead
       ? `Projected ${formatPoints(profile.ahead.average)} from here (${ordinal(profile.ahead.rank)})${
-          profile.rate.weeks > 0 ? `, at ${percent(profile.rate.team)} of a perfectly run week` : ""
+          profile.rate.weeks > 0 ? `: ${percent(profile.rate.team)} of your ${formatPoints(profile.ahead.locks)} locks a week` : ""
         }.`
       : "",
   ]
@@ -230,11 +214,9 @@ export function TeamCharts({
               onFocus={(point) =>
                 onFocus(
                   point &&
-                    `Week ${point.week}, ${point.final ? "final" : "projected"}: ${formatPoints(point.team)}, ${ordinal(point.rank)} of ${teams}. League average ${formatPoints(point.leagueAverage)}.${
-                      point.final || profile.rate.weeks === 0
-                        ? ""
-                        : ` Scaled to the ${percent(profile.rate.team)} of projections you really score (league ${percent(profile.rate.league)}).`
-                    }`,
+                    `Week ${point.week}, ${point.final ? "final" : "projected"}: ${formatPoints(point.team)}, ${ordinal(point.rank)} of ${teams}. League average ${formatPoints(point.leagueAverage)}, ${
+                      point.final ? "high" : "likely high"
+                    } ${formatPoints(point.leagueHigh)}, low ${formatPoints(point.leagueLow)}.`,
                 )
               }
             />

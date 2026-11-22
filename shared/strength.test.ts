@@ -363,6 +363,19 @@ describe("team strength and trades (against the mock league)", async () => {
     }
   });
 
+  it("picks the best nine by weekly value, so a player out for the season sits, while full health still counts him", () => {
+    const team = strengths[0]!;
+    const roster = ids(team.rosterId);
+    const star = bestNineLineup(model, roster).find((entry) => entry.player)!.player!;
+    const before = rosterStrength(model, roster);
+    // The same model with the star worth nothing over the rest of the season (out for it).
+    const out: StrengthModel = { ...model, players: new Map(model.players) };
+    out.players.set(star.id, { ...star, expected: 0 });
+    const lineup = bestNineLineup(out, roster);
+    expect(lineup.some((entry) => entry.player?.id === star.id)).toBe(false);
+    expect(rosterStrength(out, roster).fullHealth).toBeCloseTo(before.fullHealth);
+  });
+
   it("names the thinnest and deepest spots only when they matter", () => {
     const note = (position: string, need: number, cover: number) => ({ position, need, cover, best: null });
     const profile = [note("PG", 0.2, 3), note("SF", 2, 0.4), note("C", 0.4, 0.5)];

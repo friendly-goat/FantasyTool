@@ -63,9 +63,12 @@ describe("team profiles (against the mock league)", async () => {
       expect(point.rank).toBeGreaterThanOrEqual(1);
       expect(point.rank).toBeLessThanOrEqual(snapshot.teams.length);
     }
-    // The weeks ahead, averaged and ranked against the league's averages.
+    // The weeks ahead on average are the team's locks a week (team strength's figure), ranked.
     const averages = [...profiles.values()].map((entry) => entry.ahead!.average);
-    expect(profile.ahead!.average).toBeCloseTo(profile.weeks.reduce((sum, point) => sum + point.team, 0) / profile.weeks.length);
+    const strength = strengths.find((entry) => entry.rosterId === profile.rosterId)!;
+    expect(profile.ahead!.locks).toBeCloseTo(strength.projected);
+    expect(profile.ahead!.average).toBeCloseTo(strength.projected);
+    expect(profile.ahead!.average).toBeCloseTo(profile.weeks.reduce((sum, point) => sum + point.team, 0) / profile.weeks.length, -1);
     expect(profile.ahead!.rank).toBe(1 + averages.filter((value) => value > profile.ahead!.average).length);
     const best = extremes(profile.shape)!;
     expect(best.best.rank).toBeLessThanOrEqual(best.worst.rank);
@@ -155,12 +158,31 @@ describe("team profiles (against the mock league)", async () => {
     const before = profiles.get(leader)!;
     expect(after.rate.team).toBeGreaterThan(after.rate.league);
     const axis = (profile: typeof before, key: string) => profile.shape.find((entry) => entry.key === key)!;
+    const leagueMean = [...profiles.values()].reduce((sum, profile) => sum + profile.ahead!.locks, 0) / profiles.size;
+    const shortfall = (1 - after.rate.league) * leagueMean;
+    expect(axis(after, "ceiling").value).toBeCloseTo(axis(before, "ceiling").value - shortfall);
+    expect(axis(after, "floor").value).toBeCloseTo(axis(before, "floor").value - shortfall);
+    expect(axis(after, "depth").value).toBeCloseTo(after.rate.league * axis(before, "depth").value);
     for (const key of ["ceiling", "floor", "depth"]) {
-      expect(axis(after, key).value).toBeCloseTo(after.rate.league * axis(before, key).value);
       // How well a team has been managed does not move its place among the rosters.
       for (const other of scaled.values()) expect(axis(other, key).rank).toBe(axis(profiles.get(other.rosterId)!, key).rank);
     }
     expect(after.ahead!.average).toBeCloseTo(after.rate.team * before.ahead!.average);
+  });
+
+  it("gives the weeks ahead the league's likely high and low, wider than the spread of the teams' averages", () => {
+    const weeks = model.calendar.weeks.length;
+    let likely = 0;
+    let averages = 0;
+    for (let index = 0; index < weeks; index++) {
+      const scores = [...profiles.values()].map((entry) => entry.weeks[index]!.team);
+      const point = profiles.get(strengths[0]!.rosterId)!.weeks[index]!;
+      expect(point.leagueHigh).toBeGreaterThanOrEqual(Math.max(...scores) - 1e-9);
+      expect(point.leagueLow).toBeLessThanOrEqual(Math.min(...scores) + 1e-9);
+      likely += point.leagueHigh - point.leagueLow;
+      averages += Math.max(...scores) - Math.min(...scores);
+    }
+    expect(likely).toBeGreaterThan(averages);
   });
 
   it("scales projected points by how much of its projection each team really scores", () => {
@@ -176,11 +198,15 @@ describe("team profiles (against the mock league)", async () => {
     expect(after.rate.team).toBeCloseTo(0.8);
     expect(after.rate.league).toBeCloseTo(0.8);
     const value = (profile: typeof before, key: string) => profile.shape.find((axis) => axis.key === key)!.value;
-    for (const key of ["ceiling", "floor", "depth"]) expect(value(after, key)).toBeCloseTo(after.rate.league * value(before, key));
+    // A team falls short of a perfectly run week by a share of its average; its good and bad
+    // weeks keep their swing, so a week's score drops by that shortfall rather than shrinking.
+    const leagueMean = [...profiles.values()].reduce((sum, profile) => sum + profile.ahead!.locks, 0) / profiles.size;
+    for (const key of ["ceiling", "floor"]) expect(value(after, key)).toBeCloseTo(value(before, key) - 0.2 * leagueMean, 1);
+    expect(value(after, "depth")).toBeCloseTo(0.8 * value(before, "depth"));
     // Player values are not team totals: the top three stay as they are.
     expect(value(after, "stars")).toBeCloseTo(value(before, "stars"));
     expect(after.ahead!.average).toBeCloseTo(0.8 * before.ahead!.average);
-    expect(after.weeks.find((point) => !point.final)!.team).toBeCloseTo(0.8 * before.weeks[0]!.team);
+    expect(after.weeks.find((point) => !point.final)!.team).toBeCloseTo(before.weeks[0]!.team - 0.2 * before.ahead!.locks, 1);
   });
 
   it("splits the mix only by what the league scores, and ranks fewest mistakes first", () => {

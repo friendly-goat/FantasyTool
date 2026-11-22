@@ -46,6 +46,11 @@ export interface WeekPoint {
   final: boolean;
   team: number;
   leagueAverage: number;
+  /**
+   * The league's low and high score that week: for a finished week the real ones, for a week
+   * ahead the likely ones (the best and worst of the teams' scores in each imaginary week standing
+   * for it, averaged), so both read the same way.
+   */
   leagueLow: number;
   leagueHigh: number;
   rank: number;
@@ -59,8 +64,12 @@ export interface TeamProfile {
   /** Fantasy points a game the team's main players lose to turnovers and fouls (positive), and its rank (1: fewest). */
   mistakes: { value: number; rank: number } | null;
   weeks: WeekPoint[];
-  /** The weeks ahead: the team's projected average a week and its rank among the league's, or null with none left. */
-  ahead: { average: number; rank: number } | null;
+  /**
+   * The weeks ahead: the team's projected average a week (its locks a week, the team strength
+   * figure, less its shortfall at its rate) and its rank, or null with none left. `locks` is that
+   * locks a week.
+   */
+  ahead: { average: number; rank: number; locks: number } | null;
   /**
    * How much of its projection the team really scores (shared/realisation.ts), and the league's
    * rate. The weeks ahead are scaled by the team's rate; the shape's points (ceiling, floor,
@@ -157,6 +166,7 @@ export function leagueProfiles(
   const shapeRows = new Map<number, Record<string, number>>();
   const mixRows = new Map<number, Record<string, number>>();
   const weekRows = new Map<number, number[]>();
+  const weekTotals = new Map<number, number[]>();
   const realWeeks = Math.max(1, model.calendar.weeks.length);
   let hasMix = false;
   const games = remainingGames(model, extras);
@@ -169,6 +179,7 @@ export function leagueProfiles(
     const players = ids.flatMap((id) => model.players.get(id) ?? []);
     // Run as its manager would, as team strength does: IR, open spots from waivers.
     const totals = weeklyTotals(model, fillRoster(model, ids).ids);
+    weekTotals.set(team.rosterId, totals);
     const sorted = [...totals].sort((a, b) => a - b);
     const byValue = [...players].sort((a, b) => b.expected - a.expected);
     const main = byValue.slice(0, MIX_PLAYERS);
@@ -234,18 +245,42 @@ export function leagueProfiles(
     weekRows.set(team.rosterId, byWeek.map((total, index) => (counts[index] ? total / counts[index]! : 0)));
   }
 
-  // Projected points as this league really scores them. The shape compares rosters, so its
-  // points are scaled by the league's rate alike (values a team can expect, placings untouched
-  // by how well each team has been managed); the weeks ahead forecast each team's own scores,
-  // so they take the team's rate.
-  const today = new Map([...weekRows.entries()].map(([id, row]) => [id, row.reduce((sum, value) => sum + value, 0) / Math.max(1, row.length)]));
+  // Projected points as this league really scores them (shared/realisation.ts). A team falls
+  // short of a perfectly run week by a share of its average, but its good and bad weeks swing as
+  // widely as the model's (in weeks 1 to 4 real weeks swung by 36 points, the model's by 33):
+  // so a week's score is the model's less that shortfall, not the model's scaled down. The shape
+  // compares rosters, so it takes the league's shortfall alike (placings untouched by how well
+  // each team has been managed); the weeks ahead forecast each team's own scores, so they take
+  // the team's own rate.
+  const today = new Map([...weekTotals.entries()].map(([id, totals]) => [id, totals.reduce((sum, value) => sum + value, 0) / Math.max(1, totals.length)]));
   const rates = realisation(extras.history, { weeks: extras.history?.projections ?? {} }, today);
+  const leagueMean = [...today.values()].reduce((sum, value) => sum + value, 0) / Math.max(1, today.size);
+  const leagueShortfall = (1 - rates.league) * leagueMean;
   for (const row of shapeRows.values()) {
-    for (const key of ["ceiling", "floor", "depth"]) row[key] = (row[key] ?? 0) * rates.league;
+    row.ceiling = (row.ceiling ?? 0) - leagueShortfall;
+    row.floor = (row.floor ?? 0) - leagueShortfall;
+    row.depth = (row.depth ?? 0) * rates.league;
   }
-  for (const [id, row] of weekRows) {
-    const rate = rates.teams.get(id) ?? 1;
-    weekRows.set(id, row.map((value) => value * rate));
+  const shortfall = (id: number) => (1 - (rates.teams.get(id) ?? 1)) * (today.get(id) ?? 0);
+  for (const [id, row] of weekRows) weekRows.set(id, row.map((value) => value - shortfall(id)));
+  // The league's likely high and low score in each week ahead: in each imaginary week, the best
+  // and worst of the twelve teams' scores, averaged over the imaginary weeks standing for it.
+  // (The spread of the teams' averages alone would be far narrower than any real week's.)
+  const highs = new Array<number>(realWeeks).fill(0);
+  const lows = new Array<number>(realWeeks).fill(0);
+  const samples = new Array<number>(realWeeks).fill(0);
+  for (let week = 0; week < model.weeks; week++) {
+    let high = -Infinity;
+    let low = Infinity;
+    for (const [id, totals] of weekTotals) {
+      const score = (totals[week] ?? 0) - shortfall(id);
+      high = Math.max(high, score);
+      low = Math.min(low, score);
+    }
+    if (!Number.isFinite(high)) continue;
+    highs[week % realWeeks]! += high;
+    lows[week % realWeeks]! += low;
+    samples[week % realWeeks]!++;
   }
 
   const mistakes = new Map([...mixRows.entries()].map(([id, row]) => [id, -(row.mistakes ?? 0)]));
@@ -257,9 +292,8 @@ export function leagueProfiles(
 
   const finished = (extras.history?.weeks ?? []).filter((entry) => entry.week < (model.calendar.weeks[0]?.week ?? snapshot.week));
   const settled = settledWeeks(snapshot.teams) ?? 0;
-  const aheadAverage = new Map(
-    [...weekRows.entries()].map(([id, row]) => [id, row.length ? row.reduce((sum, value) => sum + value, 0) / row.length : 0]),
-  );
+  // The weeks ahead on average: the team's locks a week (team strength's figure) less its shortfall.
+  const aheadAverage = new Map([...today.entries()].map(([id, mean]) => [id, mean - shortfall(id)]));
   const profiles = new Map<number, TeamProfile>();
   for (const team of snapshot.teams) {
     const past = finished.flatMap((entry): WeekPoint[] => {
@@ -286,8 +320,8 @@ export function leagueProfiles(
         final: false,
         team: mine,
         leagueAverage: scores.reduce((sum, score) => sum + score, 0) / Math.max(1, scores.length),
-        leagueLow: Math.min(...scores),
-        leagueHigh: Math.max(...scores),
+        leagueLow: samples[index] ? lows[index]! / samples[index]! : Math.min(...scores),
+        leagueHigh: samples[index] ? highs[index]! / samples[index]! : Math.max(...scores),
         rank: 1 + scores.filter((score) => score > mine).length,
       };
     });
@@ -305,6 +339,7 @@ export function leagueProfiles(
         ahead.length > 0
           ? {
               average: aheadAverage.get(team.rosterId) ?? 0,
+              locks: today.get(team.rosterId) ?? 0,
               rank: 1 + [...aheadAverage.values()].filter((value) => value > (aheadAverage.get(team.rosterId) ?? 0)).length,
             }
           : null,

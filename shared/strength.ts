@@ -884,38 +884,43 @@ export interface TeamStrength {
   score: number;
   /** Projected weekly score, the number behind `score`. */
   projected: number;
-  /** Projected weekly score of the best legal nine alone, with no bench to rotate in. */
+  /** Projected weekly score of the best legal nine alone (by weekly value), with no bench to rotate in. */
   bestNine: number;
   /** What the rest of the roster adds: rotating into open slots and covering missed games. */
   benchAdds: number;
-  /** The best nine's combined value if each locked only his own games and never missed one. */
+  /** The combined value of the best nine when fit (picked by that value), if each locked only his own games and never missed one. */
   fullHealth: number;
   /** Average share of games the best nine are expected to play. */
   starterAvailability: number;
 }
 
-function bestNinePicks(model: StrengthModel, roster: ModelPlayer[]) {
+function bestNinePicks(model: StrengthModel, roster: ModelPlayer[], by: "expected" | "healthy") {
   return assignSlots(
     roster.map((player) => player.eligible),
-    roster.map((player) => player.healthy),
+    roster.map((player) => player[by]),
     model.slots.length,
   );
 }
 
 /**
- * The best legal starting nine, slot by slot in the league's slot order: the
- * same lineup the strength score calls "best nine". A slot nobody can fill
- * has a null player.
+ * The best legal starting nine by weekly value (what each is worth over the
+ * rest of the season, missed games and injuries included), slot by slot in the
+ * league's slot order: the same lineup the strength score calls "best nine".
+ * A slot nobody can fill has a null player.
  */
 export function bestNineLineup(model: StrengthModel, playerIds: string[]): { slot: string; player: ModelPlayer | null }[] {
   const roster = playerIds.flatMap((id) => model.players.get(id) ?? []);
-  const { picks } = bestNinePicks(model, roster);
+  const { picks } = bestNinePicks(model, roster, "expected");
   return model.slots.map((slot, index) => ({ slot, player: picks[index]! >= 0 ? roster[picks[index]!]! : null }));
 }
 
 export function rosterStrength(model: StrengthModel, playerIds: string[]): Omit<TeamStrength, "rosterId" | "rank"> {
   const roster = playerIds.flatMap((id) => model.players.get(id) ?? []);
-  const lineup = bestNinePicks(model, roster);
+  // The best nine by what each is worth over the rest of the season, missed games and injuries
+  // included: the lineup My team shows. Full health keeps its own pick, by what each is worth
+  // when fit (an injured star still counts in the lineup he will come back to).
+  const lineup = bestNinePicks(model, roster, "expected");
+  const fit = bestNinePicks(model, roster, "healthy");
   const starters = lineup.picks.filter((index) => index >= 0).map((index) => roster[index]!);
   // Run as its manager would: injured players on IR, open spots filled from waivers.
   const projected = projectedWeekly(model, fillRoster(model, playerIds).ids);
@@ -925,7 +930,7 @@ export function rosterStrength(model: StrengthModel, playerIds: string[]): Omit<
     projected,
     bestNine,
     benchAdds: projected - bestNine,
-    fullHealth: lineup.total,
+    fullHealth: fit.total,
     starterAvailability:
       starters.length > 0 ? starters.reduce((sum, player) => sum + player.availability, 0) / starters.length : 0,
   };
