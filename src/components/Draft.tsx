@@ -1,10 +1,10 @@
 import { type CSSProperties, useEffect, useMemo, useState } from "react";
-import { draftTrends, type DraftTrend } from "../../shared/draft.ts";
+import { type DraftGrade, draftGrades, GRADE_LETTERS, type GradeLetter } from "../../shared/draft.ts";
 import type { ModelPlayer, StrengthModel } from "../../shared/strength.ts";
 import { INJURED_SHARE } from "../../shared/trade.ts";
 import type { DraftBoard, DraftSelection, LeagueSnapshot } from "../../shared/types.ts";
 import { getDraft } from "../api.ts";
-import { formatDay, ordinal } from "../format.ts";
+import { formatDay, formatPoints } from "../format.ts";
 import { Avatar } from "./Avatar.tsx";
 import { PlayerButton } from "./PlayerName.tsx";
 import { TeamTag } from "./TeamTag.tsx";
@@ -16,15 +16,12 @@ interface Props {
   myRosterId: number;
 }
 
-/** A small rising or falling chart line. */
-export function TrendIcon({ trend }: { trend: "up" | "down" }) {
-  const line = trend === "up" ? "3 17 9 11 13 15 21 7" : "3 7 9 13 13 9 21 17";
-  const arrow = trend === "up" ? "15 7 21 7 21 13" : "15 17 21 17 21 11";
+/** A pick's letter grade (F to S), colored red to green with S in gold. */
+export function GradeBadge({ letter, grade }: { letter: GradeLetter; grade: string }) {
   return (
-    <svg className={`trend-icon trend-${trend}`} viewBox="0 0 24 24" aria-hidden="true">
-      <polyline points={line} />
-      <polyline points={arrow} />
-    </svg>
+    <span className={`grade-badge grade-${letter.toLowerCase()}`} aria-hidden="true">
+      {grade.replace("-", "\u2212")}
+    </span>
   );
 }
 
@@ -53,11 +50,8 @@ function injuryLabel(player: ModelPlayer, status: string | null | undefined): st
     : `${what}, no predicted return date.`;
 }
 
-function trendLabel(pick: DraftSelection, trend: DraftTrend): string {
-  const where = `Taken with pick ${pick.pickNo}. By weekly value now he ranks ${ordinal(trend.valueRank)} among drafted players`;
-  if (trend.trend === "up") return `${where}, at least a round earlier than he went.`;
-  if (trend.trend === "down") return `${where}, at least a round later than he went.`;
-  return `${where}.`;
+function gradeLabel(pick: DraftSelection, grade: DraftGrade): string {
+  return `Taken with pick ${pick.pickNo}, grade ${grade.grade}: weekly value now ${formatPoints(grade.value)}, against ${formatPoints(grade.around)} for the players picked around him.`;
 }
 
 function splitName(name: string): [string, string] {
@@ -68,19 +62,20 @@ function splitName(name: string): [string, string] {
 /** One pick. The whole card opens the player's details. */
 function DraftCard({
   pick,
-  trend,
+  grade,
   injury,
   pickedBy,
 }: {
   pick: DraftSelection;
-  trend: DraftTrend | undefined;
+  grade: DraftGrade | undefined;
   injury: ModelPlayer | null;
   pickedBy: string | null;
 }) {
   const positions = pick.player.positions.length > 0 ? pick.player.positions : ["?"];
-  const trendText = trend?.trend ? trendLabel(pick, trend) : undefined;
+  // One mark per card: the injury, or else the grade (an injured player is not graded).
   const injuryText = injury ? injuryLabel(injury, pick.player.injuryStatus) : undefined;
-  const label = [injuryText, trendText].filter(Boolean).join(" ") || undefined;
+  const gradeText = !injury && grade ? gradeLabel(pick, grade) : undefined;
+  const label = injuryText ?? gradeText;
   const [first, last] = splitName(pick.player.name);
   return (
     <PlayerButton player={pick.player} className="draft-card">
@@ -89,19 +84,16 @@ function DraftCard({
           <span className="draft-pick">
             {pick.round}.{pick.pickInRound}
           </span>
-          {(injury || trend?.trend) && (
-            <span className="draft-marks">
-              {injury && (
-                <span className="draft-injury" title={injuryText}>
-                  <InjuryIcon />
-                </span>
-              )}
-              {trend?.trend && (
-                <span className="draft-trend" title={trendText}>
-                  <TrendIcon trend={trend.trend} />
-                </span>
-              )}
+          {injury ? (
+            <span className="draft-mark" title={injuryText}>
+              <InjuryIcon />
             </span>
+          ) : (
+            grade && (
+              <span className="draft-mark" title={gradeText}>
+                <GradeBadge letter={grade.letter} grade={grade.grade} />
+              </span>
+            )
           )}
         </span>
         <span className="draft-name">
@@ -142,9 +134,10 @@ export function Draft({ leagueId, snapshot, model, myRosterId }: Props) {
     };
   }, [leagueId]);
 
-  const trends = useMemo(() => {
-    if (!board || !model) return new Map<number, DraftTrend>();
-    return draftTrends(board.picks, (id) => model.players.get(id)?.expected ?? null, board.teams);
+  const grades = useMemo(() => {
+    if (!board || !model) return new Map<number, DraftGrade>();
+    // Injured players are left out: their value counts the games they will miss.
+    return draftGrades(board.picks, (id) => (injuryOf(model, id) ? null : (model.players.get(id)?.expected ?? null)), board.teams);
   }, [board, model]);
 
   if (error) {
@@ -163,8 +156,6 @@ export function Draft({ leagueId, snapshot, model, myRosterId }: Props) {
   const teamOf = (rosterId: number | null) => snapshot.teams.find((team) => team.rosterId === rosterId);
   const cell = new Map(board.picks.map((pick) => [`${pick.round}-${pick.slot}`, pick]));
   const rounds = Array.from({ length: board.rounds }, (_, index) => index + 1);
-  const ups = [...trends.values()].filter((trend) => trend.trend === "up").length;
-  const downs = [...trends.values()].filter((trend) => trend.trend === "down").length;
   const hurt = board.picks.filter((pick) => injuryOf(model, pick.player.id)).length;
 
   return (
@@ -199,7 +190,7 @@ export function Draft({ leagueId, snapshot, model, myRosterId }: Props) {
                 <DraftCard
                   key={`${round}-${slot}`}
                   pick={pick}
-                  trend={trends.get(pick.pickNo)}
+                  grade={grades.get(pick.pickNo)}
                   injury={injuryOf(model, pick.player.id)}
                   pickedBy={pickedBy}
                 />
@@ -208,23 +199,22 @@ export function Draft({ leagueId, snapshot, model, myRosterId }: Props) {
           )}
         </div>
       </div>
-      <p className="quiet legend draft-legend">
-        <span className="draft-legend-item">
-          <TrendIcon trend="up" /> Worth at least a round earlier now ({ups})
-        </span>
-        <span className="draft-legend-item">
-          <TrendIcon trend="down" /> Worth at least a round later now ({downs})
-        </span>
-        {model && (
-          <span className="draft-legend-item">
-            <InjuryIcon /> Injured, out more than a game or two ({hurt})
+      {model && (
+        <p className="quiet legend draft-legend">
+          <span className="draft-legend-item" aria-label="Grades from F, worst, to S, best">
+            {GRADE_LETTERS.map((letter) => (
+              <GradeBadge key={letter} letter={letter} grade={letter} />
+            ))}
           </span>
-        )}
-      </p>
+          <span className="draft-legend-item">
+            <InjuryIcon /> Injured, out more than a game or two, not graded ({hurt})
+          </span>
+        </p>
+      )}
       <p className="quiet legend">
         {model
-          ? "Marks compare where each player was picked with where his weekly value now (what he locks in an average week at his projected level, allowing for missed games) ranks among everyone drafted. Within a round either way shows no mark. An injured player's value already allows for the games he will miss, which is often why he is falling. Hover over a mark for the numbers, or select a card for the player's details."
-          : "Marks for players beating or missing their draft spot appear once player stats have loaded."}
+          ? "Each pick is graded on his weekly value now (what he locks in an average week at his projected level, allowing for missed games) against the players picked around him, the nearest round of picks. C is about what that part of the draft turned into; B, A and then S, in gold, are better by more each step, and D and F worse. An injured player is not graded, since his value counts the games he will miss. Hover over a grade for the numbers, or select a card for the player's details."
+          : "Grades for each pick appear once player stats have loaded."}
       </p>
     </section>
   );

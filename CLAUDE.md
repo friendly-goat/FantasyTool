@@ -165,9 +165,12 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   the server); display only, never strength (the 1-1000 scale is relative,
   so a league-wide rate changes nothing there). Cards
   keep their full size while loading (no layout shift).
-- The Draft tab's rising and falling marks (`shared/draft.ts`) are a display
-  label only: rank by weekly value now against pick order, one round either
-  way. Never feed them into strength, grades or trade ideas.
+- The Draft tab's letter grades (`shared/draft.ts`, F to S with +/- on D to A,
+  S in the stars' gold) are a display label only: weekly value now against the
+  median of the nearest round of picks, in the draft's typical gap. A card shows
+  one mark, the grade or the injury cross; injured players get no grade and
+  are left out of others' comparisons. Never feed them into strength, trade grades
+  or trade ideas.
 - An NBA team is shown with `TeamTag` (logo and abbreviation). Logos come
   through `/api/logos/:team/:variant` (`server/logos.ts`, cached); the NBA
   team table is `shared/nbaTeams.ts`. Never commit logo files to the repo.

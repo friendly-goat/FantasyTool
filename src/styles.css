@@ -46,6 +46,11 @@
   /* Team strength above 5 stars. */
   --star-gold: #f7c95c;
   --star-glow: rgba(247, 201, 92, 0.5);
+  --grade-f: #ff6b6b;
+  --grade-d: #f8914a;
+  --grade-c: #d8d35a;
+  --grade-b: #8fdc6e;
+  --grade-a: #3fd18a;
   /* Dropdown chevron, drawn in --muted (an SVG in a URL cannot read variables). */
   --segment-on: #3a4664;
   /* Acceptance chance words, "Never" to "For sure": red through yellow to green. */
@@ -80,6 +85,11 @@
   --warn-soft: rgba(214, 158, 20, 0.2);
   --star-gold: #d29a0e;
   --star-glow: rgba(210, 154, 14, 0.35);
+  --grade-f: #c22f2f;
+  --grade-d: #b8520f;
+  --grade-c: #7c7600;
+  --grade-b: #3f8a24;
+  --grade-a: #0f7a48;
   --segment-on: #ffffff;
   --chance-0: #c22f2f;
   --chance-1: #c1491d;
@@ -4455,14 +4465,7 @@ th[aria-sort] .sort-button {
   font-variant-numeric: tabular-nums;
 }
 
-.draft-marks {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.2rem;
-}
-
-.draft-trend,
-.draft-injury {
+.draft-mark {
   display: inline-flex;
 }
 
@@ -4533,22 +4536,48 @@ th[aria-sort] .sort-button {
   box-shadow: inset 1px 0 rgba(20, 26, 42, 0.25);
 }
 
-.trend-icon {
-  width: 1.05rem;
+/* A pick's letter grade: F to A red to green as colored letters, S a gold
+   badge with the stars' glow, so it stands apart by shape as well as color. */
+.grade-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.6rem;
   height: 1.05rem;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2.5;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  padding: 0 0.2rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+  font-size: 0.75rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
 }
 
-.trend-up {
-  color: var(--win);
+.grade-f {
+  color: var(--grade-f);
 }
 
-.trend-down {
-  color: var(--loss);
+.grade-d {
+  color: var(--grade-d);
+}
+
+.grade-c {
+  color: var(--grade-c);
+}
+
+.grade-b {
+  color: var(--grade-b);
+}
+
+.grade-a {
+  color: var(--grade-a);
+}
+
+.grade-s {
+  background: var(--star-gold);
+  box-shadow: 0 0 0.45rem var(--star-glow);
+  color: var(--pos-ink);
 }
 
 .draft-legend {
@@ -4633,10 +4662,15 @@ th[aria-sort] .sort-button {
     font-size: 0.6875rem;
   }
 
-  .draft-card .trend-icon,
   .draft-card .injury-icon {
     width: 0.9rem;
     height: 0.9rem;
+  }
+
+  .draft-card .grade-badge {
+    min-width: 1.35rem;
+    height: 0.9rem;
+    font-size: 0.6875rem;
   }
 
   .name-first {

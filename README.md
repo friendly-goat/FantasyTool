@@ -874,18 +874,22 @@ compact cards (pick, first name and team logo, last name, position band), so eve
 round fits down the page and a swipe moves between teams, stopping on a
 column.
 
-A green rising mark means a player is worth at least a round earlier than he
-went; a red falling mark, at least a round later. Every drafted player is
-ranked by his weekly value now (what he locks in an average week at his
-projected level, allowing for missed games), and that rank is compared with
-the order he was picked in (`shared/draft.ts`). Anything within a round shows
-no mark. It is a display label only and feeds nothing else.
+Each pick carries a letter grade: F, D, C, B, A, then S in gold, with a minus
+or plus for the lower and upper third of D to A. A player's weekly value now
+(what he locks in an average week at his projected level, allowing for missed
+games) is compared with the median value of the players picked around him,
+the nearest round of picks, not counting him (`shared/draft.ts`). So a first
+pick is held to what the top of the draft turned into and a last pick to what
+the end of it did. The gap is measured in the draft's typical gap (its median
+gap, scaled to a standard deviation): C is within 0.4 of the players around
+him, each letter after that 0.8 more (`GRADE_STEP`), and S and F are
+open-ended. It is a display label only and feeds nothing else.
 
-A medical cross beside the mark means the player is injured for a real stretch:
-out at least 5% of the weeks left (`INJURED_SHARE`, the same line the trade
-search uses), not a game or two. Hover over it for his predicted return. His
-weekly value already counts the games he will miss, which is often why an
-injured player shows a falling mark.
+A card shows one mark: the grade, or a medical cross when the player is
+injured for a real stretch: out at least 5% of the weeks left (`INJURED_SHARE`,
+the same line the trade search uses), not a game or two. Hover over it for his
+predicted return. An injured player is not graded, and not part of anyone
+else's comparison, since his weekly value counts the games he will miss.
 
 ## Look
 
