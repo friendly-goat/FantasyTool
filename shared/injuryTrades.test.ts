@@ -22,6 +22,7 @@ import {
   droppedOnArrival,
   evaluateTrade,
   findTrades,
+  isInjuredNow,
   isInjuredTarget,
   playerValue,
   POSSIBLE,
@@ -202,6 +203,27 @@ describe("injuries, IR and waiver pickups (against the mock league)", async () =
     }
     expect(found).toBeGreaterThan(0);
   }, 30_000);
+
+  it("leaves injured players out of every trade when asked, on both sides, but never a named player", () => {
+    let found = 0;
+    for (const { rosterId } of strengths.slice(0, 4)) {
+      const { ideas } = findTrades(model, snapshot, rosterId, situations, { leaveOutInjured: true });
+      for (const idea of ideas) {
+        found++;
+        expect([...idea.result.a.gives, ...idea.result.a.gets].some(isInjuredNow)).toBe(false);
+      }
+    }
+    expect(found).toBeGreaterThan(0);
+    // Named: an injured player asked for by name is still searched for.
+    const injured = named(/six weeks/);
+    const buyer = strengths.find((entry) => entry.rosterId !== teamOf(injured).rosterId)!.rosterId;
+    const { ideas } = findTrades(model, snapshot, buyer, situations, { getPlayerId: injured.id, leaveOutInjured: true });
+    for (const idea of ideas) expect(idea.result.a.gets.some((player) => player.id === injured.id)).toBe(true);
+    // Trading for an injured player overrides it.
+    const forInjured = findTrades(model, snapshot, strengths[0]!.rosterId, situations, { getInjured: true, leaveOutInjured: true });
+    const plain = findTrades(model, snapshot, strengths[0]!.rosterId, situations, { getInjured: true });
+    expect(forInjured.ideas.map((idea) => idea.offer)).toEqual(plain.ideas.map((idea) => idea.offer));
+  }, 60_000);
 
   it("counts an injured player's value only in the weeks he plays", () => {
     const injured = named(/six weeks/);

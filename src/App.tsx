@@ -623,6 +623,9 @@ export function App() {
             {view === "Teams" && (
               <Teams
                 snapshot={snapshot}
+                modelSnapshot={modelSnapshot ?? snapshot}
+                model={model}
+                strengths={strengths}
                 stats={stats}
                 myRosterId={myRosterId}
                 selectedRosterId={selectedRosterId}

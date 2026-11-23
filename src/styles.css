@@ -813,8 +813,36 @@ code {
 .teams {
   display: grid;
   grid-template-columns: 17rem minmax(0, 1fr);
+  grid-template-areas:
+    "head head"
+    "charts charts"
+    "rail roster";
   gap: 1.5rem;
   align-items: start;
+}
+
+.teams > .team-rail {
+  grid-area: rail;
+  position: sticky;
+  top: calc(var(--app-bar-height) + 1rem);
+}
+
+.team-head {
+  grid-area: head;
+  scroll-margin-top: calc(var(--app-bar-height) + 1rem);
+}
+
+.team-detail-charts {
+  grid-area: charts;
+  min-width: 0;
+}
+
+.team-detail-charts .team-charts-wrap {
+  margin: -0.5rem 0 0;
+}
+
+.teams > .roster {
+  grid-area: roster;
 }
 
 .rail-item {
@@ -860,6 +888,10 @@ code {
 
 .roster-summary {
   margin-top: 1rem;
+}
+
+.roster > .roster-summary:first-child {
+  margin-top: 0;
 }
 
 .roster-scroll {
@@ -2739,6 +2771,94 @@ th[aria-sort] .sort-button {
   max-width: 100%;
 }
 
+/* The goal and the injured-players switch stay on one row, phones included. */
+.finder-goal {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.finder-goal > label:first-child {
+  min-width: 0;
+}
+
+.filters .finder-switch {
+  flex: none;
+  white-space: nowrap;
+}
+
+.finder-switch.is-locked {
+  color: var(--muted);
+}
+
+/* A switch: a checkbox drawn as a track and thumb, as tall as the dropdowns beside it. */
+.switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  height: 2.2rem;
+}
+
+.switch input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.switch-track {
+  position: relative;
+  width: 2.75rem;
+  height: 1.55rem;
+  border-radius: 999px;
+  background: var(--field-line);
+  transition: background-color 0.15s ease;
+}
+
+.switch-thumb {
+  position: absolute;
+  top: 0.175rem;
+  left: 0.175rem;
+  width: 1.2rem;
+  height: 1.2rem;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  transition: transform 0.15s ease;
+}
+
+.switch input:checked + .switch-track {
+  background: var(--accent);
+}
+
+.switch input:checked + .switch-track .switch-thumb {
+  transform: translateX(1.2rem);
+}
+
+.switch input:focus-visible + .switch-track {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.switch input:disabled {
+  cursor: not-allowed;
+}
+
+.switch input:disabled + .switch-track {
+  opacity: 0.45;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .switch-track,
+  .switch-thumb {
+    transition: none;
+  }
+}
+
 .ideas {
   display: grid;
   gap: 0.75rem;
@@ -4154,6 +4274,18 @@ th[aria-sort] .sort-button {
     display: none;
   }
 
+  .finder-goal {
+    width: 100%;
+  }
+
+  .finder-goal > label:first-child {
+    flex: 1;
+  }
+
+  .filters .finder-switch {
+    width: auto;
+  }
+
   .standings,
   .strength-table,
   .my-roster {
@@ -4319,6 +4451,12 @@ th[aria-sort] .sort-button {
 
   .teams {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "rail"
+      "head"
+      "charts"
+      "roster";
+    gap: 1rem;
   }
 
   .team-rail {
@@ -4326,6 +4464,10 @@ th[aria-sort] .sort-button {
     gap: 0.4rem;
     overflow-x: auto;
     padding-bottom: 0.25rem;
+  }
+
+  .teams > .team-rail {
+    position: static;
   }
 
   .rail-item {

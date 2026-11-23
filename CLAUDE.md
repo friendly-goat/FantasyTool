@@ -122,7 +122,10 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   the sample league). The search runs in a web worker (`src/search.ts`);
   a trade is made on the roster after its free upgrades (every worthwhile
   one for a team the trade opens a spot for, none otherwise, `freeUpgrades`;
-  decided once before the trade, never below the team as it stands); never suggest an offer that is a big
+  decided once before the trade, never below the team as it stands); the finder's "Injured players" switch, when off, sets
+  `leaveOutInjured` (a filter on trade pieces, named players exempt, locked
+  on for "trade for an injured player"; never sent when on, so the shared
+  best search stays shared); never suggest an offer that is a big
   loss (F) for the other team, or one where either side drops a player it
   receives (`droppedOnArrival`). IR slots come from Sleeper's
   `settings.reserve_slots`, not `roster_positions`.
@@ -161,7 +164,8 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
 - The Activity tab's team effect (`moveEffect` in `shared/activity.ts`)
   measures each move on today's roster, with and without it; display only,
   never fed into strength, grades or trade ideas.
-- The team charts on My team (`shared/teamProfile.ts`, `TeamCharts.tsx`)
+- The team charts on My team and above each team's roster on Teams
+  (`shared/teamProfile.ts`, `TeamCharts.tsx`, `own` false for other teams)
   place a team around the league's average (the middle ring, `place`: two
   rings per standard deviation across the league, never min to max), with
   ceiling and floor leaning on the team's real finished weeks (the same

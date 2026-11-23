@@ -452,7 +452,9 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
   const [teamB, setTeamB] = useState(others[0]?.rosterId ?? myRosterId);
   const [aGives, setAGives] = useState<Set<string>>(new Set());
   const [bGives, setBGives] = useState<Set<string>>(new Set());
-  const [found, setFound] = useState<(FinderResult & { model: StrengthModel; target: string | null }) | null>(null);
+  const [found, setFound] = useState<
+    (FinderResult & { model: StrengthModel; target: string | null; leftOutInjured: boolean }) | null
+  >(null);
   const [searching, setSearching] = useState(false);
   const [progress, setProgress] = useState<{ share: number; stage: ProgressStage } | null>(null);
   // A search asked for before this visit's data was in; it starts as soon as it is.
@@ -461,6 +463,10 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
   const [position, setPosition] = useState("SF");
   const [sendId, setSendId] = useState("");
   const [getId, setGetId] = useState("");
+  // Injured players in the ideas (on by default). Trading for an injured player keeps it on.
+  const [injuredOn, setInjuredOn] = useState(true);
+  const injuredLocked = goal === "injured";
+  const includeInjured = injuredLocked || injuredOn;
   // Both sides start closed; opening an idea in the builder opens both.
   const [openSides, setOpenSides] = useState({ a: false, b: false });
 
@@ -534,7 +540,7 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
         // Let the bar fill before the ideas appear.
         setProgress({ share: 1, stage: "done" });
         window.setTimeout(() => {
-          setFound({ ...result, model: searchedWith, target });
+          setFound({ ...result, model: searchedWith, target, leftOutInjured: Boolean(request.options.leaveOutInjured) });
           setSearching(false);
           setProgress(null);
         }, 450);
@@ -597,7 +603,7 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
   function findIdeas() {
     setSearching(true);
     setFound(null);
-    const options: FinderOptions =
+    const goalOptions: FinderOptions =
       goal === "position"
         ? { getPosition: position }
         : goal === "send"
@@ -607,6 +613,8 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
             : goal === "injured"
               ? { getInjured: true }
               : {};
+    // Only set when injured players are left out, so the default stays the shared best-trades search.
+    const options: FinderOptions = includeInjured ? goalOptions : { ...goalOptions, leaveOutInjured: true };
     const request = { options, goal, playerId: goal === "get" ? getId : goal === "send" ? sendId : "" };
     // Right after the app opens, the latest data may still be on its way: wait a moment for it
     // rather than show ideas that are overtaken a second later.
@@ -642,22 +650,53 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
   return (
     <section aria-label="Trades">
       <div className="filters finder">
-        <label>
-          I want to
-          <select
-            value={goal}
-            onChange={(event) => {
-              setGoal(event.target.value as Goal);
-              setFound(null);
-            }}
+        <div className="finder-goal">
+          <label>
+            I want to
+            <select
+              value={goal}
+              onChange={(event) => {
+                setGoal(event.target.value as Goal);
+                setFound(null);
+              }}
+            >
+              <option value="best">see the best trades for my team</option>
+              <option value="position">get a player at a position</option>
+              <option value="send">trade away one of my players</option>
+              <option value="get">get a specific player</option>
+              <option value="injured">trade for an injured player</option>
+            </select>
+          </label>
+          <label
+            className={`finder-switch${injuredLocked ? " is-locked" : ""}`}
+            title={
+              injuredLocked
+                ? "Always on when trading for an injured player"
+                : includeInjured
+                  ? "Injured players can be part of a trade"
+                  : "Injured players are left out of every trade (a player you name is still allowed)"
+            }
           >
-            <option value="best">see the best trades for my team</option>
-            <option value="position">get a player at a position</option>
-            <option value="send">trade away one of my players</option>
-            <option value="get">get a specific player</option>
-            <option value="injured">trade for an injured player</option>
-          </select>
-        </label>
+            <span>
+              Injured<span className="hide-narrow"> players</span>
+            </span>
+            <span className="switch">
+              <input
+                type="checkbox"
+                role="switch"
+                checked={includeInjured}
+                disabled={injuredLocked}
+                onChange={(event) => {
+                  setInjuredOn(event.target.checked);
+                  setFound(null);
+                }}
+              />
+              <span className="switch-track" aria-hidden="true">
+                <span className="switch-thumb" />
+              </span>
+            </span>
+          </label>
+        </div>
         {goal === "position" && (
           <label>
             Position
@@ -709,6 +748,12 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
         <p className="notice">
           Projections have been updated since this search (for example, last season's stats arrived). Search
           again for fresh results.
+        </p>
+      )}
+      {found?.leftOutInjured && (
+        <p className="finder-outlook quiet">
+          Injured players are left out: nobody who is out now or eligible for IR is in these trades
+          {found.target ? `, apart from ${found.target} if he is` : ""}.
         </p>
       )}
       {found?.ideas.some((idea) => idea.depth > 1) && (

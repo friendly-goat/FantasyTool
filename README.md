@@ -467,6 +467,15 @@ an injured player's average scaled down by the share of weeks he will miss
 weeks who are due back this season, one for one or two of yours for one of
 theirs (packages are matched to his level once he is back).
 
+The finder's "Injured players" switch (on by default) leaves injured players
+out of every trade when turned off, on both sides: nobody who is out now (a
+return window on the injury report) or eligible for IR (`isInjuredNow`). A
+player you name to send or to get is still allowed. It is a filter on which
+players the search tries, never a weight on any trade. "Trade for an injured
+player" turns the switch on and locks it, since that search is only injured
+players. Turned off, the search is its own (`leaveOutInjured`), not the shared
+"best trades" search the top moves use.
+
 An injured player's player value counts only the weeks he plays (his value
 above a free agent once back, times the share of weeks he plays): while he is
 out, an IR slot and a pickup cover his spot. The team effect still counts the
@@ -496,11 +505,14 @@ his own. (Full health, which the acceptance chance uses for how much of a
 team is out, still picks its nine by what each is worth when fit.) The week's
 matchup is no longer shown here (see [Live matchup](#live-matchup)).
 
-### Team charts (My team)
+### Team charts (My team and Teams)
 
 Above the roster, three cards place your team against the league
 (`shared/teamProfile.ts`, `src/components/TeamCharts.tsx`); on a phone they
-slide sideways. Each says in one line what stands out, and hovering or
+slide sideways. The Teams tab shows the same three cards for the team you
+pick, under its name and above its roster (worded "This team" and "their"
+for another team); the profiles are worked out once per model and shared by
+both tabs. Each says in one line what stands out, and hovering or
 tapping part of a chart gives that figure and its rank. Until the figures
 are ready (the finished weeks and the schedule load, then the profiles are
 worked out after the page has painted) each card shows its empty frame at

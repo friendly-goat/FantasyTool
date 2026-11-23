@@ -484,6 +484,12 @@ export interface FinderOptions {
   getPlayerId?: string;
   /** Only trades that bring back a player who is out now with a return date this season. */
   getInjured?: boolean;
+  /**
+   * Leave injured players out of the trades, on both sides (`isInjuredNow`). A player named to
+   * send or to get is always allowed, and `getInjured` overrides it. Left unset (not false) when off, so the search stays the
+   * shared "best trades" search.
+   */
+  leaveOutInjured?: boolean;
   /** How many search layers at most (1 swaps only); the default goes as deep as it needs to. */
   maxDepth?: number;
 }
@@ -494,6 +500,11 @@ const INJURED_TARGET_SHARE = 0.1;
 /** An injured player worth trading for: out a real share of the weeks left, but due back before the season ends. */
 export function isInjuredTarget(player: ModelPlayer): boolean {
   return Boolean(player.back) && player.outShare >= INJURED_TARGET_SHARE && player.outShare < 0.95 && player.projected > 0;
+}
+
+/** Injured now: out with a return window on the injury report, or eligible for an IR slot. */
+export function isInjuredNow(player: ModelPlayer): boolean {
+  return Boolean(player.back) || player.irEligible;
 }
 
 /**
@@ -979,7 +990,14 @@ export function findTrades(
   const estimateWeeks = roundsOf(ESTIMATE_WEEKS);
   const firstLookWeeks = roundsOf(FIRST_LOOK_WEEKS);
   const mine = rosterIds(snapshot, rosterId);
-  const myPlayers = players(model, mine);
+  // With injured players left out, they are never a piece of a trade (a named player still is).
+  const allowed = (player: ModelPlayer) =>
+    !options.leaveOutInjured ||
+    options.getInjured || // trading for an injured player overrides it
+    !isInjuredNow(player) ||
+    player.id === options.givePlayerId ||
+    player.id === options.getPlayerId;
+  const myPlayers = players(model, mine).filter(allowed);
   const at = (position: string | undefined) => (player: ModelPlayer) =>
     !position || player.positions.includes(position);
   const givers = myPlayers.filter(
@@ -1052,6 +1070,7 @@ export function findTrades(
     const key = `${teamId}:${[...giveIds].sort().join("+")}:${[...getIds].sort().join("+")}`;
     if (seenOffers.has(key)) return;
     seenOffers.add(key);
+    if (!gives.every(allowed) || !gets.every(allowed)) return;
     const info = infoFor(teamId);
     const myAfter = quickRoster(mine, giveIds, gets);
     // A player either side would drop as soon as he arrives makes no real offer (droppedOnArrival
@@ -1095,6 +1114,7 @@ export function findTrades(
     const targets = players(model, theirs).filter(
       (player) =>
         (player.games > 0 || isInjuredTarget(player)) &&
+        allowed(player) &&
         at(options.getPosition)(player) &&
         (!options.getPlayerId || player.id === options.getPlayerId) &&
         (!options.getInjured || isInjuredTarget(player)),
@@ -1200,7 +1220,7 @@ export function findTrades(
   for (const [teamIndex, team] of snapshot.teams.entries()) {
     if (team.rosterId === rosterId) continue;
     const info = infoFor(team.rosterId);
-    const available = players(model, info.theirs).filter((player) => player.games > 0 || isInjuredTarget(player));
+    const available = players(model, info.theirs).filter((player) => (player.games > 0 || isInjuredTarget(player)) && allowed(player));
     const wanted = (player: ModelPlayer) =>
       at(options.getPosition)(player) &&
       (!options.getPlayerId || player.id === options.getPlayerId) &&
@@ -1279,7 +1299,7 @@ export function findTrades(
       }
       // Two-for-two: one of their least valuable players comes back too, freeing their spot.
       if (depth === 3 && parent.gives.length > parent.gets.length) {
-        for (const extra of infoFor(parent.offer.teamB).byValue.filter((player) => !parent.gets.includes(player) && player.games > 0).slice(0, 3)) {
+        for (const extra of infoFor(parent.offer.teamB).byValue.filter((player) => !parent.gets.includes(player) && player.games > 0 && allowed(player)).slice(0, 3)) {
           consider(parent.offer.teamB, parent.gives, [...parent.gets, extra], depth, parent.chance);
         }
       }

@@ -1,11 +1,18 @@
+import { useRef } from "react";
+import type { StrengthModel, TeamStrength } from "../../shared/strength.ts";
 import type { LeagueSnapshot, PlayerRef, PlayerStats, StatsReport } from "../../shared/types.ts";
 import { formatPoints, formatRecord } from "../format.ts";
 import { Avatar } from "./Avatar.tsx";
 import { PositionChip } from "./PositionChip.tsx";
 import { PlayerCell } from "./PlayerCell.tsx";
+import { TeamCharts, useProfiles } from "./TeamCharts.tsx";
 
 interface Props {
   snapshot: LeagueSnapshot;
+  /** The snapshot the model was built from (the same one My team's charts use), for the charts. */
+  modelSnapshot: LeagueSnapshot;
+  model: StrengthModel | null;
+  strengths: TeamStrength[] | null;
   stats: StatsReport | null;
   myRosterId: number | null;
   selectedRosterId: number | null;
@@ -45,12 +52,17 @@ function PlayerLine({ slot, player, stats, showStats }: LineProps) {
   );
 }
 
-export function Teams({ snapshot, stats, myRosterId, selectedRosterId, onSelect }: Props) {
+const NO_PLAYERS: Record<string, PlayerStats> = {};
+
+export function Teams({ snapshot, modelSnapshot, model, strengths, stats, myRosterId, selectedRosterId, onSelect }: Props) {
   const team =
     snapshot.teams.find((candidate) => candidate.rosterId === selectedRosterId) ?? snapshot.teams[0];
+  const players = stats?.players ?? NO_PLAYERS;
+  // Every team's charts, worked out once per model and shared with My team.
+  const profiles = useProfiles(modelSnapshot, model, strengths, players, stats?.allowed);
+  const head = useRef<HTMLDivElement>(null);
   if (!team) return <p className="quiet">This league has no teams yet.</p>;
 
-  const players = stats?.players ?? {};
   const showStats = Object.keys(players).length > 0;
   const groups: { title: string; lines: { slot: string; player: PlayerRef | null }[] }[] = [
     { title: "Starters", lines: team.starters },
@@ -72,7 +84,13 @@ export function Teams({ snapshot, stats, myRosterId, selectedRosterId, onSelect 
               type="button"
               className="rail-item"
               aria-current={candidate.rosterId === team.rosterId ? "true" : undefined}
-              onClick={() => onSelect(candidate.rosterId)}
+              onClick={() => {
+                onSelect(candidate.rosterId);
+                // The team's name and charts sit above the list: bring them back into view
+                // when the page has been scrolled past them.
+                const top = head.current?.getBoundingClientRect().top ?? 0;
+                if (top < 0) head.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
             >
               <Avatar url={candidate.avatarUrl} name={candidate.teamName} size="sm" />
               <span className="rail-name">
@@ -85,18 +103,28 @@ export function Teams({ snapshot, stats, myRosterId, selectedRosterId, onSelect 
         ))}
       </ul>
 
-      <div className="card roster">
-        <div className="team-cell">
-          <Avatar url={team.avatarUrl} name={team.teamName} size="lg" />
-          <div>
-            <h2 className="team-title">{team.teamName}</h2>
-            <p className="quiet">
-              {team.managerName}, {formatRecord(team.wins, team.losses, team.ties)}, {formatPoints(team.pointsFor)}{" "}
-              points scored
-            </p>
-          </div>
+      {/* The selected team across the page: who it is, then its charts (as wide as on My team),
+          then the team list and its roster side by side. */}
+      <div className="team-cell team-head" ref={head}>
+        <Avatar url={team.avatarUrl} name={team.teamName} size="lg" />
+        <div>
+          <h2 className="team-title">{team.teamName}</h2>
+          <p className="quiet">
+            {team.managerName}, {formatRecord(team.wins, team.losses, team.ties)}, {formatPoints(team.pointsFor)}{" "}
+            points scored
+          </p>
         </div>
+      </div>
 
+      <div className="team-detail-charts">
+        <TeamCharts
+          snapshot={modelSnapshot}
+          profile={profiles?.get(team.rosterId) ?? null}
+          own={team.rosterId === myRosterId}
+        />
+      </div>
+
+      <div className="card roster">
         {showStats && (
           <p className="roster-summary">
             Starters average <strong>{formatPoints(starterTotal)}</strong> fantasy points per game combined.

@@ -7,7 +7,8 @@ import type { StrengthModel, TeamStrength } from "../../shared/strength.ts";
 import { extremes, leagueProfiles, type ProfileAxis, type TeamProfile, type WeekPoint } from "../../shared/teamProfile.ts";
 import type { LeagueSnapshot, PlayerStats, ScheduleAhead, ScoreHistory } from "../../shared/types.ts";
 
-// Three views of the team against the league, above the roster on My team:
+// Three views of the team against the league, above the roster on My team
+// and above each team's roster on Teams (worded for that team, not "you"):
 // its shape (how it scores), its weeks (finished and ahead) and its scoring
 // mix. Each card says in one line what stands out; hovering or tapping a
 // part of a chart gives that part's figure and rank. On a phone the cards
@@ -107,26 +108,29 @@ export function useProfiles(
   return profiles;
 }
 
+/** Whose team the words are about: the user's own, or another team's. */
+type Whose = "your" | "their";
+
 /** A rate as a whole percentage. */
 const percent = (rate: number) => `${Math.round(100 * rate)}%`;
 
 /** How much the team's real finished weeks count toward its ceiling or floor. */
-function realNote(axis: ProfileAxis): string {
+function realNote(axis: ProfileAxis, whose: Whose): string {
   if (!axis.real) return "";
   const weeks = axis.real.weeks === 1 ? "finished week" : `${axis.real.weeks} finished weeks`;
-  return `. Your ${weeks} (averaging ${formatPoints(axis.real.average)}) count for ${percent(axis.real.share)}, the projection for the rest`;
+  return `. ${whose === "your" ? "Your" : "Their"} ${weeks} (averaging ${formatPoints(axis.real.average)}) count for ${percent(axis.real.share)}, the projection for the rest`;
 }
 
 /** What a shape axis's figure means, short enough to fit the note under the chart. */
-function shapeNote(axis: ProfileAxis, rate: number): string {
+function shapeNote(axis: ProfileAxis, rate: number, whose: Whose): string {
   const scaled = rate === 1 ? "" : `, at the ${percent(rate)} of projections this league really scores`;
   switch (axis.key) {
     case "ceiling":
-      return `${formatPoints(axis.value)} in a good week${realNote(axis)}`;
+      return `${formatPoints(axis.value)} in a good week${realNote(axis, whose)}`;
     case "floor":
-      return `${formatPoints(axis.value)} in a bad week${realNote(axis)}`;
+      return `${formatPoints(axis.value)} in a bad week${realNote(axis, whose)}`;
     case "stars":
-      return `${formatPoints(axis.value)} a week from your best three`;
+      return `${formatPoints(axis.value)} a week from ${whose} best three`;
     case "depth":
       return `${formatPoints(axis.value)} a week added by the bench${scaled}`;
     case "schedule": {
@@ -137,7 +141,7 @@ function shapeNote(axis: ProfileAxis, rate: number): string {
       return `${axis.schedule.games.toFixed(1)} games a week left per main player, ${opponents}`;
     }
     case "health":
-      return `${axis.value.toFixed(0)}% of your top ten on hand, next four weeks`;
+      return `${axis.value.toFixed(0)}% of ${whose} top ten on hand, next four weeks`;
     case "trend":
       return `${axis.value >= 0 ? "+" : "−"}${Math.abs(axis.value).toFixed(1)}%, projections against averages`;
     default:
@@ -145,9 +149,24 @@ function shapeNote(axis: ProfileAxis, rate: number): string {
   }
 }
 
-/** The charts for one team; `profile` is null while the figures load (useProfiles, called by the page so the roster card can use them too). */
-export function TeamCharts({ snapshot, profile }: { snapshot: LeagueSnapshot; profile: TeamProfile | null }) {
+/**
+ * The charts for one team; `profile` is null while the figures load (useProfiles, called by the
+ * page so the roster card can use them too). `own` is false for another team's charts: the
+ * legend says "This team" and the notes say "their".
+ */
+export function TeamCharts({
+  snapshot,
+  profile,
+  own = true,
+}: {
+  snapshot: LeagueSnapshot;
+  profile: TeamProfile | null;
+  own?: boolean;
+}) {
   const teams = snapshot.teams.length;
+  const whose: Whose = own ? "your" : "their";
+  const radarLegend = own ? RADAR_LEGEND : withTeam(RADAR_LEGEND);
+  const weekLegend = own ? WEEK_LEGEND : withTeam(WEEK_LEGEND);
   const scroller = useRef<HTMLDivElement>(null);
   const [page, setPage] = useState(0);
 
@@ -167,13 +186,13 @@ export function TeamCharts({ snapshot, profile }: { snapshot: LeagueSnapshot; pr
     return (
       <div className="team-charts-wrap" aria-busy="true">
         <div className="team-charts" ref={scroller}>
-          <ChartCard title="Team shape" legend={RADAR_LEGEND} summary={null}>
+          <ChartCard title="Team shape" legend={radarLegend} summary={null}>
             {() => <RadarFrame count={7} />}
           </ChartCard>
-          <ChartCard title="Week by week" legend={WEEK_LEGEND} summary={null}>
+          <ChartCard title="Week by week" legend={weekLegend} summary={null}>
             {() => <WeekFrame />}
           </ChartCard>
-          <ChartCard title="Scoring mix" legend={RADAR_LEGEND} summary={null}>
+          <ChartCard title="Scoring mix" legend={radarLegend} summary={null}>
             {() => <RadarFrame count={6} />}
           </ChartCard>
         </div>
@@ -192,7 +211,7 @@ export function TeamCharts({ snapshot, profile }: { snapshot: LeagueSnapshot; pr
         : "",
     profile.ahead
       ? `Projected ${formatPoints(profile.ahead.average)} from here (${ordinal(profile.ahead.rank)})${
-          profile.rate.weeks > 0 ? `: ${percent(profile.rate.team)} of your ${formatPoints(profile.ahead.locks)} locks a week` : ""
+          profile.rate.weeks > 0 ? `: ${percent(profile.rate.team)} of ${whose} ${formatPoints(profile.ahead.locks)} locks a week` : ""
         }.`
       : "",
   ]
@@ -204,7 +223,7 @@ export function TeamCharts({ snapshot, profile }: { snapshot: LeagueSnapshot; pr
       <div className="team-charts" ref={scroller}>
         <ChartCard
           title="Team shape"
-          legend={RADAR_LEGEND}
+          legend={radarLegend}
           summary={
             shape
               ? `Strongest at ${shape.best.label.toLowerCase()} (${ordinal(shape.best.rank)} of ${teams}); weakest at ${shape.worst.label.toLowerCase()} (${ordinal(shape.worst.rank)}).`
@@ -215,14 +234,14 @@ export function TeamCharts({ snapshot, profile }: { snapshot: LeagueSnapshot; pr
             <Radar
               axes={profile.shape}
               onFocus={(axis) =>
-                onFocus(axis && `${axis.label}: ${shapeNote(axis, profile.rate.league)}. ${ordinal(axis.rank)} of ${teams}.`)
+                onFocus(axis && `${axis.label}: ${shapeNote(axis, profile.rate.league, whose)}. ${ordinal(axis.rank)} of ${teams}.`)
               }
             />
           )}
         </ChartCard>
         <ChartCard
           title="Week by week"
-          legend={WEEK_LEGEND}
+          legend={weekLegend}
           summary={weekSummary}
         >
           {(onFocus) => (
@@ -241,7 +260,7 @@ export function TeamCharts({ snapshot, profile }: { snapshot: LeagueSnapshot; pr
         </ChartCard>
         <ChartCard
           title="Scoring mix"
-          legend={RADAR_LEGEND}
+          legend={radarLegend}
           summary={
             mix
               ? `Most from ${mix.best.label.toLowerCase()} (${ordinal(mix.best.rank)} of ${teams}), least from ${mix.worst.label.toLowerCase()} (${ordinal(mix.worst.rank)}).${
@@ -257,7 +276,7 @@ export function TeamCharts({ snapshot, profile }: { snapshot: LeagueSnapshot; pr
               <Radar
                 axes={profile.mix}
                 onFocus={(axis) =>
-                  onFocus(axis && `${axis.label}: ${formatPoints(axis.value)} of your points a week. ${ordinal(axis.rank)} of ${teams}.`)
+                  onFocus(axis && `${axis.label}: ${formatPoints(axis.value)} of ${whose} points a week. ${ordinal(axis.rank)} of ${teams}.`)
                 }
               />
             ) : (
@@ -291,6 +310,9 @@ const WEEK_LEGEND: [string, LegendKind][] = [
   ["League average", "league"],
   ["League range", "range"],
 ];
+/** A legend for another team's charts. */
+const withTeam = (legend: [string, LegendKind][]): [string, LegendKind][] =>
+  legend.map(([label, kind]) => [kind === "team" ? "This team" : label, kind]);
 
 function ChartCard({
   title,
