@@ -15,13 +15,18 @@
 //   league rate = all real scores / all projections
 //   team rate   = (weeks · own rate + PRIOR_WEEKS · league rate) / (weeks + PRIOR_WEEKS)
 //
-// so the four stand-in weeks (two at half weight) put a team halfway between its
-// own record and the league's, and each saved week makes its own record count
-// more. Both rates are kept within RATE_LIMITS.
+// A week is a noisy measure of a team's rate: real weeks swing about 9% around
+// a team's projection (the model itself expects about 8% from the games
+// alone), while in weeks 1 to 4 the teams' rates spread by 4.6%, no more than
+// that noise gives over four weeks. So a team's own record is weighed against
+// PRIOR_WEEKS weeks of the league's (a few percent of real difference between
+// managers, against 8 to 9% a week of noise): the four stand-in weeks (two at
+// half weight) give its own record a fifth, ten saved weeks half. Both rates are
+// kept within RATE_LIMITS.
 import type { ScoreHistory } from "./types.ts";
 
-/** A team's rate starts from the league's as if it had this many weeks of its own. */
-export const PRIOR_WEEKS = 2;
+/** A team's rate starts from the league's as if it had this many weeks of its own (see above). */
+export const PRIOR_WEEKS = 8;
 /** No rate is taken outside this range, however the weeks went. */
 export const RATE_LIMITS = { low: 0.7, high: 1.1 } as const;
 /** A week compared with today's projection (saved before projections were) counts this much. */

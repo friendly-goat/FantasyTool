@@ -164,8 +164,10 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
 - The team charts on My team (`shared/teamProfile.ts`, `TeamCharts.tsx`)
   place a team around the league's average (the middle ring, `place`: two
   rings per standard deviation across the league, never min to max), with
-  ceiling and floor leaning on the team's real finished weeks (capped,
-  `MAX_REAL_SHARE`) and the mix in points a week; display
+  ceiling and floor leaning on the team's real finished weeks (the same
+  weight as a team's own rate, `PRIOR_WEEKS` 8, capped at `MAX_REAL_SHARE`;
+  the model's part at the league's rate, so real weeks count once) and the
+  mix in points a week; display
   only, never fed into strength, grades or trade ideas. Their Schedule axis
   uses the real games left and opponents' `allowed` ratios; Week by week shows
   finished weeks' final scores (`/history`) apart from projected weeks.

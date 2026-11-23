@@ -122,9 +122,9 @@ function shapeNote(axis: ProfileAxis, rate: number): string {
   const scaled = rate === 1 ? "" : `, at the ${percent(rate)} of projections this league really scores`;
   switch (axis.key) {
     case "ceiling":
-      return `${formatPoints(axis.value)} in a good week (better than 9 in 10)${realNote(axis)}`;
+      return `${formatPoints(axis.value)} in a good week${realNote(axis)}`;
     case "floor":
-      return `${formatPoints(axis.value)} in a bad week (worse than 9 in 10)${realNote(axis)}`;
+      return `${formatPoints(axis.value)} in a bad week${realNote(axis)}`;
     case "stars":
       return `${formatPoints(axis.value)} a week from your best three`;
     case "depth":

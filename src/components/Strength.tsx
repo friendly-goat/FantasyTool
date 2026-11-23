@@ -92,7 +92,9 @@ export function Strength({ snapshot, strengths, model, stats, myRosterId, onOpen
         </p>
         <p>
           Projected weekly is what each team can expect a week: its locks a week at the share of its projections
-          it has really scored so far, the same figure as Expect a week on My team.
+          it is expected to really score (the league's rate so far, moved toward the team's own as its weeks add
+          up, since a few weeks are mostly luck), the same figure as Expect a week on My team. So it can rank a
+          team differently from its roster.
         </p>
         <p>
           Strength itself comes from locks a week: the points a team locks in an average week if every lineup is

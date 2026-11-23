@@ -191,8 +191,9 @@ export function MyTeam({ snapshot, stats, model, strengths, team, onChangeTeam, 
                 {profile?.ahead && profile.rate.weeks > 0 && (
                   <>
                     {" "}
-                    Expect a week is that at the {percent.format(profile.rate.team)} of your projections you have really
-                    scored so far, the average on week by week above.
+                    Expect a week is that at the {percent.format(profile.rate.team)} of your projections you are expected
+                    to really score (the league's rate so far, moved toward your own as your weeks add up), the average
+                    on week by week above.
                   </>
                 )}
                 {model && " Below, your best nine by weekly value, which may differ from the lineup set in Sleeper."}

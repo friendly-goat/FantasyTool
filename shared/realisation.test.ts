@@ -18,7 +18,7 @@ describe("realisation", () => {
     expect([...rate.teams.values()]).toEqual([1, 1]);
   });
 
-  it("sets real scores against today's projection at half weight, halfway to the league's rate", () => {
+  it("sets real scores against today's projection at half weight, leaning on the league's rate", () => {
     // Team 1 scores 380 a week (95%), team 2 300 (75%): the league 85%.
     const weeks = history([1, 2, 3, 4].map(() => ({ 1: 380, 2: 300 })));
     const rate = realisation(weeks, null, current);
@@ -26,8 +26,9 @@ describe("realisation", () => {
     expect(rate.weeks).toBe(4 * STAND_IN_WEIGHT);
     const span = 4 * STAND_IN_WEIGHT;
     expect(rate.teams.get(1)).toBeCloseTo((span * 0.95 + PRIOR_WEEKS * 0.85) / (span + PRIOR_WEEKS));
-    expect(rate.teams.get(1)).toBeCloseTo(0.9);
-    expect(rate.teams.get(2)).toBeCloseTo(0.8);
+    // Two weeks of evidence against eight of the league's: a fifth of the way to its own.
+    expect(rate.teams.get(1)).toBeCloseTo(0.85 + 0.1 / 5);
+    expect(rate.teams.get(2)).toBeCloseTo(0.85 - 0.1 / 5);
   });
 
   it("prefers the projection saved during the week, at full weight", () => {
@@ -40,7 +41,7 @@ describe("realisation", () => {
   });
 
   it("keeps every rate within its limits", () => {
-    const weeks = history([1, 2, 3, 4, 5, 6, 7, 8].map(() => ({ 1: 100, 2: 900 })));
+    const weeks = history(Array.from({ length: 60 }, () => ({ 1: 100, 2: 900 })));
     const rate = realisation(weeks, null, current);
     expect(rate.teams.get(1)).toBe(RATE_LIMITS.low);
     expect(rate.teams.get(2)).toBe(RATE_LIMITS.high);

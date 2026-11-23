@@ -23,7 +23,7 @@
 // MAX_REAL_SHARE). Display only: none of this feeds strength, grades or trade
 // ideas.
 import { rosterPlayers } from "./analysis.ts";
-import { realisation } from "./realisation.ts";
+import { PRIOR_WEEKS, realisation } from "./realisation.ts";
 import { settledWeeks } from "./weekScores.ts";
 import { fillRoster, type ModelPlayer, type StrengthModel, type TeamStrength, weeklyTotals } from "./strength.ts";
 import { FANTASY_SOURCES, type FantasySource, type LeagueSnapshot, type PlayerStats, type ScheduleAhead, type ScoreHistory } from "./types.ts";
@@ -125,10 +125,12 @@ export const RINGS_PER_SPREAD = 2;
 const INNERMOST = 0.6;
 /**
  * Ceiling and floor: the team's real finished weeks count as `weeks / (weeks + REAL_WEEKS_PRIOR)`
- * against the model's (four weeks in: half), never more than MAX_REAL_SHARE, so the current
- * roster (trades since, injuries now) always has its say.
+ * against the model's, never more than MAX_REAL_SHARE, so the current roster (trades since,
+ * injuries now) always has its say. The same weight a team's own record gets in its scoring rate
+ * (realisation's PRIOR_WEEKS): both read how far a few noisy weeks say a team is from what its
+ * roster would score in an average manager's hands.
  */
-export const REAL_WEEKS_PRIOR = 4;
+export const REAL_WEEKS_PRIOR = PRIOR_WEEKS;
 export const MAX_REAL_SHARE = 0.75;
 const MIX_LABELS: Record<Exclude<FantasySource, "mistakes">, string> = {
   scoring: "Scoring",
@@ -279,9 +281,10 @@ export function leagueProfiles(
   const realParts = new Map<number, { share: number; weeks: number; average: number }>();
   for (const [id, row] of shapeRows) {
     row.depth = (row.depth ?? 0) * rates.league;
-    // Ceiling and floor: the team's good and bad weeks. The model gives the roster's weeks as its
-    // manager runs them (its weeks less the team's own shortfall, as the weeks ahead are); the
-    // team's real finished weeks say where it has actually been. Each counts by how much evidence it is: the real weeks
+    // Ceiling and floor: the team's good and bad weeks. The model gives the roster's weeks as this
+    // league runs them (its weeks less the league's shortfall); the team's real finished weeks say
+    // where it has actually been. (Not the team's own rate for the model's part: that already
+    // leans on the same real weeks, which would then count twice.) Each counts by how much evidence it is: the real weeks
     // weeks / (weeks + REAL_WEEKS_PRIOR), at most MAX_REAL_SHARE. The middle of the team's weeks is
     // the blend of the two averages; the swing either side is the model's, widened or narrowed by
     // how widely the real weeks swung against the model's (blended the same way).
@@ -296,8 +299,7 @@ export function leagueProfiles(
     const share = real.length > 0 ? Math.min(MAX_REAL_SHARE, real.length / (real.length + REAL_WEEKS_PRIOR)) : 0;
     const spreadShare = real.length > 1 ? Math.min(MAX_REAL_SHARE, (real.length - 1) / (real.length - 1 + REAL_WEEKS_PRIOR)) : 0;
     const realMean = real.length > 0 ? real.reduce((sum, score) => sum + score, 0) / real.length : 0;
-    const ownShortfall = (1 - (rates.teams.get(id) ?? rates.league)) * modelMean;
-    const middle = share * realMean + (1 - share) * (modelMean - ownShortfall);
+    const middle = share * realMean + (1 - share) * (modelMean - leagueShortfall);
     const spread = Math.sqrt(spreadShare * standardDeviation(real) ** 2 + (1 - spreadShare) * modelSpread ** 2);
     const widen = modelSpread > 0 ? spread / modelSpread : 1;
     row.ceiling = middle + (quantile(sorted, 0.9) - modelMean) * widen;
