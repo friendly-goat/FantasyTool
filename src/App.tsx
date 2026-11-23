@@ -1,12 +1,15 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { teamSituations } from "../shared/insight.ts";
 import { buildModel, leagueStrength } from "../shared/strength.ts";
 import { registerModel } from "./search.ts";
 import { loadScheduleAhead, loadedScheduleAhead } from "./scheduleAhead.ts";
+import { modelFingerprint } from "./modelInputs.ts";
+import { clearSaved, readSaved, savedKeys, writeSaved } from "./saved.ts";
 import type { TradeOffer } from "../shared/trade.ts";
 import type { AppConfig, LeagueSnapshot, PlayerRef, ScheduleAhead, StatsReport } from "../shared/types.ts";
 import {
   getConfig,
+  getDraft,
   getLeague,
   getStats,
   loadMyRosterId,
@@ -14,6 +17,7 @@ import {
   saveLeagueId,
   saveMyRosterId,
   getSession,
+  OfflineError,
   type Session,
   SIGNED_OUT_EVENT,
   signOut,
@@ -44,14 +48,16 @@ const VIEWS = ["My team", "Trades", "Rankings", "Draft", "Teams", "Players", "Ac
 const HIDDEN_VIEWS: readonly View[] = ["Matchups"];
 const NAV_VIEWS = VIEWS.filter((name) => !HIDDEN_VIEWS.includes(name));
 const CORE_VIEWS: readonly View[] = ["My team", "Trades"];
-/** How often to ask the server for the league while the page is open. It decides whether Sleeper is asked. */
-const LEAGUE_POLL_MS = 2 * 60_000;
+/** How often to ask the server for the league while the page is open. It answers from memory and decides whether Sleeper is asked. */
+const LEAGUE_POLL_MS = 60_000;
 /** How soon to ask again when the server answered with saved data while fetching newer data. */
 const REFRESHING_RECHECK_MS = 5_000;
 /** How often to ask the server for progress while stats are downloading. */
 const STATS_POLL_MS = 2500;
-/** How long the model waits for the NBA schedule before playing made-up weeks. */
+/** How long the model waits for the NBA schedule before playing made-up weeks (when none is saved). */
 const SCHEDULE_WAIT_MS = 6000;
+/** The longest a trade search waits for this visit's data before running on what it has. */
+const SETTLE_MAX_MS = 15_000;
 const LAST_SEASON_POLL_MS = 20000;
 type View = (typeof VIEWS)[number];
 // On a phone, the tab bar holds these (Trades in the middle, set apart); the rest sit under More.
@@ -67,6 +73,8 @@ export function App() {
   // Ticks every minute so "Updated 3 minutes ago" stays true.
   const [, setClock] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  /** The server could not be reached on the last try; saved data is on screen. */
+  const [offline, setOffline] = useState(false);
   const [view, setView] = useState<View>("My team");
   const [myRosterId, setMyRosterId] = useState<number | null>(null);
   const [choosingTeam, setChoosingTeam] = useState(false);
@@ -82,40 +90,86 @@ export function App() {
   const { theme, toggleTheme } = useTheme();
   const [session, setSession] = useState<Session | null>(null);
 
-  // Who is signed in comes first: without a sign-in the server answers nothing else.
+  // The app opens on what this browser saved last time (src/saved.ts): the sign-in, the settings
+  // and the league's data, so it shows straight away, even while the server wakes up. The server
+  // is asked for all of it at once, and its answers replace the saved copies. Without a sign-in
+  // the server answers nothing else and the sign-in screen shows.
   useEffect(() => {
+    let current = true;
+    void Promise.all([readSaved<Session>(savedKeys.session), readSaved<AppConfig>(savedKeys.config)]).then(([savedSession, savedConfig]) => {
+      if (!current || !savedSession || !savedConfig) return;
+      if (savedSession.authRequired && savedSession.role === null) return;
+      setSession((known) => known ?? savedSession);
+      setConfig((known) => known ?? savedConfig);
+      setLeagueId((known) => known ?? savedConfig.defaultLeagueId ?? loadSavedLeagueId());
+    });
     getSession()
-      .then(setSession)
-      .catch(() => setError("The server is not answering. Start it with npm run dev and reload."));
-    const signedOut = () => setSession((current) => (current ? { ...current, role: null } : current));
+      .then((loaded) => {
+        setSession(loaded);
+        void writeSaved(savedKeys.session, loaded);
+      })
+      .catch(() => {
+        // With saved data on screen, a server that is not answering is shown by its age.
+        if (!sessionRef.current) setError("The server is not answering. Check your connection and reload.");
+      });
+    const signedOut = () => {
+      void clearSaved();
+      setSession((known) => (known ? { ...known, role: null } : { authRequired: true, role: null }));
+    };
     window.addEventListener(SIGNED_OUT_EVENT, signedOut);
-    return () => window.removeEventListener(SIGNED_OUT_EVENT, signedOut);
+    return () => {
+      current = false;
+      window.removeEventListener(SIGNED_OUT_EVENT, signedOut);
+    };
   }, []);
   const signedIn = !!session && (!session.authRequired || session.role !== null);
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
+  const configRef = useRef(config);
+  configRef.current = config;
 
   useEffect(() => {
     if (!signedIn) return;
     getConfig()
       .then((loaded) => {
         setConfig(loaded);
-        setLeagueId(loaded.defaultLeagueId ?? loadSavedLeagueId());
+        void writeSaved(savedKeys.config, loaded);
+        setLeagueId((known) => loaded.defaultLeagueId ?? known ?? loadSavedLeagueId());
       })
-      .catch(() => setError("The local server is not answering. Start it with npm run dev and reload."));
+      .catch(() => {
+        if (!configRef.current) setError("The server is not answering. Check your connection and reload.");
+      });
   }, [signedIn]);
+
+  // Whether this visit's own answers are in (not just saved copies): the league, the stats it
+  // points to, and the schedule. A trade search waits for them (a few seconds at most), so its
+  // ideas are not overtaken a moment later.
+  const [leagueFetched, setLeagueFetched] = useState(false);
+  const [scheduleFetched, setScheduleFetched] = useState(false);
+  const [latestStatsVersion, setLatestStatsVersion] = useState<string | null | undefined>(undefined);
+  const [settleTimedOut, setSettleTimedOut] = useState(false);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSettleTimedOut(true), SETTLE_MAX_MS);
+    return () => window.clearTimeout(timer);
+  }, [leagueId]);
 
   const load = useCallback(async (id: string): Promise<LeagueSnapshot | null> => {
     try {
       const next = await getLeague(id);
-      // Only newer data replaces the snapshot, so the team model is not rebuilt
-      // (and a trade search not reset) every time the page checks in.
+      // Only newer data replaces the snapshot; the model is rebuilt only if what it reads changed.
       setSnapshot((current) =>
         current && current.league.id === next.league.id && current.fetchedAt === next.fetchedAt ? current : next,
       );
       setLive(next.live === true);
+      setLatestStatsVersion(next.statsVersion ?? null);
+      if (!next.refreshing) setLeagueFetched(true);
       setError(null);
+      setOffline(false);
+      void writeSaved(savedKeys.league(id), next);
       return next;
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "The league could not be loaded.");
+      if (cause instanceof OfflineError) setOffline(true);
+      else setError(cause instanceof Error ? cause.message : "The league could not be loaded.");
       return null;
     }
   }, []);
@@ -127,11 +181,25 @@ export function App() {
     if (!leagueId) return;
     let cancelled = false;
     let recheck: number | undefined;
+    // The saved copy shows while the server answers.
+    void readSaved<LeagueSnapshot>(savedKeys.league(leagueId)).then((saved) => {
+      if (!cancelled && saved) setSnapshot((current) => current ?? saved);
+    });
+    void readSaved<StatsReport>(savedKeys.stats(leagueId)).then((saved) => {
+      if (!cancelled && saved) setStats((current) => current ?? saved);
+    });
+    let rechecks = 0;
     const run = async () => {
       const next = await load(leagueId);
       if (cancelled) return;
       window.clearTimeout(recheck);
-      if (next?.refreshing) recheck = window.setTimeout(() => void run(), REFRESHING_RECHECK_MS);
+      if (next?.refreshing && rechecks < 3) {
+        rechecks += 1;
+        recheck = window.setTimeout(() => void run(), REFRESHING_RECHECK_MS);
+      } else if (next) {
+        // Still refreshing after a few checks: what the server has is what there is for now.
+        setLeagueFetched(true);
+      }
     };
     void run();
     const poll = window.setInterval(() => {
@@ -158,25 +226,36 @@ export function App() {
   const loadStats = useCallback(async (id: string, retry = false) => {
     try {
       const next = await getStats(id, retry);
-      // While a download runs, the server is asked for progress every few
-      // seconds. Keep the same player data when nothing but progress changed,
-      // so the model and anything built on it (like a trade search) stay put.
-      setStats((previous) =>
-        previous &&
-        previous.status === next.status &&
-        previous.syncedAt === next.syncedAt &&
-        previous.lastSeason === next.lastSeason
-          ? { ...next, players: previous.players, unmatchedRostered: previous.unmatchedRostered }
-          : next,
-      );
+      // Keep the same player data when its version (or, without one, the sync) is unchanged, so
+      // the model and anything built on it (like a trade search) stay put.
+      setStats((previous) => {
+        const same =
+          previous &&
+          (previous.version && next.version
+            ? previous.version === next.version
+            : previous.status === next.status && previous.syncedAt === next.syncedAt && previous.lastSeason === next.lastSeason);
+        return same ? { ...next, players: previous.players, unmatchedRostered: previous.unmatchedRostered, allowed: previous.allowed } : next;
+      });
+      if (next.status === "ready" && Object.keys(next.players).length > 0) void writeSaved(savedKeys.stats(id), next);
     } catch {
       // The league views still work without stats; the next poll or refresh tries again.
     }
   }, []);
 
+  // Stats are asked for when this visit's league answer points to a version the page does not
+  // have (or none is known), not on every check-in: the report is the biggest download.
+  const statsVersion = stats?.version;
+  const askedForVersion = useRef<string | null | undefined>(undefined);
+  const [answeredVersion, setAnsweredVersion] = useState<string | null | undefined>(undefined);
   useEffect(() => {
-    if (loadedLeagueId) void loadStats(loadedLeagueId);
-  }, [loadedLeagueId, loadStats]);
+    if (!loadedLeagueId || !leagueFetched) return;
+    if (latestStatsVersion && statsVersion === latestStatsVersion) return;
+    // Asked once per version the league points to (the answer may already be a step newer).
+    const wanted = latestStatsVersion ?? null;
+    if (askedForVersion.current === wanted) return;
+    askedForVersion.current = wanted;
+    void loadStats(loadedLeagueId).then(() => setAnsweredVersion(wanted));
+  }, [loadedLeagueId, leagueFetched, latestStatsVersion, statsVersion, loadStats]);
 
   useEffect(() => {
     if (!loadedLeagueId || !stats) return;
@@ -218,14 +297,24 @@ export function App() {
     const ready = loadedScheduleAhead(loadedLeagueId, scheduleWeek);
     if (ready) {
       setSchedule(ready);
+      setScheduleFetched(true);
       return;
     }
     setSchedule(undefined);
     let live = true;
+    const key = savedKeys.schedule(loadedLeagueId, scheduleWeek);
+    // A saved schedule is used straight away; the server's replaces it only if it differs.
+    void readSaved<ScheduleAhead>(key).then((saved) => {
+      if (live && saved) setSchedule((current) => (current === undefined ? saved : current));
+    });
     const timer = window.setTimeout(() => live && setSchedule((current) => (current === undefined ? null : current)), SCHEDULE_WAIT_MS);
     void loadScheduleAhead(loadedLeagueId, scheduleWeek).then((loaded) => {
-      if (live && loaded) setSchedule(loaded);
-      else if (live) setSchedule((current) => (current === undefined ? null : current));
+      if (!live) return;
+      setScheduleFetched(true);
+      if (loaded) {
+        setSchedule((current) => (current && JSON.stringify(current) === JSON.stringify(loaded) ? current : loaded));
+        if (loaded.status === "ready") void writeSaved(key, loaded);
+      } else setSchedule((current) => (current === undefined ? null : current));
     });
     return () => {
       live = false;
@@ -233,27 +322,59 @@ export function App() {
     };
   }, [loadedLeagueId, scheduleWeek]);
 
-  // The strength model behind the Strength and Trades tabs. Rebuilt only
-  // when the league, the stats or the schedule change.
+  // The snapshot the model is built from: replaced only when something the model reads changes
+  // (src/modelInputs.ts), not on every refresh of live points, so the model, the top moves and a
+  // trade search in progress are not redone for nothing.
+  const modelInputs = useRef<{ fingerprint: string; snapshot: LeagueSnapshot } | null>(null);
+  const modelSnapshot = useMemo(() => {
+    if (!snapshot) return null;
+    const fingerprint = modelFingerprint(snapshot);
+    if (modelInputs.current?.fingerprint === fingerprint) return modelInputs.current.snapshot;
+    modelInputs.current = { fingerprint, snapshot };
+    return snapshot;
+  }, [snapshot]);
+
+  // The strength model behind the Strength and Trades tabs. Rebuilt only when the league's
+  // model inputs, the player data or the schedule change.
   const statsPlayers = stats?.players;
   const model = useMemo(
     () =>
       {
-        if (!snapshot || !stats || !statsPlayers || Object.keys(statsPlayers).length === 0 || schedule === undefined) return null;
-        const built = buildModel(snapshot, stats, undefined, schedule);
+        if (!modelSnapshot || !stats || !statsPlayers || Object.keys(statsPlayers).length === 0 || schedule === undefined) return null;
+        const built = buildModel(modelSnapshot, stats, undefined, schedule);
         // So the trade search can build the same model off the page's thread.
-        registerModel(built, snapshot, stats, schedule);
+        registerModel(built, modelSnapshot, stats, schedule);
         return built;
       },
     // Rebuilt only when the league, the player data or the schedule change, not on progress updates.
-    [snapshot, statsPlayers, schedule],
+    [modelSnapshot, statsPlayers, schedule],
   );
-  const strengths = useMemo(() => (snapshot && model ? leagueStrength(snapshot, model) : null), [snapshot, model]);
+  const strengths = useMemo(() => (modelSnapshot && model ? leagueStrength(modelSnapshot, model) : null), [modelSnapshot, model]);
 
   const situations = useMemo(
-    () => (snapshot && model && strengths ? teamSituations(snapshot, model, strengths) : null),
-    [snapshot, model, strengths],
+    () => (modelSnapshot && model && strengths ? teamSituations(modelSnapshot, model, strengths) : null),
+    [modelSnapshot, model, strengths],
   );
+
+  const statsCurrent =
+    !!stats &&
+    stats.status !== "syncing" &&
+    (stats.status === "unconfigured" ||
+      stats.version === latestStatsVersion ||
+      (answeredVersion !== undefined && answeredVersion === (latestStatsVersion ?? null)));
+  const settled = settleTimedOut || (leagueFetched && scheduleFetched && statsCurrent);
+
+  // Once the visit's data is in, the draft board is fetched quietly too, so its tab opens at once.
+  useEffect(() => {
+    if (!settled || !loadedLeagueId) return;
+    const id = loadedLeagueId;
+    const timer = window.setTimeout(() => {
+      getDraft(id)
+        .then((result) => writeSaved(savedKeys.draft(id), result.board))
+        .catch(() => {});
+    }, 3000);
+    return () => window.clearTimeout(timer);
+  }, [settled, loadedLeagueId]);
 
   function chooseTeam(rosterId: number) {
     if (snapshot) saveMyRosterId(snapshot.league.id, rosterId);
@@ -262,10 +383,20 @@ export function App() {
     setView("My team");
   }
 
-  function openLeague(id: string, userId?: string) {
-    saveLeagueId(id);
+  function resetData() {
     setSnapshot(null);
     setStats(null);
+    setLeagueFetched(false);
+    setScheduleFetched(false);
+    setLatestStatsVersion(undefined);
+    setSettleTimedOut(false);
+    askedForVersion.current = undefined;
+    setAnsweredVersion(undefined);
+  }
+
+  function openLeague(id: string, userId?: string) {
+    saveLeagueId(id);
+    resetData();
     setMyRosterId(null);
     setPickedUserId(userId ?? null);
     setLeagueId(id);
@@ -278,8 +409,8 @@ export function App() {
 
   function switchLeague() {
     saveLeagueId(null);
-    setSnapshot(null);
-    setStats(null);
+    void clearSaved();
+    resetData();
     setMyRosterId(null);
     setError(null);
     setLeagueId(null);
@@ -317,6 +448,7 @@ export function App() {
     setOpenMatchupId(null); // the Matchups tab opens on the list
   };
   const signOutNow = () => {
+    void clearSaved();
     void signOut().then(() => setSession({ authRequired: true, role: null }));
   };
   // Settings: in the account menu on a wide screen, the More sheet on a phone.
@@ -401,6 +533,17 @@ export function App() {
             This is sample data. Stop the server and run <code>npm run dev</code> to load your league.
           </p>
         )}
+        {offline && snapshot && (
+          <p className="notice notice-warn" role="status">
+            Can't reach the server right now. Showing data saved {formatAgo(snapshot.fetchedAt)}; it updates on its own when
+            the connection is back.
+          </p>
+        )}
+        {offline && !snapshot && (
+          <p className="notice notice-error" role="alert">
+            Can't reach the server. Check your connection; the app tries again on its own.
+          </p>
+        )}
         {snapshot?.stale && (
           <p className="notice notice-warn">
             Sleeper could not be reached. Showing data from {formatDate(snapshot.fetchedAt)}.
@@ -443,7 +586,7 @@ export function App() {
 
             {view === "My team" && (
               <MyTeam
-                snapshot={snapshot}
+                snapshot={modelSnapshot ?? snapshot}
                 stats={stats}
                 model={model}
                 strengths={strengths}
@@ -457,7 +600,7 @@ export function App() {
               <Rankings
                 mode={rankingMode}
                 onModeChange={setRankingMode}
-                snapshot={snapshot}
+                snapshot={modelSnapshot ?? snapshot}
                 strengths={strengths}
                 model={model}
                 stats={stats}
@@ -469,8 +612,9 @@ export function App() {
             <div hidden={view !== "Trades"}>
               <Trades
                 key={myTeam.rosterId}
-                snapshot={snapshot}
+                snapshot={modelSnapshot ?? snapshot}
                 model={model}
+                settled={settled}
                 situations={situations}
                 myRosterId={myTeam.rosterId}
                 incoming={builderOffer}
@@ -498,7 +642,7 @@ export function App() {
               />
             )}
             {view === "Draft" && (
-              <Draft leagueId={snapshot.league.id} snapshot={snapshot} model={model} myRosterId={myTeam.rosterId} />
+              <Draft leagueId={snapshot.league.id} snapshot={modelSnapshot ?? snapshot} model={model} myRosterId={myTeam.rosterId} />
             )}
             {view === "Activity" && <Activity snapshot={snapshot} model={model} myRosterId={myRosterId} />}
 

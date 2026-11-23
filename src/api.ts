@@ -17,8 +17,20 @@ import type {
 /** Sent when the server says the sign-in is missing or has run out; App shows the sign-in screen. */
 export const SIGNED_OUT_EVENT = "fantasytool:signed-out";
 
+/** Thrown when the server cannot be reached at all (offline, or still waking up and timing out). */
+export class OfflineError extends Error {
+  constructor() {
+    super("The server could not be reached. Check your connection.");
+  }
+}
+
 async function getJson<T>(url: string): Promise<T> {
-  const response = await fetch(url);
+  let response: Response;
+  try {
+    response = await fetch(url);
+  } catch {
+    throw new OfflineError();
+  }
   const body = (await response.json().catch(() => null)) as { error?: string } | null;
   if (response.status === 401) window.dispatchEvent(new Event(SIGNED_OUT_EVENT));
   if (!response.ok) {

@@ -5,7 +5,7 @@ import type { Move } from "../../shared/moves.ts";
 import { searchMoves } from "../search.ts";
 import { TeamCharts, useProfiles } from "./TeamCharts.tsx";
 import { bestNineLineup, type StrengthModel, type TeamStrength } from "../../shared/strength.ts";
-import type { TradeOffer } from "../../shared/trade.ts";
+import type { SearchStage, TradeOffer } from "../../shared/trade.ts";
 import type { LeagueSnapshot, PlayerRef, StatsReport, Team } from "../../shared/types.ts";
 import { formatPoints, formatRecord, formatSigned, formatStrength, formatStrengthChange, ordinal } from "../format.ts";
 import { StrengthStars } from "./StrengthStars.tsx";
@@ -13,6 +13,7 @@ import { Avatar } from "./Avatar.tsx";
 import { ChanceTag } from "./TeamEffect.tsx";
 import { PlayerCell } from "./PlayerCell.tsx";
 import { PositionChip } from "./PositionChip.tsx";
+import { SearchProgress } from "./SearchProgress.tsx";
 
 interface Props {
   snapshot: LeagueSnapshot;
@@ -29,28 +30,46 @@ interface Props {
 const percent = new Intl.NumberFormat("en-US", { style: "percent", maximumFractionDigits: 0 });
 
 // The search takes a few seconds, so each team's moves are kept (and a search under way is
-// shared) for as long as the model stands.
+// shared, with how far it has got) for as long as the model stands. The model is rebuilt only
+// when the data it reads changes (App's model fingerprint), so the moves are worked out once.
 const movesByModel = new WeakMap<StrengthModel, Map<number, Promise<Move[]>>>();
 const doneByModel = new WeakMap<StrengthModel, Map<number, Move[]>>();
+type MovesProgress = { share: number; stage: SearchStage };
+const progressByModel = new WeakMap<StrengthModel, Map<number, MovesProgress>>();
+const progressListeners = new Set<() => void>();
 
-/** The team's top moves, worked out after the page has painted. Null while searching. */
+/** The team's top moves, worked out after the page has painted. Null while searching, with how far it has got. */
 function useTopMoves(
   model: StrengthModel | null,
   snapshot: LeagueSnapshot,
   rosterId: number,
   situations: Map<number, TeamSituation> | null,
-): Move[] | null {
+): { moves: Move[] | null; progress: MovesProgress | null } {
   const saved = model ? (doneByModel.get(model)?.get(rosterId) ?? null) : null;
   const [found, setFound] = useState<{ model: StrengthModel; rosterId: number; moves: Move[] } | null>(null);
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const listener = () => setTick((tick) => tick + 1);
+    progressListeners.add(listener);
+    return () => {
+      progressListeners.delete(listener);
+    };
+  }, []);
   useEffect(() => {
     if (!model || !situations || doneByModel.get(model)?.has(rosterId)) return;
     let live = true;
     if (!movesByModel.has(model)) movesByModel.set(model, new Map());
     const searches = movesByModel.get(model)!;
     if (!searches.has(rosterId)) {
+      if (!progressByModel.has(model)) progressByModel.set(model, new Map());
+      const progress = progressByModel.get(model)!;
+      progress.set(rosterId, { share: 0, stage: "setup" });
       searches.set(
         rosterId,
-        searchMoves(model, snapshot, situations, rosterId).then((moves) => {
+        searchMoves(model, snapshot, situations, rosterId, (share, stage) => {
+          progress.set(rosterId, { share, stage });
+          for (const listener of progressListeners) listener();
+        }).then((moves) => {
           if (!doneByModel.has(model)) doneByModel.set(model, new Map());
           doneByModel.get(model)!.set(rosterId, moves);
           return moves;
@@ -64,8 +83,9 @@ function useTopMoves(
       live = false;
     };
   }, [model, snapshot, rosterId, situations]);
-  if (saved) return saved;
-  return found && found.model === model && found.rosterId === rosterId ? found.moves : null;
+  const moves = saved ?? (found && found.model === model && found.rosterId === rosterId ? found.moves : null);
+  const progress = model ? (progressByModel.get(model)?.get(rosterId) ?? null) : null;
+  return { moves, progress };
 }
 
 function MovePlayers({ players, notes }: { players: Move["gets"]; notes: Move["notes"] }) {
@@ -84,7 +104,7 @@ export function MyTeam({ snapshot, stats, model, strengths, team, onChangeTeam, 
   const hasStats = Object.keys(players).length > 0;
 
   const strength = strengths?.find((entry) => entry.rosterId === team.rosterId) ?? null;
-  const moves = useTopMoves(model, snapshot, team.rosterId, situations);
+  const { moves, progress: movesProgress } = useTopMoves(model, snapshot, team.rosterId, situations);
   const teamName = (rosterId: number | null) =>
     snapshot.teams.find((candidate) => candidate.rosterId === rosterId)?.teamName ?? "another team";
 
@@ -257,7 +277,7 @@ export function MyTeam({ snapshot, stats, model, strengths, team, onChangeTeam, 
         <>
           <h3 className="panel-heading">Top moves</h3>
           {moves === null ? (
-            <p className="quiet">Looking for the best trades and pickups…</p>
+            <SearchProgress share={movesProgress?.share ?? 0} stage={movesProgress?.stage ?? "setup"} />
           ) : moves.length > 0 ? (
             <div className="table-scroll">
               <table className="players-table moves-table">

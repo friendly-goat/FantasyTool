@@ -3,6 +3,7 @@ import { type DraftGrade, draftGrades, GRADE_LETTERS, type GradeLetter, gradedVa
 import type { ModelPlayer, StrengthModel } from "../../shared/strength.ts";
 import type { DraftBoard, DraftSelection, LeagueSnapshot } from "../../shared/types.ts";
 import { getDraft } from "../api.ts";
+import { readSaved, savedKeys, writeSaved } from "../saved.ts";
 import { formatDay, formatPoints } from "../format.ts";
 import { Avatar } from "./Avatar.tsx";
 import { PlayerButton } from "./PlayerName.tsx";
@@ -125,8 +126,16 @@ export function Draft({ leagueId, snapshot, model, myRosterId }: Props) {
     let cancelled = false;
     setBoard(undefined);
     setError(null);
+    // The saved board shows straight away; the server's replaces it.
+    void readSaved<DraftBoard | null>(savedKeys.draft(leagueId)).then((saved) => {
+      if (!cancelled && saved !== undefined) setBoard((current) => (current === undefined ? saved : current));
+    });
     getDraft(leagueId)
-      .then((result) => !cancelled && setBoard(result.board))
+      .then((result) => {
+        if (cancelled) return;
+        setBoard(result.board);
+        void writeSaved(savedKeys.draft(leagueId), result.board);
+      })
       .catch((reason: unknown) => !cancelled && setError(reason instanceof Error ? reason.message : String(reason)));
     return () => {
       cancelled = true;

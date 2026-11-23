@@ -104,6 +104,8 @@ export interface LeagueSnapshot {
   refreshing?: boolean;
   /** True while NBA games are being played (data refreshes more often). */
   live?: boolean;
+  /** The stats report's version now (StatsReport.version), so the page reloads stats only when they change. */
+  statsVersion?: string | null;
   league: {
     id: string;
     name: string;
@@ -356,6 +358,11 @@ export interface StatsReport {
    * league's average: above 1 is a soft matchup. Missing from reports saved before it was added.
    */
   allowed?: Record<string, number>;
+  /**
+   * Changes only when what the page models with changes (`players` and `allowed`), not on every
+   * check for new box scores; the page rebuilds its projections only when it changes.
+   */
+  version?: string;
 }
 
 /** One game in a player's game log. */

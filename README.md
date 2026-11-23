@@ -608,8 +608,9 @@ measured the same way, as the change in strength from the full projection. A
 pickup drops the player your roster would miss least. Pickups compete on
 merit; when none makes the five, the best one takes the last place so the
 waiver wire stays in view. A trade opens in the builder on the Trades tab. The
-search takes a second or two, so it runs after the page has painted and is
-kept until the projections change.
+search takes a few seconds, so it runs after the page has painted, with the
+same progress bar as the trade search, and is kept until the projections
+change (only when the data they read changes, so it runs once).
 
 ### Activity
 
@@ -633,36 +634,68 @@ run Monday to Sunday (`shared/weeks.ts`).
 ## Keeping data fresh
 
 There is no Refresh button. The server keeps every source up to date on its
-own, within each service's rules, and pages are always answered from saved
-data: anything older than the times below is fetched again in the background
-while the saved copy is shown, and the page picks up the new copy a few
-seconds later. "Games on" means an NBA game is in progress (from the saved
-schedule); the header shows it.
+own, within each service's rules: every minute it looks over the leagues in
+use (the configured one, and any opened in the last day) and refreshes
+whatever has passed its time below, whether or not anyone is looking (the
+keep-fresh loop in `server/index.ts`). So the app opens on current data, and
+nothing it shows changes a moment later. Pages are always answered from saved
+data in memory; no page request waits on an outside service. "Games on" means
+an NBA game is in progress (from the saved schedule); the header shows it.
 
 | Data | Source | Fetched again after | Why |
 | --- | --- | --- | --- |
-| League (rosters, matchups, transactions; about 8 requests) | Sleeper | 10 min, 2 min while games are on (`LEAGUE_CACHE_MINUTES`, `LIVE_LEAGUE_MINUTES`) | Sleeper asks to stay under 1,000 requests a minute; this is at most about 4 |
+| League (rosters, matchups, transactions; about 8 requests) | Sleeper | 5 min, 1 min while games are on (`LEAGUE_CACHE_MINUTES`, `LIVE_LEAGUE_MINUTES`) | Sleeper asks to stay under 1,000 requests a minute; this is at most about 8 |
 | Player list | Sleeper | 24 hours | Sleeper asks for it at most once a day |
 | Draft | Sleeper | 7 days once finished, else as the league | A finished draft never changes |
 | A finished week's matchups (one request a week) | Sleeper | 6 hours for last week, 7 days for older weeks | Only Sleeper's stat corrections change them, in the days after a week |
 | The rest of the season's NBA schedule, from this Monday, for the strength model and the team charts (about ten requests) | balldontlie | 24 hours | Games are rarely moved |
 | A finished week's NBA schedule (one request a week) | balldontlie | 7 days | Every game is final; saved apart from the current week's copy so a game-night copy is never shown as final |
-| NBA schedule (one request) | balldontlie | 30 min, 3 min while games are on (`SCHEDULE_CACHE_MINUTES`, `LIVE_SCHEDULE_MINUTES`) | Scores and game states change on game nights |
-| Box scores, while a matchup is open | balldontlie | 30 min, 10 min while games are on (`WEEK_STATS_MINUTES`, `LIVE_WEEK_STATS_MINUTES`) | balldontlie updates live stats about every 10 minutes |
-| Box scores otherwise | balldontlie | 6 hours (`STATS_CACHE_HOURS`) | Season numbers barely move within a day |
+| This week's NBA schedule (one or two requests) | balldontlie | 15 min, 2 min while games are on (`SCHEDULE_CACHE_MINUTES`, `LIVE_SCHEDULE_MINUTES`) | Scores and game states change on game nights |
+| Box scores (the last few days again, about 5 to 10 requests) | balldontlie | 30 min, 5 min while games are on (`STATS_CACHE_MINUTES`, `LIVE_STATS_MINUTES`) | balldontlie updates live stats about every 10 minutes |
 | Last season's box scores | balldontlie | Never again | It is over |
 | Team logos | NBA | 30 days | They do not change |
-| Injury report (one or two requests) | balldontlie | 30 min (`INJURY_CACHE_MINUTES`) | Return dates and notes change a few times a day |
+| Injury report (one or two requests) | balldontlie | 15 min (`INJURY_CACHE_MINUTES`) | Return dates and notes change a few times a day |
 
-Every balldontlie request goes through one queue, at least 1.1 seconds apart
-(at most about 54 a minute; the ALL-STAR plan allows 60). Requests someone is
-waiting on (the schedule) go before background downloads (box scores). Each
-sync re-downloads only the last two days, to pick up stat corrections. The
-page itself checks in with the server every 2 minutes while it is visible, and
-when it comes back into view; the server decides whether anything outside is
-asked. No page request waits on an outside service once data is saved, which
-keeps every answer well inside Heroku's 30-second limit, including the first
-visit after an Eco dyno wakes.
+At its busiest (games on) that is about 8 Sleeper requests a minute, against
+Sleeper's 1,000, and about 5 balldontlie requests a minute on average, against
+the ALL-STAR plan's 60. Every balldontlie request still goes through one
+queue, at least 1.1 seconds apart (at most about 54 a minute), with requests
+someone is waiting on (the schedule) ahead of background downloads. Each sync
+re-downloads only the last two days, to pick up stat corrections, and a
+routine sync runs behind the numbers already shown (the stats stay "ready").
+
+The stats report (every player's numbers, the biggest answer) is worked out
+once per set of inputs and carries a version that changes only when the
+numbers do (`StatsReport.version`). The league answer says which version is
+current, so the page downloads the report only when it changed, and rebuilds
+its projections (and the top moves) only then. The page rebuilds its model
+from the league only when something the model reads changes (rosters,
+injuries, records, settings, the day: `src/modelInputs.ts`), not on every
+refresh of live points.
+
+### Opening the app
+
+- **Saved on the device.** A service worker (`sw/sw.js`, built into
+  `dist/sw.js` with the list of this build's files) keeps the app itself on
+  the device, and the app keeps the last data it was sent (league, stats,
+  schedule, finished weeks, draft) in the browser's storage (`src/saved.ts`).
+  So the app opens at once onto that data, even while the server is waking up
+  or the phone is offline, with "Updated ... ago" saying how old it is, and
+  newer data replaces it as it arrives. Signing out, or switching league,
+  clears what is saved. After a deploy, the new version is fetched in the
+  background and loads the next time the app is out of sight.
+- **Asked for at once.** The sign-in, the settings and the league are asked
+  for together, not one after another.
+- **Small answers.** The server compresses its answers (brotli or gzip; the
+  stats report shrinks to about a sixth), an unchanged answer comes back as
+  a short "not modified", and built files are kept by the browser for good
+  (their names change with their contents).
+- **A trade search waits for current data.** Right after opening, a search
+  waits (a few seconds at most, shown as "Getting the latest data") until this
+  visit's league, stats and schedule are in, so its ideas are not overtaken a
+  moment later.
+- **The page checks in** with the server every minute while it is visible, and
+  when it comes back into view; the server answers from memory.
 
 ## Storage
 
@@ -701,11 +734,13 @@ no `ADMIN_PASSWORD`, there is no sign-in and you are admin. In production
 
 ## Deploying to Heroku
 
-The app runs on one Eco dyno ($5 a month for the account's pool of dyno
-hours; it sleeps after 30 minutes without visits and wakes on the next one)
-with a Heroku Postgres Essential-0 database ($5 a month). Heroku builds with
-`npm run build` and starts the `Procfile` (`npm start`). Run these from the
-project folder, signed in with `heroku login`:
+The app runs on one Eco dyno ($5 a month for the account's pool of 1,000
+dyno hours; it sleeps after 30 minutes without visits and wakes on the next
+one) with a Heroku Postgres Essential-0 database ($5 a month). Heroku builds
+with `npm run build` (the page, and the server bundled into
+`dist-server/index.js`) and starts the `Procfile` (`node
+dist-server/index.js`, which starts faster than compiling on the fly). Run
+these from the project folder, signed in with `heroku login`:
 
 ```bash
 # 1. Create the app (the name must be unique on Heroku; it becomes the web address).
@@ -741,6 +776,24 @@ Later deploys are step 5 again. `heroku logs --tail` shows the server's log,
 `heroku config` lists the settings, and `heroku config:set NAME=value`
 changes one (the app restarts).
 
+### Waking up
+
+An Eco dyno sleeps after 30 minutes without a visit, and the next visit waits
+several seconds while it wakes. The app opens at once anyway (it is saved on
+the device, above), but while the dyno sleeps the data cannot be kept fresh.
+Two ways to keep it awake:
+
+- **Free, within the Eco hours:** `heroku config:set
+  KEEP_AWAKE_URL=https://your-app.herokuapp.com`. The server then visits
+  itself every 20 minutes. Around the clock that uses about 744 of the
+  account's 1,000 Eco hours a month; if other Eco apps share the pool, limit
+  it, for example `heroku config:set KEEP_AWAKE_HOURS=7-24
+  KEEP_AWAKE_TZ=America/Denver` (awake 7 a.m. to midnight, about 530 hours).
+  When the pool runs out, Eco dynos sleep until the next month, so keep an
+  eye on `heroku ps -a your-app` (it shows the hours left).
+- **Never sleeps:** a Basic dyno (`heroku ps:type web=basic`, about $7 a
+  month instead of the Eco plan).
+
 ## Commands
 
 | Command | What it does |
@@ -758,8 +811,9 @@ changes one (the app restarts).
 | `npm run check:stats -- <league_id> --injuries` | Prints the injury report and how the app reads each return date (add `--player "Name"` for one player's full note) |
 | `npm run db:import` | Copies `.cache/` into the database at `DATABASE_URL` |
 | `npm run check:logos` | Downloads every team logo and writes a preview page |
-| `npm run serve` | Builds the React app and serves everything from :8787 |
-| `npm start` | Serves the built app (what Heroku runs after building) |
+| `npm run build` | Builds the React app (with its service worker) into `dist/` and the server into `dist-server/` |
+| `npm run serve` | Builds both and serves everything from :8787, as on Heroku |
+| `npm start` | Runs the built server, serving the built app (what Heroku runs after building) |
 
 ## Live matchup
 

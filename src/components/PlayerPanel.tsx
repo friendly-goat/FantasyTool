@@ -64,17 +64,15 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
     const key = `${snapshot.league.id}:${player.id}`;
     const saved = details.get(key);
     setError(null);
-    if (saved && Date.now() - saved.at < DETAIL_MINUTES * 60_000) {
-      setDetail(saved.detail);
-      return;
-    }
-    setDetail(null);
+    // A player opened before shows at once; an older copy is refreshed behind it.
+    setDetail(saved?.detail ?? null);
+    if (saved && Date.now() - saved.at < DETAIL_MINUTES * 60_000) return;
     getPlayerDetail(snapshot.league.id, player.id)
       .then((loaded) => {
         details.set(key, { detail: loaded, at: Date.now() });
         if (current) setDetail(loaded);
       })
-      .catch((cause) => current && setError(cause instanceof Error ? cause.message : "Could not load this player."));
+      .catch((cause) => current && !saved && setError(cause instanceof Error ? cause.message : "Could not load this player."));
     return () => {
       current = false;
     };

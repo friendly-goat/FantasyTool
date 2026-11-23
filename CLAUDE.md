@@ -45,10 +45,22 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   1,000 requests a minute and the player list at most once a day; balldontlie
   60 a minute on ALL-STAR, so every request goes through the shared queue in
   `server/stats/balldontlie.ts`. There is no Refresh button: the server keeps
-  data fresh by itself (shorter times while games are on, `gamesLive`), and
-  outside data is fetched with `cache.get(..., { background: true })` so no
-  page request waits on Sleeper or balldontlie once something is saved
-  (Heroku cuts requests off at 30 seconds).
+  data fresh by itself, with a keep-fresh loop every minute over the leagues
+  in use (shorter times while games are on, `gamesLive`), and outside data is
+  fetched with `cache.get(..., { background: true })` so no page request
+  waits on Sleeper or balldontlie once something is saved (Heroku cuts
+  requests off at 30 seconds). Production runs the bundled server
+  (`dist-server/index.js`, built by `npm run build`).
+- The app opens on saved data: a service worker (`sw/sw.js`, built by the
+  plugin in `vite.config.ts`) keeps the app on the device, and the last
+  answers are kept in IndexedDB (`src/saved.ts`, cleared on sign-out). New
+  data a component fetches is shown saved-first, then replaced. The page's
+  model is built from `modelSnapshot`, replaced only when `modelFingerprint`
+  (`src/modelInputs.ts`) changes; add any snapshot field the model starts
+  reading to the fingerprint. The stats report carries a `version` (changes
+  only when its numbers do); the league answer's `statsVersion` tells the
+  page when to fetch it. A trade search waits for this visit's data
+  (`settled` in `src/App.tsx`).
 - Sleeper's NBA responses are not formally documented. Treat every raw field as
   optional (`server/sleeper.ts`) and convert to the strict shapes in
   `shared/types.ts` inside `server/snapshot.ts`.

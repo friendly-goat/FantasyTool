@@ -29,7 +29,7 @@ scope.onmessage = (event) => {
   try {
     if (!current || current.source !== message.source) throw new Error("no data for this model");
     if (!prepared || prepared.source !== current.source) {
-      if (message.request.kind === "trades") scope.postMessage({ id: message.id, progress: 0, stage: "setup" });
+      scope.postMessage({ id: message.id, progress: 0, stage: "setup" });
       prepared = { source: current.source, data: current.build() };
     }
     const { snapshot, model, situations } = prepared.data;
@@ -47,7 +47,7 @@ scope.onmessage = (event) => {
     const result =
       request.kind === "trades"
         ? findTrades(model, snapshot, request.rosterId, situations, request.options, undefined, progress)
-        : topMoves(model, snapshot, request.rosterId, situations);
+        : topMoves(model, snapshot, request.rosterId, situations, undefined, progress);
     scope.postMessage({ id: message.id, result });
   } catch (error) {
     scope.postMessage({ id: message.id, error: error instanceof Error ? error.message : String(error) });

@@ -5,7 +5,11 @@ import type { SearchStage } from "../../shared/trade.ts";
 // own reports (eased between them, and creeping a little while a step runs,
 // so it never sits still), with the step it is on above it.
 
-const WORDS: Record<SearchStage | "done", string> = {
+/** "data": waiting a moment for the latest league data, so the search runs on it. */
+export type ProgressStage = SearchStage | "done" | "data";
+
+const WORDS: Record<ProgressStage, string> = {
+  data: "Getting the latest data",
   setup: "Getting every roster ready",
   swaps: "Trying every one-for-one swap",
   estimates: "Sizing up every two-team trade",
@@ -20,7 +24,7 @@ const WORDS: Record<SearchStage | "done", string> = {
 /** How far ahead of the last report the bar may creep while a step runs. */
 const CREEP = 0.04;
 
-export function SearchProgress({ share, stage }: { share: number; stage: SearchStage | "done" }) {
+export function SearchProgress({ share, stage }: { share: number; stage: ProgressStage }) {
   const [shown, setShown] = useState(0);
   const target = useRef({ share, at: performance.now() });
   if (target.current.share !== share) target.current = { share, at: performance.now() };

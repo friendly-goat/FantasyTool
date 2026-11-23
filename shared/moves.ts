@@ -7,7 +7,7 @@
 import { freeAgentPickups, type TeamSituation } from "./insight.ts";
 import { rosterPlayers } from "./analysis.ts";
 import { fillRoster, type ModelPlayer, projectedWeekly, type StrengthModel, strengthScore } from "./strength.ts";
-import { findTrades, type Likelihood, reserveMoves, type TradeIdea } from "./trade.ts";
+import { findTrades, type Likelihood, reserveMoves, type SearchProgress, type TradeIdea } from "./trade.ts";
 import type { LeagueSnapshot } from "./types.ts";
 
 export interface Move {
@@ -49,12 +49,14 @@ export function topMoves(
   rosterId: number,
   situations: Map<number, TeamSituation>,
   limit = 5,
+  /** Told how far the trade search behind the moves has got, for a progress bar. */
+  onProgress?: SearchProgress,
 ): Move[] {
   const team = snapshot.teams.find((candidate) => candidate.rosterId === rosterId);
   if (!team || limit <= 0) return [];
   const mine = rosterPlayers(team).map((player) => player.id);
 
-  const trades: Move[] = findTrades(model, snapshot, rosterId, situations, {}, TRADE_IDEAS)
+  const trades: Move[] = findTrades(model, snapshot, rosterId, situations, {}, TRADE_IDEAS, onProgress)
     .ideas.filter((idea) => idea.likelihood !== "long shot")
     .map((idea) => ({
       kind: "trade",

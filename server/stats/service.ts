@@ -1,4 +1,5 @@
-import type { LeagueSnapshot, NbaGame, PlayerDetail, PlayerRef, StatsReport, WeekLine } from "../../shared/types.ts";
+import { createHash } from "node:crypto";
+import type { LeagueSnapshot, NbaGame, PlayerDetail, PlayerRef, PlayerStats, StatsReport, WeekLine } from "../../shared/types.ts";
 import { fantasyPoints, ignoredSettings } from "../scoring.ts";
 import type { Storage } from "../storage.ts";
 import { matchPlayers, sameLastName } from "./match.ts";
@@ -48,8 +49,18 @@ function daysBefore(date: string, days: number): string {
   return value.toISOString().slice(0, 10);
 }
 
+/** The report's heavy part, worked out once per set of inputs (see report). */
+interface Worked {
+  inputs: unknown[];
+  players: Record<string, PlayerStats>;
+  allowed: Record<string, number>;
+  unmatchedRostered: PlayerRef[];
+  version: string;
+}
+
 export class StatsService {
   private seasons = new Map<string, SeasonData>();
+  private worked = new Map<string, Worked>();
   private storage: Storage | null;
   private staleMs: number;
   private now: () => number;
@@ -103,39 +114,114 @@ export class StatsService {
       void this.start(previousSeason(season), prior);
     }
 
-    const lines = [...data.lines.values()];
-    const { matches, lastSeason } = this.context(sleeperPlayers, lines, prior, scoring);
+    const worked = this.work(snapshot, sleeperPlayers, injuryReport, data, prior);
+    return {
+      ...base,
+      // A routine update runs behind data already in hand, so the page keeps "ready" and the
+      // numbers it has; "syncing" and "error" are for when there is nothing to show yet.
+      status: data.syncedAt !== null ? "ready" : data.syncing ? "syncing" : data.error ? "error" : "ready",
+      message: data.syncedAt !== null ? null : data.error,
+      source: this.provider.name,
+      syncedAt: data.syncedAt ? new Date(data.syncedAt).toISOString() : null,
+      pagesFetched: data.pagesFetched,
+      unmatchedRostered: worked.unmatchedRostered,
+      lastSeason: prior.syncedAt !== null ? "ready" : "loading",
+      lastSeasonPages: prior.pagesFetched,
+      players: worked.players,
+      allowed: worked.allowed,
+      version: worked.version,
+    };
+  }
+
+  /**
+   * The players' numbers, matched and summarized. That takes a moment over a season of box
+   * scores, so it is kept and worked out again only when an input changes: the box scores
+   * (each sync), last season's, the injury report, Sleeper's player list, the league's scoring,
+   * season start or rosters, or the day (injury return dates count from today).
+   */
+  private work(
+    snapshot: LeagueSnapshot,
+    sleeperPlayers: Record<string, PlayerRef>,
+    injuryReport: InjuryReport[],
+    data: SeasonData,
+    prior: SeasonData,
+  ): Worked {
+    const scoring = snapshot.league.scoringSettings;
     const rostered = snapshot.teams.flatMap((team) => [
       ...team.starters.flatMap((starter) => (starter.player ? [starter.player] : [])),
       ...team.bench,
       ...team.reserve,
     ]);
+    const today = new Date(this.now()).toISOString().slice(0, 10);
+    const inputs: unknown[] = [
+      data.syncedAt,
+      data.lines.size,
+      prior.syncedAt,
+      prior.lines.size,
+      sleeperPlayers,
+      // The same saved report is the same object; an empty one is a new [] each time.
+      injuryReport.length === 0 ? "no injuries" : injuryReport,
+      JSON.stringify(scoring),
+      snapshot.league.seasonStartDate,
+      rostered.map((player) => player.id).join(","),
+      today,
+    ];
+    const key = snapshot.league.id;
+    const kept = this.worked.get(key);
+    if (kept && kept.inputs.length === inputs.length && kept.inputs.every((value, index) => value === inputs[index])) return kept;
 
-    return {
-      ...base,
-      status: data.syncing ? "syncing" : data.error ? "error" : "ready",
-      message: data.error,
-      source: this.provider.name,
-      syncedAt: data.syncedAt ? new Date(data.syncedAt).toISOString() : null,
-      pagesFetched: data.pagesFetched,
+    const lines = [...data.lines.values()];
+    const { matches, lastSeason } = this.context(sleeperPlayers, lines, prior, scoring);
+    const players = summarize(
+      lines,
+      matches,
+      sleeperPlayers,
+      scoring,
+      snapshot.league.seasonStartDate,
+      lastSeason,
+      injuriesBySource(injuryReport, today),
+    );
+    const allowed = pointsAllowed(lines, scoring, snapshot.league.seasonStartDate);
+    const version = createHash("sha1").update(JSON.stringify(players)).update(JSON.stringify(allowed)).digest("hex").slice(0, 16);
+    const worked: Worked = {
+      inputs,
+      players,
+      allowed,
       unmatchedRostered: lines.length > 0 ? rostered.filter((player) => !matches.has(player.id)) : [],
-      lastSeason: prior.syncedAt !== null ? "ready" : "loading",
-      lastSeasonPages: prior.pagesFetched,
-      players: summarize(
-        lines,
-        matches,
-        sleeperPlayers,
-        scoring,
-        snapshot.league.seasonStartDate,
-        lastSeason,
-        injuriesBySource(injuryReport, new Date(this.now()).toISOString().slice(0, 10)),
-      ),
-      allowed: pointsAllowed(lines, scoring, snapshot.league.seasonStartDate),
+      version,
     };
+    this.worked.set(key, worked);
+    return worked;
+  }
+
+  /** Whether box scores are older than `freshMs`; if so (and none is running), a download starts. */
+  async keepFresh(season: string, freshMs: number): Promise<void> {
+    if (!this.provider) return;
+    const data = await this.load(season);
+    const old = data.syncedAt === null || this.now() - data.syncedAt >= freshMs;
+    const coolingOff = data.error !== null && this.now() - data.failedAt < RETRY_AFTER_MS;
+    if (old && !data.syncing && !coolingOff) void this.start(season, data);
   }
 
   /** Player matching and last season's levels, shared by the report and the player details. */
   private context(
+    sleeperPlayers: Record<string, PlayerRef>,
+    lines: GameLine[],
+    prior: SeasonData,
+    scoring: Record<string, number>,
+  ): { matches: Map<string, string>; lastSeason: LastSeason } {
+    // Matching a season of box scores to Sleeper's players takes a moment: kept while the inputs stand.
+    const inputs: unknown[] = [sleeperPlayers, lines.length, lines.at(-1)?.key, prior.syncedAt, prior.lines.size, JSON.stringify(scoring)];
+    const kept = this.contextKept;
+    if (kept && kept.inputs.every((value, index) => value === inputs[index])) return kept.value;
+    const value = this.workContext(sleeperPlayers, lines, prior, scoring);
+    this.contextKept = { inputs, value };
+    return value;
+  }
+
+  private contextKept: { inputs: unknown[]; value: { matches: Map<string, string>; lastSeason: LastSeason } } | null = null;
+
+  private workContext(
     sleeperPlayers: Record<string, PlayerRef>,
     lines: GameLine[],
     prior: SeasonData,

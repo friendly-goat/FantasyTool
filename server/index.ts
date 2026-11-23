@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
+import compression from "compression";
 import express from "express";
 import type { AppConfig, LeagueSnapshot, Matchup, ScheduleAhead, ScoreHistory, WeekData, WeekMatchups } from "../shared/types.ts";
 import { buildModel, modelCalendar } from "../shared/strength.ts";
@@ -21,6 +22,7 @@ import {
 import { Cache } from "./cache.ts";
 import { MemoryStorage, storageFromEnv } from "./storage.ts";
 import { gamesLive } from "../shared/matchup.ts";
+import { inAwakeHours, localHour } from "./keepAwake.ts";
 import { createLogoSource } from "./logos.ts";
 import { fetchFromMock, MOCK_LEAGUE_ID } from "./mock.ts";
 import { fetchFromSleeper, SleeperError } from "./sleeper.ts";
@@ -45,33 +47,38 @@ const MINUTE = 60_000;
 const mock = process.argv.includes("--mock") || process.env.SLEEPER_MOCK === "1";
 const port = Number(process.env.PORT) || 8787;
 // How often each kind of data is fetched again. Pages are always answered
-// from saved data; anything older than these is updated in the background,
-// so no request waits on Sleeper or balldontlie once something is saved.
-// "Live" means NBA games are being played (from the cached schedule).
+// from saved data; anything older than these is updated in the background
+// (by the keep-fresh loop below, or by a request), so no request waits on
+// Sleeper or balldontlie once something is saved. "Live" means NBA games are
+// being played (from the cached schedule). Every figure stays far inside the
+// sources' limits: see README "Keeping data fresh".
 const minutes = (name: string, fallback: number) => (Number(process.env[name]) || fallback) * MINUTE;
-// Sleeper league data (about 8 requests): Sleeper asks to stay under 1000 a minute.
-const leagueTtl = minutes("LEAGUE_CACHE_MINUTES", 10);
-const liveLeagueTtl = minutes("LIVE_LEAGUE_MINUTES", 2);
+// Sleeper league data (about 8 requests a refresh): Sleeper asks to stay under 1000 a minute.
+const leagueTtl = minutes("LEAGUE_CACHE_MINUTES", 5);
+const liveLeagueTtl = minutes("LIVE_LEAGUE_MINUTES", 1);
 // Sleeper asks that the full player list be fetched at most once a day.
 const playersTtl = 24 * 60 * MINUTE;
-// The NBA schedule (one balldontlie request): scores and game states change on game nights.
-const scheduleTtl = minutes("SCHEDULE_CACHE_MINUTES", 30);
-const liveScheduleTtl = minutes("LIVE_SCHEDULE_MINUTES", 3);
-// Box scores while a matchup is open; balldontlie updates live stats about every 10 minutes.
-const weekStatsMs = minutes("WEEK_STATS_MINUTES", 30);
-const liveWeekStatsMs = minutes("LIVE_WEEK_STATS_MINUTES", 10);
-// Box scores otherwise.
-const statsTtl = (Number(process.env.STATS_CACHE_HOURS) || 6) * 60 * MINUTE;
+// The NBA schedule (one or two balldontlie requests): scores and game states change on game nights.
+const scheduleTtl = minutes("SCHEDULE_CACHE_MINUTES", 15);
+const liveScheduleTtl = minutes("LIVE_SCHEDULE_MINUTES", 2);
+// Box scores (a sync re-downloads the last few days, about 5 to 10 requests). balldontlie updates
+// live stats about every 10 minutes, so checking every 5 while games are on catches each update.
+const liveStatsMs = minutes("LIVE_STATS_MINUTES", 5);
+const statsTtl = minutes("STATS_CACHE_MINUTES", 30);
 // A finished draft never changes.
 const finishedDraftTtl = 7 * 24 * 60 * MINUTE;
 // The injury report: one or two requests. Return dates and notes change a
 // few times a day, mostly before games.
-const injuriesTtl = minutes("INJURY_CACHE_MINUTES", 30);
+const injuriesTtl = minutes("INJURY_CACHE_MINUTES", 15);
 // A finished week's matchups only change with Sleeper's stat corrections in
 // the days after it, so last week is checked a few times a day and older
 // weeks weekly. A finished week's schedule never changes.
 const lastWeekTtl = 6 * 60 * MINUTE;
 const finishedWeekTtl = 7 * 24 * 60 * MINUTE;
+/** How often the keep-fresh loop looks over the leagues in use (it calls out only for data past its time). */
+const KEEP_FRESH_MS = MINUTE;
+/** A league opened in the app is kept fresh for this long after its last visit (the configured league always). */
+const KEEP_FRESH_FOR_MS = 24 * 60 * MINUTE;
 
 const fetchJson = mock ? fetchFromMock : fetchFromSleeper;
 // Postgres when DATABASE_URL is set (Heroku), otherwise files in .cache/.
@@ -98,7 +105,16 @@ const app = express();
 // On Heroku requests arrive through a proxy; this makes req.ip and secure
 // cookies work.
 app.set("trust proxy", 1);
+// Heroku's router does not compress, so this does: the stats report shrinks to a fraction on the
+// way to a phone (brotli where the browser takes it, gzip otherwise).
+app.use(compression({ threshold: 1024 }));
 app.use(express.json({ limit: "10kb" }));
+// API answers are private to the signed-in browser and always checked with the server; Express's
+// ETag turns an unchanged answer into a short "not modified".
+app.use("/api", (_req, res, next) => {
+  res.set("Cache-Control", "private, no-cache");
+  next();
+});
 
 // Sign-in. Off locally (no ADMIN_PASSWORD); required in production, so the
 // hosted app is never open to anyone with the link.
@@ -109,6 +125,11 @@ if (production && !auth) {
   process.exit(1);
 }
 const allowAttempt = createAttemptLimiter();
+
+// For the keep-awake visit (and uptime checks): answers without a sign-in, says nothing.
+app.get("/healthz", (_req, res) => {
+  res.set("Cache-Control", "no-store").status(204).end();
+});
 
 app.get("/api/session", (req, res) => {
   res.json({ authRequired: auth !== null, role: roleOf(auth, req) });
@@ -261,25 +282,33 @@ async function noteLedger(leagueId: string, snapshot: LeagueSnapshot): Promise<S
  * week is over (shared/realisation.ts). Worked out on the server with the same model the page
  * builds; it takes a second or two, so it runs after the answer has gone.
  */
-const projectionsPending = new Map<string, Promise<ProjectionLedger>>();
+const projectionsPending = new Map<string, Promise<ProjectionLedger | null>>();
 
 async function readProjections(leagueId: string): Promise<ProjectionLedger> {
   const entry = await storage.readEntry(projectionsKey(leagueId));
   return (entry?.value as ProjectionLedger | undefined) ?? { weeks: {} };
 }
 
-function noteProjections(leagueId: string, snapshot: LeagueSnapshot): Promise<ProjectionLedger> {
+/** The week each league's projections are already saved for, so the check costs nothing after that. */
+const projectionsNoted = new Map<string, number>();
+
+function noteProjections(leagueId: string, snapshot: LeagueSnapshot): Promise<ProjectionLedger | null> {
+  if (projectionsNoted.get(leagueId) === snapshot.week) return Promise.resolve(null);
   const pending = projectionsPending.get(leagueId);
   if (pending) return pending;
   const work = (async () => {
     const ledger = await readProjections(leagueId);
-    if (ledger.weeks[snapshot.week] || snapshot.week < 1) return ledger;
+    if (ledger.weeks[snapshot.week] || snapshot.week < 1) {
+      projectionsNoted.set(leagueId, snapshot.week);
+      return ledger;
+    }
     const report = await stats.report(snapshot, (await getPlayers()).value, await getInjuries());
     if (report.status !== "ready" || Object.keys(report.players).length === 0) return ledger;
     const projected = projectedThisWeek(snapshot, buildModel(snapshot, report, undefined, await scheduleAhead(snapshot)));
     if (Object.keys(projected).length === 0) return ledger;
     const next: ProjectionLedger = { weeks: { ...ledger.weeks, [snapshot.week]: { projected, savedAt: new Date().toISOString() } } };
     await storage.writeEntry(projectionsKey(leagueId), { savedAt: Date.now(), value: next });
+    projectionsNoted.set(leagueId, snapshot.week);
     console.log(`[projections] saved week ${snapshot.week} for ${leagueId}`);
     return next;
   })().finally(() => projectionsPending.delete(leagueId));
@@ -334,6 +363,81 @@ async function getInjuries() {
   }
 }
 
+/** The draft board. A finished draft never changes, so it is checked weekly; one still running as often as the league. */
+async function getDraftBoard(leagueId: string) {
+  const key = `draft-v1-${leagueId}`;
+  const saved = await cache.peek<{ board: { status: string } | null }>(key);
+  const ttl = saved?.value.board?.status === "complete" ? finishedDraftTtl : leagueTtl;
+  return cache.get(key, ttl, async () => ({ board: await loadDraftBoard(leagueId, fetchJson, (await getPlayers()).value) }), {
+    background: true,
+  });
+}
+
+/** The stats report's version for a league (see StatsReport.version), or null without stats. */
+async function statsVersion(snapshot: LeagueSnapshot): Promise<string | null> {
+  if (!statsProvider) return null;
+  try {
+    return (await stats.report(snapshot, (await getPlayers()).value, await getInjuries())).version ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// Keeping data fresh without waiting for a visit. Every minute the server looks over the leagues
+// in use (the configured one, and any opened in the last day) and refreshes whatever has passed
+// its time above: the league, the standings ledger, this week's schedule, box scores, the injury
+// report, the schedule ahead, the draft and this week's saved projections. So a page that opens
+// finds everything current, and nothing it shows changes a moment later. Data still fresh costs
+// nothing (it is read from memory), and each source is called no more often than its time allows.
+const keptFresh = new Map<string, number>();
+const configuredLeague = mock ? MOCK_LEAGUE_ID : process.env.SLEEPER_LEAGUE_ID?.trim() || null;
+
+function keepFreshLeague(leagueId: string): void {
+  keptFresh.set(leagueId, Date.now());
+}
+
+async function freshen(leagueId: string): Promise<void> {
+  const snapshot = (await getSnapshot(leagueId)).value;
+  await noteLedger(leagueId, snapshot).catch((error) => console.error("[ledger]", error instanceof Error ? error.message : error));
+  const live = await isLive(leagueId);
+  const week = weekOf(snapshot);
+  if (week && stats.hasSchedule()) await getSchedule(week.start, week.end, live).catch(() => {});
+  await stats.keepFresh(snapshot.league.season, live ? liveStatsMs : statsTtl);
+  // Works out the report now, so the first visit after new box scores does not wait for it.
+  await statsVersion(snapshot);
+  await scheduleAhead(snapshot);
+  await getDraftBoard(leagueId).catch(() => {});
+  void noteProjections(leagueId, snapshot).catch((error) => console.error("[projections]", error instanceof Error ? error.message : error));
+}
+
+let freshening = false;
+async function freshenAll(): Promise<void> {
+  if (freshening) return;
+  freshening = true;
+  try {
+    const now = Date.now();
+    const leagues = new Set<string>(configuredLeague ? [configuredLeague] : []);
+    for (const [leagueId, at] of keptFresh) {
+      if (now - at < KEEP_FRESH_FOR_MS) leagues.add(leagueId);
+      else keptFresh.delete(leagueId);
+    }
+    for (const leagueId of leagues) {
+      await freshen(leagueId).catch((error) => console.error(`[fresh] ${leagueId}:`, error instanceof Error ? error.message : error));
+    }
+  } finally {
+    freshening = false;
+  }
+}
+
+// Optional: keep an Eco dyno from sleeping. Heroku puts an Eco web dyno to sleep after 30 minutes
+// without a visit, and waking it takes several seconds; with KEEP_AWAKE_URL set (the app's own
+// address) the server visits itself every 20 minutes, within KEEP_AWAKE_HOURS if set ("7-24",
+// in KEEP_AWAKE_TZ, UTC by default). Awake hours count against the account's Eco hours: about
+// 744 a month around the clock, of 1000. See README "Deploying to Heroku".
+const keepAwakeUrl = process.env.KEEP_AWAKE_URL?.trim() || null;
+const KEEP_AWAKE_EVERY_MS = 20 * MINUTE;
+
+
 function sendError(res: express.Response, error: unknown): void {
   const status = error instanceof SleeperError && error.status === 429 ? 429 : 502;
   const message = error instanceof Error ? error.message : "Unknown error";
@@ -374,7 +478,14 @@ app.get("/api/league/:leagueId", async (req, res) => {
     // Keep the schedule loaded too: it is how the server knows when games are on.
     const week = weekOf(result.value);
     if (week && stats.hasSchedule()) void getSchedule(week.start, week.end, live).catch(() => {});
-    const snapshot: LeagueSnapshot = { ...result.value, stale: result.stale, refreshing: result.refreshing ?? false, live };
+    keepFreshLeague(leagueId);
+    const snapshot: LeagueSnapshot = {
+      ...result.value,
+      stale: result.stale,
+      refreshing: result.refreshing ?? false,
+      live,
+      statsVersion: await statsVersion(result.value),
+    };
     res.json(snapshot);
   } catch (error) {
     sendError(res, error);
@@ -459,7 +570,7 @@ app.get("/api/league/:leagueId/week", async (req, res) => {
       players.value,
       start,
       end,
-      live ? liveWeekStatsMs : weekStatsMs,
+      live ? liveStatsMs : statsTtl,
       pastPlayers,
     );
     const body: WeekData = {
@@ -593,17 +704,7 @@ app.put("/api/league/:leagueId/locks", requireRole(auth, "admin"), async (req, r
 // one still running is checked as often as the league.
 app.get("/api/league/:leagueId/draft", async (req, res) => {
   try {
-    const leagueId = req.params.leagueId.trim();
-    const key = `draft-v1-${leagueId}`;
-    const saved = await cache.peek<{ board: { status: string } | null }>(key);
-    const ttl = saved?.value.board?.status === "complete" ? finishedDraftTtl : leagueTtl;
-    const result = await cache.get(
-      key,
-      ttl,
-      async () => ({ board: await loadDraftBoard(leagueId, fetchJson, (await getPlayers()).value) }),
-      { background: true },
-    );
-    res.json(result.value);
+    res.json((await getDraftBoard(req.params.leagueId.trim())).value);
   } catch (error) {
     sendError(res, error);
   }
@@ -636,8 +737,20 @@ app.get("/api/logos/:abbr/:variant", async (req, res) => {
 // After `npm run build`, this server also serves the compiled React app.
 const dist = path.resolve("dist");
 if (existsSync(dist)) {
-  app.use(express.static(dist));
-  app.get(/^(?!\/api\/).*/, (_req, res) => res.sendFile(path.join(dist, "index.html")));
+  // Built files under /assets carry a hash of their contents in the name, so a browser may keep
+  // them for good; the page itself and the service worker are always checked for a newer copy.
+  app.use(
+    express.static(dist, {
+      setHeaders(res, file) {
+        if (file.includes(`${path.sep}assets${path.sep}`)) res.set("Cache-Control", "public, max-age=31536000, immutable");
+        else res.set("Cache-Control", "no-cache");
+      },
+    }),
+  );
+  app.get(/^(?!\/api\/).*/, (_req, res) => {
+    res.set("Cache-Control", "no-cache");
+    res.sendFile(path.join(dist, "index.html"));
+  });
 }
 
 app.listen(port, () => {
@@ -645,4 +758,14 @@ app.listen(port, () => {
     `[server] http://localhost:${port} (${mock ? "mock data" : "live Sleeper data"}, ` +
       `player stats: ${statsProvider ? statsProvider.name : "off, no BALLDONTLIE_API_KEY"})`,
   );
+  // Right away (saved data loads into memory, so the first page is quick), then every minute.
+  void freshenAll();
+  setInterval(() => void freshenAll(), KEEP_FRESH_MS).unref();
+  if (keepAwakeUrl) {
+    console.log(`[server] keeping awake: ${process.env.KEEP_AWAKE_HOURS?.trim() || "all day"}`);
+    setInterval(() => {
+      if (!inAwakeHours(process.env.KEEP_AWAKE_HOURS, localHour(process.env.KEEP_AWAKE_TZ))) return;
+      void fetch(new URL("/healthz", keepAwakeUrl), { signal: AbortSignal.timeout(10_000) }).catch(() => {});
+    }, KEEP_AWAKE_EVERY_MS).unref();
+  }
 });

@@ -11,7 +11,6 @@ import {
   gradeWord,
   type FinderOptions,
   type FinderResult,
-  type SearchStage,
   type TradeIdea,
   type TradeOffer,
   reserveMoves,
@@ -24,7 +23,7 @@ import {
 } from "../../shared/trade.ts";
 import type { LeagueSnapshot, Team } from "../../shared/types.ts";
 import { searchTrades } from "../search.ts";
-import { IdeaSkeletons, SearchProgress } from "./SearchProgress.tsx";
+import { IdeaSkeletons, type ProgressStage, SearchProgress } from "./SearchProgress.tsx";
 import { formatPoints, formatRecord, formatSigned, formatStrength, formatStrengthChange as whole, ordinal } from "../format.ts";
 import { Avatar } from "./Avatar.tsx";
 import { ChanceTag, EffectBar, RecordTag } from "./TeamEffect.tsx";
@@ -40,6 +39,8 @@ interface Props {
   myRosterId: number;
   /** A trade sent here from another tab (top moves on My team), to open in the builder. */
   incoming?: { offer: TradeOffer; at: number } | null;
+  /** Whether this visit's data is in (App); a search asked for before then waits for it. */
+  settled?: boolean;
 }
 
 /** A short label for a waiver pickup in a trade. */
@@ -440,7 +441,7 @@ function ChanceBlock({ chance, name }: { chance: Chance; name: string }) {
 }
 
 /** Build a trade between two teams and see a grade and strength change for each. */
-export function Trades({ snapshot, model, situations, myRosterId, incoming = null }: Props) {
+export function Trades({ snapshot, model, situations, myRosterId, incoming = null, settled = true }: Props) {
   const others = snapshot.teams.filter((team) => team.rosterId !== myRosterId);
   const [teamA, setTeamA] = useState(myRosterId);
   const [teamB, setTeamB] = useState(others[0]?.rosterId ?? myRosterId);
@@ -448,7 +449,9 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
   const [bGives, setBGives] = useState<Set<string>>(new Set());
   const [found, setFound] = useState<(FinderResult & { model: StrengthModel; target: string | null }) | null>(null);
   const [searching, setSearching] = useState(false);
-  const [progress, setProgress] = useState<{ share: number; stage: SearchStage | "done" } | null>(null);
+  const [progress, setProgress] = useState<{ share: number; stage: ProgressStage } | null>(null);
+  // A search asked for before this visit's data was in; it starts as soon as it is.
+  const [waiting, setWaiting] = useState<{ options: FinderOptions; goal: Goal; playerId: string } | null>(null);
   const [goal, setGoal] = useState<Goal>("best");
   const [position, setPosition] = useState("SF");
   const [sendId, setSendId] = useState("");
@@ -513,6 +516,33 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
     [model, myTeam],
   );
 
+  function runSearch(request: { options: FinderOptions; goal: Goal; playerId: string }) {
+    if (!model || !situations) return;
+    setProgress({ share: 0, stage: "setup" });
+    const target = request.goal === "get" || request.goal === "send" ? (model.players.get(request.playerId)?.name ?? null) : null;
+    const searchedWith = model;
+    void searchTrades(searchedWith, snapshot, situations, myRosterId, request.options, (share, stage) =>
+      setProgress((current) => (current && current.stage !== "done" ? { share: Math.max(current.share, share), stage } : current)),
+    ).then((result) => {
+      // Let the bar fill before the ideas appear.
+      setProgress({ share: 1, stage: "done" });
+      window.setTimeout(() => {
+        setFound({ ...result, model: searchedWith, target });
+        setSearching(false);
+        setProgress(null);
+      }, 450);
+    });
+  }
+
+  // Runs a waiting search once the data is in (and with the model built from it).
+  useEffect(() => {
+    if (!waiting || !settled || !model || !situations) return;
+    setWaiting(null);
+    runSearch(waiting);
+    // runSearch reads the model and situations of this render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [waiting, settled, model, situations]);
+
   if (!model || !situations || !myTeam) {
     return <p className="quiet">The trade analyzer opens once player stats have loaded.</p>;
   }
@@ -545,7 +575,6 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
   function findIdeas() {
     setSearching(true);
     setFound(null);
-    setProgress({ share: 0, stage: "setup" });
     const options: FinderOptions =
       goal === "position"
         ? { getPosition: position }
@@ -556,20 +585,15 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
             : goal === "injured"
               ? { getInjured: true }
               : {};
-    const target =
-      goal === "get" ? (model!.players.get(getId)?.name ?? null) : goal === "send" ? (model!.players.get(sendId)?.name ?? null) : null;
-    const searchedWith = model!;
-    void searchTrades(searchedWith, snapshot, situations!, myRosterId, options, (share, stage) =>
-      setProgress((current) => (current && current.stage !== "done" ? { share: Math.max(current.share, share), stage } : current)),
-    ).then((result) => {
-      // Let the bar fill before the ideas appear.
-      setProgress({ share: 1, stage: "done" });
-      window.setTimeout(() => {
-        setFound({ ...result, model: searchedWith, target });
-        setSearching(false);
-        setProgress(null);
-      }, 450);
-    });
+    const request = { options, goal, playerId: goal === "get" ? getId : goal === "send" ? sendId : "" };
+    // Right after the app opens, the latest data may still be on its way: wait a moment for it
+    // rather than show ideas that are overtaken a second later.
+    if (!settled) {
+      setProgress({ share: 0, stage: "data" });
+      setWaiting(request);
+      return;
+    }
+    runSearch(request);
   }
 
   function load(idea: TradeIdea) {

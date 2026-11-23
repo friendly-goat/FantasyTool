@@ -93,7 +93,7 @@ function here(
       resolve(
         request.kind === "trades"
           ? findTrades(model, snapshot, request.rosterId, situations, request.options, undefined, progress)
-          : topMoves(model, snapshot, request.rosterId, situations),
+          : topMoves(model, snapshot, request.rosterId, situations, undefined, progress),
       );
     }, 30);
   });
@@ -139,6 +139,8 @@ export function searchMoves(
   snapshot: LeagueSnapshot,
   situations: Map<number, TeamSituation>,
   rosterId: number,
+  /** Told how far the search has got, for a progress bar. */
+  progress?: SearchProgress,
 ): Promise<Move[]> {
-  return run(model, snapshot, situations, { kind: "moves", rosterId }) as Promise<Move[]>;
+  return run(model, snapshot, situations, { kind: "moves", rosterId }, progress) as Promise<Move[]>;
 }

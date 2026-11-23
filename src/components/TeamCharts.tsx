@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getHistory } from "../api.ts";
 import { loadScheduleAhead } from "../scheduleAhead.ts";
+import { readSaved, savedKeys, writeSaved } from "../saved.ts";
 import { formatPoints, ordinal } from "../format.ts";
 import type { StrengthModel, TeamStrength } from "../../shared/strength.ts";
 import { extremes, leagueProfiles, type ProfileAxis, type TeamProfile, type WeekPoint } from "../../shared/teamProfile.ts";
@@ -32,17 +33,25 @@ function useExtras(leagueId: string, week: number): Extras | null {
       return;
     }
     let live = true;
+    // What was saved last visit shows while the server answers.
+    void Promise.all([readSaved<ScoreHistory>(savedKeys.history(leagueId)), readSaved<ScheduleAhead>(savedKeys.schedule(leagueId, week))]).then(
+      ([history, schedule]) => {
+        if (live && history && schedule) setExtras((current) => current ?? { history, schedule });
+      },
+    );
     let pending = pendingExtras.get(key);
     if (!pending) {
       pending = Promise.all([getHistory(leagueId).catch(() => null), loadScheduleAhead(leagueId, week)]).then(([history, schedule]) => {
         const value = { history, schedule };
         if (history && schedule) loadedExtras.set(key, value);
+        if (history) void writeSaved(savedKeys.history(leagueId), history);
         pendingExtras.delete(key);
         return value;
       });
       pendingExtras.set(key, pending);
     }
-    void pending.then((value) => live && setExtras(value));
+    // A failed load keeps what is on screen.
+    void pending.then((value) => live && setExtras((current) => (value.history && value.schedule) || !current ? value : current));
     return () => {
       live = false;
     };

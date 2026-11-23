@@ -326,9 +326,15 @@ describe("StatsService", async () => {
   });
 
   it("starts a download on first use, then serves stats for rostered players", async () => {
-    const service = new StatsService(createMockStats(rawPlayers), { storage: null });
+    // The download waits until released, so the first report sees it running.
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const mock = createMockStats(rawPlayers);
+    const slow = { ...mock, fetchGameLines: async (...args: Parameters<typeof mock.fetchGameLines>) => (await gate, mock.fetchGameLines(...args)) };
+    const service = new StatsService(slow, { storage: null });
     expect((await service.report(snapshot, players)).status).toBe("syncing");
 
+    release();
     await service.sync("2026"); // waits for the download already running
     const report = await service.report(snapshot, players);
 
@@ -341,6 +347,34 @@ describe("StatsService", async () => {
     // The mock leaves a few players without games; rostered ones are listed.
     expect(report.unmatchedRostered.length).toBeGreaterThan(0);
     expect(report.unmatchedRostered.length).toBeLessThan(10);
+  });
+
+  it("keeps reporting ready, with the same version, while a routine update runs behind data in hand", async () => {
+    let calls = 0;
+    let release = () => {};
+    const mock = createMockStats(rawPlayers);
+    const provider = {
+      ...mock,
+      fetchGameLines: async (...args: Parameters<typeof mock.fetchGameLines>) => {
+        calls += 1;
+        if (calls > 2) await new Promise<void>((resolve) => (release = resolve));
+        return mock.fetchGameLines(...args);
+      },
+    };
+    let now = Date.parse("2026-11-20T12:00:00Z");
+    const service = new StatsService(provider, { storage: null, staleMs: 60_000, now: () => now });
+    await service.sync("2026");
+    await service.sync("2025"); // last season too, so nothing else arrives in between
+    const first = await service.report(snapshot, players);
+    expect(first.status).toBe("ready");
+    expect(first.version).toMatch(/^[0-9a-f]{16}$/);
+
+    now += 2 * 60_000; // stale: the next report starts an update
+    const during = await service.report(snapshot, players);
+    expect(during.status).toBe("ready");
+    expect(during.version).toBe(first.version);
+    expect(during.players).toBe(first.players); // worked out once, not again
+    release();
   });
 
   it("ignores preseason games and serves a player's game log", async () => {
