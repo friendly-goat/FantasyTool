@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { returnOutlook } from "../../shared/injury.ts";
+import { newsOutText, returnOutlook } from "../../shared/injury.ts";
 import type { LeagueSnapshot, PlayerDetail, PlayerRef, StatsReport } from "../../shared/types.ts";
 import { getPlayerDetail } from "../api.ts";
 import { closeDialog } from "../closeDialog.ts";
@@ -8,6 +8,7 @@ import { fantasyTone, formatAverage, formatDay, formatGameDate, formatPoints, fo
 const percent = new Intl.NumberFormat("en-US", { style: "percent", maximumFractionDigits: 0 });
 import { PositionChip } from "./PositionChip.tsx";
 import { InjuryNote } from "./InjuryNote.tsx";
+import { DepthChart } from "./DepthChart.tsx";
 import { absenceFor, ProjectionChart } from "./ProjectionChart.tsx";
 import { TeamTag } from "./TeamTag.tsx";
 
@@ -89,6 +90,8 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
   // The injury report entry comes with the league's stats report.
   const injury = stats?.players[player.id]?.injury ?? null;
   const outlook = injury ? returnOutlook(injury) : null;
+  // How long he is out, as everywhere a player who is out is named.
+  const outTag = newsOutText(injury, shown.injuryStatus);
 
   return (
     <dialog
@@ -123,7 +126,7 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
                 <PositionChip key={name} label={name} />
               ))}
               <TeamTag team={shown.team} empty="No NBA team" size="md" />
-              {shown.injuryStatus && <span className="injury">{shown.injuryStatus}</span>}
+              {outTag && <span className="injury">{outTag}</span>}
             </p>
             <p className="quiet">{fantasyTeam ? `On ${fantasyTeam}` : "Free agent in this league"}</p>
           </div>
@@ -291,6 +294,8 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
             </div>
           </>
         )}
+
+        {shown.team && <DepthChart team={shown.team} stats={stats} playerId={player.id} />}
       </div>
     </dialog>
   );

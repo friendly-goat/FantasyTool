@@ -316,6 +316,8 @@ export interface PlayerStats extends PlayerRef {
   bestGame: number;
   /** Fantasy points per game over the most recent games, or null if none. */
   recentAvg: number | null;
+  /** Minutes per game over the same recent games, or null if none (missing from older saved reports). */
+  recentMinutes?: number | null;
   recentGames: number;
   averages: StatLine;
   /**

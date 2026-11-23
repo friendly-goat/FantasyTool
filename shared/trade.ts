@@ -20,7 +20,7 @@ import {
   strengthScore,
   type StrengthModel,
 } from "./strength.ts";
-import { daysBetween } from "./injury.ts";
+import { daysBetween, outText } from "./injury.ts";
 import type { LeagueSnapshot } from "./types.ts";
 
 // Trade evaluation. A trade is judged by what it does to each team's
@@ -547,11 +547,8 @@ export function daysOut(model: StrengthModel, player: ModelPlayer): number {
  * report's own status ("Day-To-Day"). Null when he is not on the report. Display only.
  */
 export function outLabel(model: StrengthModel, player: ModelPlayer): string | null {
-  if (player.back && player.outShare >= 0.95) return "Out for season";
-  const days = Math.round(daysOut(model, player));
-  if (days >= 14) return `Out ${Math.round(days / 7)} weeks`;
-  if (days >= 3) return `Out ${days} days`;
-  return player.injuryStatus ?? null;
+  if (player.back && player.outShare >= 0.95) return outText("season", player.injuryStatus);
+  return outText(player.back ? daysOut(model, player) : null, player.injuryStatus ?? null);
 }
 
 /** Out with a long injury (`LONG_INJURY_DAYS` or more from today, out for the season included). */

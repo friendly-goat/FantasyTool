@@ -113,6 +113,7 @@ function injuredWithoutGames(
     },
     bestGame: 0,
     recentAvg: null,
+    recentMinutes: null,
     recentGames: 0,
     averages: empty,
   };
@@ -165,6 +166,7 @@ function summarizePlayer(
     projection: projectPlayer(fantasy, games.map((game) => game.minutes), context.lastSeason ?? null),
     bestGame: Math.max(...fantasy),
     recentAvg: recent.length > 0 ? mean(recent) : null,
+    recentMinutes: recent.length > 0 ? mean(games.slice(-RECENT_WINDOW).map((game) => game.minutes)) : null,
     recentGames: recent.length,
     averages,
     sources,

@@ -685,6 +685,24 @@ A fantasy team's name in the trade ideas, the builder's results and the top
 moves opens its card (`TeamPanel`, `TeamName`): its charts and roster, a bottom
 sheet on a phone and a wide panel on a computer, closed like a player's card.
 
+### Depth chart (player card)
+
+At the bottom of a player's card, his NBA team position by position
+(`shared/depthChart.ts`, `src/components/DepthChart.tsx`). Neither Sleeper nor
+the stats source publishes a depth chart, so it is worked out from who plays:
+everyone on the team (by Sleeper's team) who has played this season or is on
+the injury report, taken in order of minutes a game over his last 5 games
+played (his season when he has fewer), each placed at the listed position with
+the fewest players so far (the first listed on a tie), three a position. The
+five who play most usually make up the starters. Each name shows those minutes
+a game, colored only when they have moved well away from his season's
+(`minutesTone`: more than 2.5 minutes and 10% of his season; light green to
+full green for a rise, orange to red for a fall, full at 6 minutes past that),
+so regulars with steady minutes read plainly. A player who is out shows how
+long (`newsOutText`: "Out 3 weeks", "Out 5 days", "Out for season", or the
+report's status for a game or two), the same wording as the trade ideas and
+his card's header. Display only: never fed into strength, grades or trade ideas.
+
 ### Activity
 
 The league's trades, waiver claims and free agent moves from the last three

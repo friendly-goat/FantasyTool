@@ -171,6 +171,11 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   (`pickWeek` in `server/index.ts`); finished weeks' matchups and schedule
   are saved under their own keys with long lifetimes, and lock marks are
   stored per week.
+- The player card's depth chart (`shared/depthChart.ts`, `DepthChart.tsx`) is
+  worked out from recent minutes (no source publishes one), minutes colored
+  only when well off his season's (`minutesTone`); how long a player is out
+  is worded by `outText`/`newsOutText` (`shared/injury.ts`) everywhere. Display
+  only, never fed into strength, grades or trade ideas.
 - The Activity tab's team effect (`moveEffect` in `shared/activity.ts`)
   measures each move on today's roster, with and without it; display only,
   never fed into strength, grades or trade ideas.

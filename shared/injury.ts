@@ -191,3 +191,28 @@ export function weeklyChanceBack(
     return days > 0 ? total / days : 1;
   });
 }
+
+/**
+ * How long a player is out, short enough for a tag beside his name: "Out 3 weeks", "Out 5 days",
+ * "Out for season", or, for a game or two (or no date), the report's own status. Null when he is
+ * not on the report. The same wording everywhere a player who is out is named.
+ */
+export function outText(days: number | "season" | null, status: string | null): string | null {
+  if (days === "season") return "Out for season";
+  if (days !== null) {
+    const rounded = Math.round(days);
+    if (rounded >= 14) return `Out ${Math.round(rounded / 7)} weeks`;
+    if (rounded >= 3) return `Out ${rounded} days`;
+  }
+  return status;
+}
+
+/** `outText` from a player's entry on the injury report: days to the expected return, from the report's day. */
+export function newsOutText(news: InjuryNews | null | undefined, status: string | null = null): string | null {
+  if (!news) return status;
+  const outlook = returnOutlook(news);
+  const shown = news.status || status;
+  if (outlook.kind === "season") return outText("season", shown);
+  if (outlook.kind === "window") return outText(daysBetween(news.asOf, outlook.window.expected), shown);
+  return shown;
+}

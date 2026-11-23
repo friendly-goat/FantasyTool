@@ -1750,6 +1750,132 @@ th[aria-sort] .sort-button {
 
 /* ---- Player details panel ---- */
 
+/* A player's NBA team, position by position, at the bottom of his card (DepthChart.tsx). */
+.depth-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.depth-grid {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.depth-row {
+  display: grid;
+  grid-template-columns: 3.5rem repeat(3, minmax(0, 1fr));
+  align-items: stretch;
+}
+
+.depth-row + .depth-row {
+  border-top: 1px solid var(--line);
+}
+
+.depth-row:nth-child(odd):not(.depth-head) {
+  background: color-mix(in oklab, var(--surface-raised) 45%, transparent);
+}
+
+.depth-head {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.depth-head > span {
+  padding: 0.55rem 0.75rem;
+}
+
+.depth-pos {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid var(--line);
+}
+
+.depth-head .depth-pos {
+  padding-inline: 0.25rem;
+}
+
+.depth-slot {
+  min-width: 0;
+  padding: 0.3rem;
+}
+
+.depth-slot + .depth-slot,
+.depth-head > span + span + span {
+  border-left: 1px dashed var(--line);
+}
+
+.depth-cell {
+  display: grid;
+  align-content: start;
+  gap: 0.1rem;
+  width: 100%;
+  height: 100%;
+  padding: 0.4rem 0.45rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-small);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.depth-cell.is-current {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.depth-cell:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+@media (hover: hover) {
+  .depth-cell:hover .depth-last {
+    color: var(--accent);
+  }
+}
+
+.depth-first {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.4rem;
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+
+.depth-first-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.depth-minutes {
+  flex: none;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.depth-last {
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.depth-out {
+  justify-self: start;
+  margin: 0.2rem 0 0;
+  font-size: 0.6875rem;
+  white-space: nowrap;
+}
+
 /* Stand-ins the size of the text they hold the place of, while it loads. */
 .skeleton {
   display: inline-block;
@@ -5300,6 +5426,31 @@ th[aria-sort] .sort-button {
 
   .player-panel .panel-close {
     padding-right: max(1rem, env(safe-area-inset-right));
+  }
+
+  .depth-row {
+    grid-template-columns: 2.6rem repeat(3, minmax(0, 1fr));
+  }
+
+  .depth-head > span {
+    padding: 0.5rem 0.45rem;
+  }
+
+  .depth-slot {
+    padding: 0.2rem;
+  }
+
+  .depth-cell {
+    padding: 0.35rem 0.3rem;
+  }
+
+  .depth-first {
+    font-size: 0.75rem;
+    gap: 0.25rem;
+  }
+
+  .depth-last {
+    font-size: 0.875rem;
   }
 
   /* The chart carousel runs to the sheet's edges, pulling out by the sheet's own padding. */
