@@ -153,7 +153,8 @@ happens to its projected weekly score.
 | Return window spread | when an injured player is back | at least 25% of the time away, centred on the expected day |
 | Injured reserve and waiver pickups | strength, trades | one player per IR slot; open spots filled from the 6 best free agents; the same rule before and after a trade |
 | Free upgrades (a trade's what-if only) | trades | for a team the trade opens a roster spot for, every swap of its weakest player for a better free agent worth making (up to 5); none for a team that gets as many players as it sends; made once, on the roster before the trade, and the trade is made on that roster; never below the team as it stands |
-| What they see of an injured player | what they see on averages | his average less the share of weeks he will miss, plus 10% of that; at most 80% off |
+| What they see of an injured player they would receive | what they see on averages | his average less the share of weeks he will miss, plus 10% of that; at most 80% off. Their own players (sent or dropped) count at their full average, injured or not (`sumOwn`) |
+| Their injured player, judged once back (`TradeSide.held`, `heldInjury`) | what the trade does to their team | when they would send a player out 10+ days and due back this season, their team effect is the change from his return on (the latest return, if several) in place of the whole season; the same +1.25 to -2.0 limit; the builder names him in that part |
 | Reluctance to trade at all | chance they accept | fixed: with the premium below, an even trade comes out at about a third |
 | Own-player premium (managers overvalue their own players) | what they see on averages | fixed: their players count 8% higher (`OWN_PLAYER_PREMIUM`) |
 | What they see on averages (players they would drop subtracted) | chance they accept | +0.8 to -2.0 on the log-odds scale |
@@ -466,6 +467,16 @@ an injured player's average scaled down by the share of weeks he will miss
 "trade for an injured player" looks only at players out at least about two
 weeks who are due back this season, one for one or two of yours for one of
 theirs (packages are matched to his level once he is back).
+
+A manager holding an injured star does not sell him at his injured price. So
+the acceptance chance sees the trade as he does: his own players at their full
+average, injured or not (only players he would receive are discounted for
+the weeks they miss), and, when he would send a player out 10 days or more who
+is due back this season, his team judged on the weeks from that player's
+return on (`TradeSide.held`, the team part's label names him). The grades and
+your side are unchanged: only his chance of saying yes. Packages for an
+injured star then have to match what he is worth once back, or the search
+grows them until they do.
 
 The finder's "Injured players" switch is off by default: players with a long
 injury are left out of every trade, on both sides. A long injury is about a

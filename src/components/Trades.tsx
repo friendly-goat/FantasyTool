@@ -1002,7 +1002,9 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
           comes out at about a third: they count their own players 8% higher on the averages, and a loss to their
           team weighs twice as much as a gain of the same size. It adds three limited parts: what they see on the averages, what the trade does to their team
           (which they sense through their own needs), and the pressure they are under. One bad part pulls the chance down however good the others look. The builder shows how many
-          points each part adds or takes away.
+          points each part adds or takes away. A manager holding an injured star sees him as the star he is: his own
+          players count at their full average, and when he would send a player who is out for a while, his team is
+          judged from that player's return on.
         </p>
         <p>
           Weekly value is what a player is expected to lock in an average week, allowing for games he misses.

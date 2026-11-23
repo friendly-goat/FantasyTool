@@ -814,6 +814,38 @@ export function projectedWeekly(model: StrengthModel, playerIds: string[], weeks
   return value;
 }
 
+/**
+ * Average weekly score over the imaginary weeks that stand for real week `from` onward (the
+ * weeks after an injured player's return), out of the first `weeks` (all unless given). The
+ * whole projection when there is no calendar or no such week.
+ */
+export function projectedFrom(model: StrengthModel, playerIds: string[], from: number, weeks?: number): number {
+  const cycle = model.calendar.weeks.length;
+  const count = Math.min(weeks ?? model.weeks, model.weeks);
+  if (cycle === 0 || from <= 0 || from >= cycle) return projectedWeekly(model, playerIds, weeks);
+  const key = `from${from}|${count}|${[...playerIds].sort().join(",")}`;
+  let cache = memo.get(model);
+  if (!cache) memo.set(model, (cache = new Map()));
+  const known = cache.get(key);
+  if (known !== undefined) return known;
+  const roster = playerIds.flatMap((id) => modelPlayer(model, id) ?? []);
+  let value = 0;
+  if (roster.length > 0) {
+    const work = scratchFor(model, roster);
+    let total = 0;
+    let used = 0;
+    for (let week = 0; week < count; week++) {
+      if (week % cycle < from) continue;
+      total += simulateWeek(model, roster, week, work).total;
+      used++;
+    }
+    value = used > 0 ? total / used : projectRoster(model, roster, count);
+  }
+  if (cache.size > 5000) cache.clear();
+  cache.set(key, value);
+  return value;
+}
+
 /** The same, for a list of players rather than IDs. */
 export function projectRoster(model: StrengthModel, roster: ModelPlayer[], weeks?: number): number {
   const count = Math.min(weeks ?? model.weeks, model.weeks);

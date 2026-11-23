@@ -3730,6 +3730,7 @@ th[aria-sort] .sort-button {
 }
 
 .chance-parts li span:last-child {
+  white-space: nowrap;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }

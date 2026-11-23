@@ -113,7 +113,10 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   fit (the gap). `tradeStory` explains a trade from those; its labels must never
   feed back into grades, chances or the ranking of ideas. The acceptance
   chance (`chanceParts`) does use the other team's team effect and what they
-  see on averages, each capped, combined on the log-odds scale. Ideas are
+  see on averages, each capped, combined on the log-odds scale. A manager sees
+  his own players at their full average (`sumOwn`; only players he receives
+  get the injury discount), and when he would send a long-injured player due
+  back, his team effect is judged from that return on (`TradeSide.held`). Ideas are
   ranked by your weekly gain times that chance. `findTrades` searches in
   layers: swaps plus an estimate of every two-team trade of up to two
   players a side (screened, then the best measured in full), then

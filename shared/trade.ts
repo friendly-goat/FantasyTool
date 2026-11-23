@@ -15,6 +15,7 @@ import {
   type FilledRoster,
   type Pickup,
   projectByWeek,
+  projectedFrom,
   projectedWeekly,
   strengthScore,
   type StrengthModel,
@@ -88,6 +89,13 @@ export interface TradeSide {
   /** 1 to 100: how good the trade is for this manager. 50 means no real change. */
   grade: number;
   letter: string;
+  /**
+   * When this side sends a player out with a long injury who is due back: that player, and the
+   * change in its projected weekly score from his return on. Its manager judges the trade that
+   * way (he holds his injured player as if he were back), so the acceptance chance uses it in
+   * place of `teamChange`. Never part of the grade.
+   */
+  held: { player: ModelPlayer; change: number } | null;
 }
 
 export interface TradeResult {
@@ -233,7 +241,14 @@ export function measureSide(
   const valueSent = value(gives);
   const valueReceived = value(gets);
   const teamChange = projectedAfter - projectedBefore;
+  const sentInjured = heldInjury(model, players(model, gives));
+  const held = sentInjured && {
+    player: sentInjured.player,
+    change:
+      projectedFrom(model, filled.ids, sentInjured.week, weeks) - projectedFrom(model, baseline.filled.ids, sentInjured.week, weeks),
+  };
   return {
+    held,
     valueSent,
     valueReceived,
     valueChange: valueReceived - valueSent,
@@ -518,8 +533,9 @@ export function daysOut(model: StrengthModel, player: ModelPlayer): number {
   for (const [index, chance] of player.back.entries()) {
     const week = weeks[index];
     if (!week) continue;
-    const from = week.start < today ? today : week.start;
-    if (from > week.end) continue;
+    // The week under way counts from today; a week already over (when the league's current week
+    // lags behind the calendar) counts in full, as the model plays it.
+    const from = week.start < today && today <= week.end ? today : week.start;
     days += (1 - chance) * (daysBetween(from, week.end) + 1);
   }
   return days;
@@ -595,7 +611,11 @@ const PRESSURE_WEIGHT = 0.6;
 const INJURY_OVERREACTION = 0.1;
 const INJURY_SEEN_LIMIT = 0.8;
 
-/** A player's average as a manager weighing a trade sees it: lower while he is out injured. */
+/**
+ * A player's average as a manager weighing a trade sees it on someone else's roster: lower while
+ * he is out injured (the zeros are in front of him). His own players he sees at their average,
+ * injured or not (`sumOwn`): a manager holding an injured star still sees a star.
+ */
 export function seenAverage(player: ModelPlayer): number {
   const discount = Math.min(INJURY_SEEN_LIMIT, player.outShare * (1 + INJURY_OVERREACTION));
   return player.average * (1 - discount);
@@ -615,7 +635,14 @@ export interface Chance {
 const logistic = (x: number) => 1 / (1 + Math.exp(-x));
 const clamp = (value: number, low: number, high: number) => Math.min(high, Math.max(low, value));
 
-export function chanceParts(theirWeeklyGain: number, receivedAverage: number, sentAverage: number, urgency: number): Chance {
+export function chanceParts(
+  theirWeeklyGain: number,
+  receivedAverage: number,
+  sentAverage: number,
+  urgency: number,
+  /** Shown for the team part: says when it is judged from an injured player's return. */
+  teamLabel = "What it does to their team",
+): Chance {
   const ratio = sentAverage > 0 ? Math.max(0.01, receivedAverage) / (sentAverage * OWN_PLAYER_PREMIUM) : 2;
   const seen = clamp(Math.log(ratio) * SEEN_SCALE, SEEN_LIMITS[0], SEEN_LIMITS[1]);
   const felt = theirWeeklyGain * (theirWeeklyGain >= 0 ? TEAM_GAIN_WEIGHT : TEAM_LOSS_WEIGHT);
@@ -628,7 +655,7 @@ export function chanceParts(theirWeeklyGain: number, receivedAverage: number, se
     chance,
     parts: [
       { label: "What they see on averages", points: without(seen) },
-      { label: "What it does to their team", points: without(team) },
+      { label: teamLabel, points: without(team) },
       { label: "Pressure on their team", points: without(pressure) },
     ],
   };
@@ -638,7 +665,26 @@ export function chanceFrom(theirWeeklyGain: number, receivedAverage: number, sen
   return chanceParts(theirWeeklyGain, receivedAverage, sentAverage, urgency).chance;
 }
 
+/** What a manager sees of players he would receive (`seenAverage`, injured ones discounted). */
 export const sumAverage = (list: ModelPlayer[]) => list.reduce((total, player) => total + seenAverage(player), 0);
+/** What a manager sees of his own players (sent or dropped): their averages, injured or not. */
+export const sumOwn = (list: ModelPlayer[]) => list.reduce((total, player) => total + player.average, 0);
+
+/**
+ * A player a manager would send who is out with a long injury and due back this season (the
+ * latest back, when there are several), and the real week he is more likely back than not.
+ * His manager judges the trade on the weeks from then on (see `TradeSide.held`).
+ */
+export function heldInjury(model: StrengthModel, sent: ModelPlayer[]): { player: ModelPlayer; week: number } | null {
+  let held: { player: ModelPlayer; week: number } | null = null;
+  for (const player of sent) {
+    if (!player.back || player.outShare >= 0.95 || !isLongInjury(model, player)) continue;
+    const week = player.back.findIndex((chance) => chance >= 0.5);
+    if (week <= 0) continue;
+    if (!held || week > held.week) held = { player, week };
+  }
+  return held;
+}
 
 /** The chance the other side (`theirs`) accepts, with its parts. */
 export function acceptance(theirs: TradeSide, urgency: number): Chance {
@@ -649,8 +695,16 @@ export function acceptance(theirs: TradeSide, urgency: number): Chance {
     (total, pickup) => total + seenAverage(pickup.player) * (pickup.forInjured ? pickup.forInjured.outShare : 1),
     0,
   );
-  const received = sumAverage(theirs.gets) + pickups - sumAverage(theirs.drops);
-  return chanceParts(theirs.teamChange, received, sumAverage(theirs.gives), urgency);
+  const received = sumAverage(theirs.gets) + pickups - sumOwn(theirs.drops);
+  // Sending an injured player, they judge their team as it will be once he is back.
+  const held = theirs.held;
+  return chanceParts(
+    held ? held.change : theirs.teamChange,
+    received,
+    sumOwn(theirs.gives),
+    urgency,
+    held ? `What it does to their team once ${held.player.name} is back` : undefined,
+  );
 }
 
 export function acceptanceChance(theirs: TradeSide, urgency: number): number {
@@ -1121,11 +1175,16 @@ export function findTrades(
     const gain = projectedWeekly(model, myAfter, screenWeeks) - quickBefore(mine, giveIds.length, gets.length, screenWeeks);
     if (gain < minGain) return;
     const theirAfter = quickRoster(info.theirs, getIds, gives);
-    const theirGain = projectedWeekly(model, theirAfter, screenWeeks) - quickBefore(info.theirs, getIds.length, gives.length, screenWeeks);
+    // Sending an injured player, they judge their team from his return on (TradeSide.held).
+    const held = heldInjury(model, gets);
+    const theirGain = held
+      ? projectedFrom(model, theirAfter, held.week, screenWeeks) -
+        projectedFrom(model, quickRosterBefore(model, info.theirs, freeUpgrades(getIds.length, gives.length)), held.week, screenWeeks)
+      : projectedWeekly(model, theirAfter, screenWeeks) - quickBefore(info.theirs, getIds.length, gives.length, screenWeeks);
     // What they see: the averages they get, less any player they would drop to make room.
     const dropped = gives.length > gets.length ? info.byValue.filter((player) => !gets.includes(player)).slice(0, gives.length - gets.length) : [];
-    const received = sumAverage(gives) - sumAverage(dropped);
-    const chance = chanceFrom(theirGain, received, sumAverage(gets), info.urgency);
+    const received = sumAverage(gives) - sumOwn(dropped);
+    const chance = chanceFrom(theirGain, received, sumOwn(gets), info.urgency);
     // Growing an offer is meant to make it easier to accept, or a better idea all round
     // (more for you times its chance); if it does neither, it is not a better idea.
     if (depth > 1 && chance < parentChance + MIN_LIFT) return;
@@ -1271,7 +1330,7 @@ export function findTrades(
     if (getSets.length === 0) continue;
     for (const [setIndex, gets] of getSets.entries()) {
       report("estimates", 0.14, 0.34, teamIndex + setIndex / getSets.length, snapshot.teams.length);
-      const sent = sumAverage(gets);
+      const sent = sumOwn(gets);
       for (const gives of giveSets) {
         if (gives.length === 1 && gets.length === 1) continue; // swaps: screened above
         const gain = estimate("me", mine, gives, gets);
@@ -1280,7 +1339,7 @@ export function findTrades(
         // What they see: the averages they get, less any player they would drop to make room.
         const dropped =
           gives.length > gets.length ? info.byValue.filter((player) => !gets.includes(player)).slice(0, gives.length - gets.length) : [];
-        const chance = chanceFrom(theirGain, sumAverage(gives) - sumAverage(dropped), sent, info.urgency);
+        const chance = chanceFrom(theirGain, sumAverage(gives) - sumOwn(dropped), sent, info.urgency);
         if (chance < MISS_FLOOR) continue;
         estimates.push({
           teamId: team.rosterId,
@@ -1303,13 +1362,16 @@ export function findTrades(
     if (disposable(mine, myAfter, estimate.gets) || disposable(info.theirs, theirAfter, estimate.gives)) return [];
     const gain = projectedWeekly(model, myAfter, estimateWeeks) - quickBefore(mine, estimate.gives.length, estimate.gets.length, estimateWeeks);
     if (gain < minGain - ESTIMATE_SLACK) return [];
-    const theirGain =
-      projectedWeekly(model, theirAfter, estimateWeeks) - quickBefore(info.theirs, estimate.gets.length, estimate.gives.length, estimateWeeks);
+    const held = heldInjury(model, estimate.gets);
+    const theirBefore = quickRosterBefore(model, info.theirs, freeUpgrades(estimate.gets.length, estimate.gives.length));
+    const theirGain = held
+      ? projectedFrom(model, theirAfter, held.week, estimateWeeks) - projectedFrom(model, theirBefore, held.week, estimateWeeks)
+      : projectedWeekly(model, theirAfter, estimateWeeks) - quickBefore(info.theirs, estimate.gets.length, estimate.gives.length, estimateWeeks);
     const dropped =
       estimate.gives.length > estimate.gets.length
         ? info.byValue.filter((player) => !estimate.gets.includes(player)).slice(0, estimate.gives.length - estimate.gets.length)
         : [];
-    const chance = chanceFrom(theirGain, sumAverage(estimate.gives) - sumAverage(dropped), sumAverage(estimate.gets), info.urgency);
+    const chance = chanceFrom(theirGain, sumAverage(estimate.gives) - sumOwn(dropped), sumOwn(estimate.gets), info.urgency);
     if (chance < MISS_FLOOR) return [];
     return [{ ...estimate, band: chance >= LIKELY ? 0 : chance >= POSSIBLE ? 1 : 2, score: rank(gain, chance) }];
   });

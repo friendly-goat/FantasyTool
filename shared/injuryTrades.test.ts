@@ -31,6 +31,8 @@ import {
   POSSIBLE,
   reserveMoves,
   seenAverage,
+  sumOwn,
+  heldInjury,
   similarityKey,
   tradePhases,
 } from "./trade.ts";
@@ -176,21 +178,35 @@ describe("injuries, IR and waiver pickups (against the mock league)", async () =
     expect(blended).toBeCloseTo(idea.result.a.teamChange, 0);
   }, 120_000);
 
-  it("makes an injured player look worth less to the manager weighing a trade, within a limit", () => {
+  it("discounts an injured player a manager would receive, never his own", () => {
     const injured = named(/six weeks/);
     expect(seenAverage(injured)).toBeLessThan(injured.average * (1 - injured.outShare));
     expect(seenAverage(injured)).toBeGreaterThanOrEqual(injured.average * 0.2 - 1e-9);
     const fit = all.find((player) => !player.back && player.games > 5)!;
     expect(seenAverage(fit)).toBe(fit.average);
     expect(seenAverage(named(/for the season/))).toBeCloseTo(named(/for the season/).average * 0.2);
-    // Selling their injured player is easier than selling the same player healthy.
+    expect(sumOwn([injured, fit])).toBeCloseTo(injured.average + fit.average);
+  });
+
+  it("judges the team of a manager selling his injured star from the star's return, so he is no easier to get", () => {
+    const injured = named(/six weeks/);
     const seller = teamOf(injured);
     const buyer = strengths.find((entry) => entry.rosterId !== seller.rosterId)!.rosterId;
     const give = ids(buyer).map((id) => model.players.get(id)!).find((p) => !p.back && p.games > 0)!;
     const offer = { teamA: buyer, teamB: seller.rosterId, aGives: [give.id], bGives: [injured.id] };
-    const now = acceptance(evaluateTrade(model, snapshot, offer).b, 0).chance;
+    const result = evaluateTrade(model, snapshot, offer);
+    expect(result.b.held?.player.id).toBe(injured.id);
+    expect(result.a.held).toBeNull();
+    const now = acceptance(result.b, 0);
+    expect(now.parts[1]!.label).toContain(injured.name);
+    // Selling him now is no easier than selling him healthy (as the zeros once made it).
     const ifHealthy = acceptance(evaluateTrade(healthy, snapshot, offer).b, 0).chance;
-    expect(now).toBeGreaterThan(ifHealthy);
+    expect(now.chance).toBeLessThanOrEqual(ifHealthy + 0.02);
+    // The grade still counts the whole season, weeks out included.
+    expect(result.b.teamChange).not.toBeCloseTo(result.b.held!.change, 2);
+    // A healthy player, or one out for the season (who never comes back), is not held this way.
+    expect(heldInjury(model, [give])).toBeNull();
+    expect(heldInjury(model, [named(/for the season/)])).toBeNull();
   });
 
   it("finds trades for injured players only when asked, each worth it over the rest of the season", () => {
@@ -208,15 +224,23 @@ describe("injuries, IR and waiver pickups (against the mock league)", async () =
   }, 30_000);
 
   it("calls only long injuries long: a few games out is not", () => {
-    expect(isLongInjury(model, named(/ankle soreness/))).toBe(false);
-    expect(daysOut(model, named(/ankle soreness/))).toBeLessThan(5);
-    expect(isLongInjury(model, named(/three weeks/))).toBe(true);
+    // A calendar of its own (the sample league's week can lag the clock): today is a Tuesday.
+    const weeks = ["2026-11-23", "2026-11-30", "2026-12-07", "2026-12-14"].map((start, index) => ({
+      week: 6 + index,
+      start,
+      end: ["2026-11-29", "2026-12-06", "2026-12-13", "2026-12-20"][index]!,
+    }));
+    const dated = { ...model, calendar: { ...model.calendar, today: "2026-11-24", weeks } } as typeof model;
+    const out = (back: number[]) => ({ ...named(/ankle soreness/), back: Float32Array.from(back), outShare: 0.1 });
+    expect(daysOut(dated, out([0.6, 1, 1, 1]))).toBeCloseTo(2.4, 1); // a game or two
+    expect(isLongInjury(dated, out([0, 0.7, 1, 1]))).toBe(false); // about eight days, a few games
+    expect(isLongInjury(dated, out([0, 0, 0.7, 1]))).toBe(true); // about two weeks
     expect(isLongInjury(model, named(/six weeks/))).toBe(true);
     expect(isLongInjury(model, named(/for the season/))).toBe(true);
     expect(isLongInjury(healthy, healthy.players.get(named(/six weeks/).id)!)).toBe(false);
     expect(outLabel(model, named(/for the season/))).toBe("Out for season");
     expect(outLabel(model, named(/six weeks/))).toMatch(/^Out \d+ weeks$/);
-    expect(outLabel(model, named(/ankle soreness/)) ?? "").not.toMatch(/weeks|days/);
+    expect(outLabel(dated, out([0.6, 1, 1, 1])) ?? "").not.toMatch(/weeks|days/);
   });
 
   it("leaves long injuries out of every trade by default, on both sides, but never a named player", () => {
