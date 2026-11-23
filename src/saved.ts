@@ -77,4 +77,5 @@ export const savedKeys = {
   schedule: (leagueId: string, week: number) => `schedule:${leagueId}:${week}`,
   history: (leagueId: string) => `history:${leagueId}`,
   draft: (leagueId: string) => `draft:${leagueId}`,
+  plan: (leagueId: string, rosterId: number) => `plan:${leagueId}:${rosterId}`,
 };

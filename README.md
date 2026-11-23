@@ -685,6 +685,64 @@ A fantasy team's name in the trade ideas, the builder's results and the top
 moves opens its card (`TeamPanel`, `TeamName`): its charts and roster, a bottom
 sheet on a phone and a wide panel on a computer, closed like a player's card.
 
+### Lineup plan (experimental, admin only)
+
+What to lock, start and bench for the rest of the fantasy week, for your
+team, worked out from the scores in hand and every game your players still
+have (`shared/lineupPlan.ts`; its inputs from the live week in
+`shared/lineupInputs.ts`; the view in `src/components/LineupPlan.tsx`). It is
+shown only to the admin (last on the desktop bar, in More on a phone) and its
+data route is admin only (`GET /api/league/:id/plan`).
+
+How it plans, in steps:
+
+1. **Slots.** Each starting slot is locked, holds a score in hand (his game is
+   over and not locked), has a game being played, or is empty (from Sleeper's
+   scores, the schedule and box scores, as on Matchups, with your lock marks).
+2. **Games.** Every game a rostered player (not on IR) still has to tip this
+   week, with his chance of playing it: his usual rate, and the injury report
+   (none before his return window opens, rising through it; day-to-day 60%).
+3. **What a slot's games are worth** (`laneValue`): played in order, locking
+   whenever a game beats what the games after it are worth. That worth is the
+   score to lock at. A slot can take a second player's game the same night
+   when the first game (taken as 2.5 hours) is over before the second tips.
+4. **Which games go where:** first every game in order of tip-off to the slot
+   whose games it adds most to (scores in hand left out, so a game that cannot
+   beat a score alone may still with the games after it); then single games
+   are moved between slots, or out of the plan, while that raises the expected
+   total with scores in hand counted. A score in hand goes where its player
+   goes: once a later game of his is planned, it is gone.
+5. **Locks:** the score in hand whose lock raises the expected total most is
+   locked, in the slot where that is best (where he is, or a narrower slot
+   that frees his for someone still to play, a swap first; the narrowest on a
+   tie), and the games are planned again; until no lock helps. Each lock
+   says what waiting on his own games left is worth, and what it adds. A
+   score left unlocked says what playing on is worth instead.
+6. **Moves:** for each tip-off, who must be in each slot, and the swaps,
+   starts and benchings that get there. A change that only matters if an
+   earlier game in that slot is not locked says so ("if he finishes with 32.92
+   or more, lock him instead").
+
+Its win chance plays your week out following the plan against the other
+team's starters (each of their managers locking when a score beats waiting),
+3,000 times. Now lists the locks, games being played, scores to leave
+unlocked and the moves for the next tip-off; later days follow, and the plan
+works itself out again as scores come in.
+
+**Live data.** The view asks the server every 20 seconds while games are on,
+every minute when one tips within 90 minutes, and every 5 minutes otherwise,
+and at once when the app comes back into view (`PLAN_POLL_MS`). The server
+keeps the data that fast on its own (see "Keeping data fresh"): Sleeper's
+scores every 30 seconds and the box scores of the day being played every 45
+seconds while games are on. The view shows when each kind of data was last
+brought up to date, and warns when scores are more than three minutes old
+during games. It plans on the server's clock, so a phone whose clock is off
+still plans around the real tip-offs. Sleeper does not share locks, so a
+score the data cannot settle is treated as unlocked until you press "I
+locked it". On Heroku's Eco dyno the server sleeps after 30 minutes without
+visits and nothing is refreshed while it sleeps; keep it awake on game nights
+with `KEEP_AWAKE_URL` and `KEEP_AWAKE_HOURS` (see "Waking up").
+
 ### Depth chart (player card)
 
 At the bottom of a player's card, his NBA team position by position
@@ -725,30 +783,34 @@ run Monday to Sunday (`shared/weeks.ts`).
 ## Keeping data fresh
 
 There is no Refresh button. The server keeps every source up to date on its
-own, within each service's rules: every minute it looks over the leagues in
-use (the configured one, and any opened in the last day) and refreshes
-whatever has passed its time below, whether or not anyone is looking (the
-keep-fresh loop in `server/index.ts`). So the app opens on current data, and
-nothing it shows changes a moment later. Pages are always answered from saved
-data in memory; no page request waits on an outside service. "Games on" means
-an NBA game is in progress (from the saved schedule); the header shows it.
+own, within each service's rules: every minute (every 15 seconds while games
+are on or about to tip) it looks over the leagues in use (the configured one,
+and any opened in the last day) and refreshes whatever has passed its time
+below, whether or not anyone is looking (the keep-fresh loop in
+`server/index.ts`). So the app opens on current data, and nothing it shows
+changes a moment later. Pages are always answered from saved data in memory;
+no page request waits on an outside service. "Games on" means an NBA game is
+in progress, or past its tip-off with no word yet (from the saved schedule);
+"about to tip" means a game tips within 90 minutes (`gamePhase` in
+`shared/freshness.ts`), when lineups are set and late scratches come in.
 
 | Data | Source | Fetched again after | Why |
 | --- | --- | --- | --- |
-| League (rosters, matchups, transactions; about 8 requests) | Sleeper | 5 min, 1 min while games are on (`LEAGUE_CACHE_MINUTES`, `LIVE_LEAGUE_MINUTES`) | Sleeper asks to stay under 1,000 requests a minute; this is at most about 8 |
+| League (rosters, matchups, transactions; about 8 requests) | Sleeper | 5 min, 1 min about to tip, 30 seconds while games are on (`LEAGUE_CACHE_MINUTES`, `PREGAME_LEAGUE_MINUTES`, `LIVE_LEAGUE_SECONDS`) | Sleeper asks to stay under 1,000 requests a minute; this is at most about 16 |
 | Player list | Sleeper | 24 hours | Sleeper asks for it at most once a day |
 | Draft | Sleeper | 7 days once finished, else as the league | A finished draft never changes |
 | A finished week's matchups (one request a week) | Sleeper | 6 hours for last week, 7 days for older weeks | Only Sleeper's stat corrections change them, in the days after a week |
 | The rest of the season's NBA schedule, from this Monday, for the strength model and the team charts (about ten requests) | balldontlie | 24 hours | Games are rarely moved |
 | A finished week's NBA schedule (one request a week) | balldontlie | 7 days | Every game is final; saved apart from the current week's copy so a game-night copy is never shown as final |
-| This week's NBA schedule (one or two requests) | balldontlie | 15 min, 2 min while games are on (`SCHEDULE_CACHE_MINUTES`, `LIVE_SCHEDULE_MINUTES`) | Scores and game states change on game nights |
-| Box scores (the last few days again, about 5 to 10 requests) | balldontlie | 30 min, 5 min while games are on (`STATS_CACHE_MINUTES`, `LIVE_STATS_MINUTES`) | balldontlie updates live stats about every 10 minutes |
+| This week's NBA schedule (one or two requests) | balldontlie | 15 min, 5 min about to tip, 1 min while games are on (`SCHEDULE_CACHE_MINUTES`, `PREGAME_SCHEDULE_MINUTES`, `LIVE_SCHEDULE_MINUTES`) | Scores and game states change on game nights |
+| Box scores (the last few days again, about 5 to 10 requests) | balldontlie | 30 min, 5 min while games are on (`STATS_CACHE_MINUTES`, `LIVE_STATS_MINUTES`) | Picks up stat corrections |
+| Box scores of the day being played (`keepLiveFresh`, a request or three) | balldontlie | 45 seconds while games are on, and for half an hour after a game ends (`LIVE_BOX_SECONDS`, `liveDates`) | balldontlie's player stats are realtime for games in progress; a game's line is saved once it is final |
 | Last season's box scores | balldontlie | Never again | It is over |
 | Team logos | NBA | 30 days | They do not change |
-| Injury report (one or two requests) | balldontlie | 15 min (`INJURY_CACHE_MINUTES`) | Return dates and notes change a few times a day |
+| Injury report (one or two requests) | balldontlie | 15 min, 5 min about to tip and while games are on (`INJURY_CACHE_MINUTES`, `PREGAME_INJURY_MINUTES`) | Return dates and notes change a few times a day; late scratches come before tip-off |
 
-At its busiest (games on) that is about 8 Sleeper requests a minute, against
-Sleeper's 1,000, and about 5 balldontlie requests a minute on average, against
+At its busiest (games on) that is about 16 Sleeper requests a minute, against
+Sleeper's 1,000, and about 8 balldontlie requests a minute on average, against
 the ALL-STAR plan's 60. Every balldontlie request still goes through one
 queue, at least 1.1 seconds apart (at most about 54 a minute), with requests
 someone is waiting on (the schedule) ahead of background downloads. Each sync

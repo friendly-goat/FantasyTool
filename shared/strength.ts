@@ -65,7 +65,7 @@ const RELIABILITY_GAMES = 3;
 const SPREAD_WEIGHT_GAMES = 6;
 const SPREAD_LIMITS = [0.1, 0.6] as const;
 /** Standard normal quantiles used to turn a spread into lock-in values. */
-const QUANTILES = Array.from({ length: 25 }, (_, index) => normalQuantile((index + 0.5) / 25));
+export const QUANTILES = Array.from({ length: 25 }, (_, index) => normalQuantile((index + 0.5) / 25));
 
 /**
  * Upper outliers. A fantasy game is skewed: a big night (and the bonuses for 40

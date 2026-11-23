@@ -190,6 +190,27 @@ export interface WeekData {
   linesSyncedAt: string | null;
 }
 
+/** Everything the Lineup plan reads, as fresh as the server has it (GET /api/league/:id/plan). */
+export interface LivePlanData {
+  /** Games being played, about to tip, or neither: how often the view asks again. */
+  phase: "live" | "pregame" | "quiet";
+  /** The server's clock when it answered (ISO). */
+  now: string;
+  /** Ask again after this long (ms). */
+  pollMs: number;
+  /** This week's schedule and box scores. */
+  week: WeekData;
+  /** The matchup with the team asked for, from Sleeper's latest scores. */
+  matchup: Matchup | null;
+  /** That team's roster on injured reserve (Sleeper player IDs). */
+  reserve: string[];
+  marks: LockMarkInfo[];
+  /** The injury report's entry for each player in the matchup, by Sleeper ID. */
+  injuries: Record<string, InjuryNews | null>;
+  /** When each kind of data was last brought up to date (ISO). */
+  asOf: { league: string; schedule: string | null; boxScores: string | null; injuries: string | null };
+}
+
 /** A manager's word on whether a starter's current score is locked. */
 export interface LockMarkInfo {
   rosterId: number;

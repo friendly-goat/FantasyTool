@@ -317,7 +317,7 @@ export interface SimSlot {
 }
 
 /** Deterministic random numbers, so the same matchup always shows the same chance. */
-function mulberry32(seed: number): () => number {
+export function mulberry32(seed: number): () => number {
   let state = seed >>> 0;
   return () => {
     state = (state + 0x6d2b79f5) >>> 0;
@@ -328,7 +328,8 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-function finishSlot(slot: SimSlot, random: () => number): number {
+/** One playing-out of a starter's week (see forecastMatchup). */
+export function finishSlot(slot: SimSlot, random: () => number): number {
   const { player } = slot;
   if (isFixed(slot.state) || !player || slot.gamesLeft <= 0) {
     // Nothing left to play: the score stands (a waiting player with no games scores 0).

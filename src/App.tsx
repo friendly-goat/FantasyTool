@@ -38,6 +38,7 @@ import { type RankingMode, Rankings } from "./components/Rankings.tsx";
 import { AccountMenu } from "./components/AccountMenu.tsx";
 import { MobileNav, ViewIcon } from "./components/MobileNav.tsx";
 import { TeamChooser } from "./components/TeamChooser.tsx";
+import { LineupPlan } from "./components/LineupPlan.tsx";
 import { Teams } from "./components/Teams.tsx";
 import { Trades } from "./components/Trades.tsx";
 import { formatAgo, formatDate } from "./format.ts";
@@ -46,9 +47,11 @@ import { useTheme } from "./theme.ts";
 // My team and Trades are the heart of the app and lead the desktop bar, set apart.
 // Matchups is kept but hidden from the navigation for now: Sleeper's own matchup screen is
 // better until ours catches up. Take it out of HIDDEN_VIEWS to bring it back.
-const VIEWS = ["My team", "Trades", "Rankings", "Draft", "Teams", "Players", "Activity", "Matchups"] as const;
+// Lineup plan is experimental and shown to the admin only, last on the desktop bar and in More.
+const VIEWS = ["My team", "Trades", "Rankings", "Draft", "Teams", "Players", "Activity", "Matchups", "Lineup plan"] as const;
 const HIDDEN_VIEWS: readonly View[] = ["Matchups"];
-const NAV_VIEWS = VIEWS.filter((name) => !HIDDEN_VIEWS.includes(name));
+const ADMIN_VIEWS: readonly View[] = ["Lineup plan"];
+const NAV_VIEWS = VIEWS.filter((name) => !HIDDEN_VIEWS.includes(name) && !ADMIN_VIEWS.includes(name));
 const CORE_VIEWS: readonly View[] = ["My team", "Trades"];
 /** How often to ask the server for the league while the page is open. It answers from memory and decides whether Sleeper is asked. */
 const LEAGUE_POLL_MS = 60_000;
@@ -466,6 +469,10 @@ export function App() {
   ];
 
   const showNav = Boolean(snapshot && myTeam && !choosingTeam);
+  // The admin (or anyone when running without passwords) also sees the experimental views.
+  const isAdmin = session?.role === "admin" || session?.authRequired === false;
+  const navViews: readonly View[] = isAdmin ? [...NAV_VIEWS, ...ADMIN_VIEWS] : NAV_VIEWS;
+  const phoneMore: readonly View[] = isAdmin ? [...PHONE_MORE, ...ADMIN_VIEWS] : PHONE_MORE;
   const accountNote = session?.authRequired
     ? `${myTeam?.managerName ?? "Signed in"}, ${session.role === "admin" ? "admin" : "viewer"}`
     : undefined;
@@ -484,9 +491,9 @@ export function App() {
           </div>
           {showNav && (
             <nav className="app-nav" aria-label="League views">
-              {NAV_VIEWS.map((name, index) => {
+              {navViews.map((name, index) => {
                 const core = CORE_VIEWS.includes(name);
-                const previous = index > 0 ? NAV_VIEWS[index - 1] : undefined;
+                const previous = index > 0 ? navViews[index - 1] : undefined;
                 return (
                   <Fragment key={name}>
                     {previous && core !== CORE_VIEWS.includes(previous) && (
@@ -568,7 +575,7 @@ export function App() {
             <MobileNav
               primary={PHONE_TABS}
               featured="Trades"
-              more={PHONE_MORE}
+              more={phoneMore}
               view={view}
               onSelect={(name) => {
                 selectView(name);
@@ -653,6 +660,9 @@ export function App() {
               <Draft leagueId={snapshot.league.id} snapshot={modelSnapshot ?? snapshot} model={model} myRosterId={myTeam.rosterId} />
             )}
             {view === "Activity" && <Activity snapshot={snapshot} model={model} myRosterId={myRosterId} />}
+            {view === "Lineup plan" && isAdmin && (
+              <LineupPlan snapshot={modelSnapshot ?? snapshot} model={model} myRosterId={myTeam.rosterId} canMark={isAdmin} />
+            )}
 
             {openPlayer && (
               <PlayerPanel

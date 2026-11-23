@@ -24,6 +24,9 @@ const RETRY_AFTER_MS = 5 * 60 * 1000;
 
 interface SeasonData {
   syncedAt: number | null;
+  /** When the days with games being played were last brought up to date (see keepLiveFresh). */
+  liveSyncedAt: number | null;
+  liveInFlight: Promise<void> | null;
   lines: Map<string, GameLine>;
   syncing: boolean;
   pagesFetched: number;
@@ -194,6 +197,35 @@ export class StatsService {
     return worked;
   }
 
+  /**
+   * While games are being played: brings just the given days' box scores up to date (a request or
+   * two, the source updates in-progress games as they go) when older than `freshMs`. The full
+   * sync of the last few days still runs on its own time. Only finished games are saved; lines
+   * from games still being played live in memory until they are final.
+   */
+  async keepLiveFresh(season: string, dates: string[], freshMs: number): Promise<void> {
+    if (!this.provider || dates.length === 0) return;
+    const data = await this.load(season);
+    if (data.liveInFlight) return data.liveInFlight;
+    const last = Math.max(data.liveSyncedAt ?? 0, data.syncedAt ?? 0);
+    if (this.now() - last < freshMs) return;
+    const fromDate = dates[0]!;
+    data.liveInFlight = (async () => {
+      try {
+        const fresh = await this.provider!.fetchGameLines(season, fromDate, () => {});
+        for (const line of fresh) data.lines.set(line.key, line);
+        data.liveSyncedAt = this.now();
+        const finished = fresh.filter((line) => line.final);
+        if (finished.length > 0) await this.save(season, data.syncedAt ?? data.liveSyncedAt, finished);
+      } catch (error) {
+        console.error("[stats] live box scores:", error instanceof Error ? error.message : error);
+      } finally {
+        data.liveInFlight = null;
+      }
+    })();
+    return data.liveInFlight;
+  }
+
   /** Whether box scores are older than `freshMs`; if so (and none is running), a download starts. */
   async keepFresh(season: string, freshMs: number): Promise<void> {
     if (!this.provider) return;
@@ -319,7 +351,8 @@ export class StatsService {
       });
     }
     for (const list of Object.values(result)) list.sort((a, b) => a.date.localeCompare(b.date));
-    return { lines: result, syncedAt: data.syncedAt ? new Date(data.syncedAt).toISOString() : null };
+    const synced = Math.max(data.syncedAt ?? 0, data.liveSyncedAt ?? 0);
+    return { lines: result, syncedAt: synced > 0 ? new Date(synced).toISOString() : null };
   }
 
   /** Whether the stats source has an injury report. */
@@ -409,6 +442,8 @@ export class StatsService {
     if (existing) return existing;
     const data: SeasonData = {
       syncedAt: null,
+      liveSyncedAt: null,
+      liveInFlight: null,
       lines: new Map(),
       syncing: false,
       pagesFetched: 0,

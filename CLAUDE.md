@@ -46,7 +46,8 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   60 a minute on ALL-STAR, so every request goes through the shared queue in
   `server/stats/balldontlie.ts`. There is no Refresh button: the server keeps
   data fresh by itself, with a keep-fresh loop every minute over the leagues
-  in use (shorter times while games are on, `gamesLive`), and outside data is
+  in use (every 15 seconds, with shorter times, while games are on or about
+  to tip: `gamePhase` in `shared/freshness.ts`), and outside data is
   fetched with `cache.get(..., { background: true })` so no page request
   waits on Sleeper or balldontlie once something is saved (Heroku cuts
   requests off at 30 seconds). Production runs the bundled server
@@ -171,6 +172,15 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   (`pickWeek` in `server/index.ts`); finished weeks' matchups and schedule
   are saved under their own keys with long lifetimes, and lock marks are
   stored per week.
+- The Lineup plan (experimental, admin only: `ADMIN_VIEWS` in `src/App.tsx`,
+  `requireRole(auth, "admin")` on `/plan`) plans locks, starts and benchings
+  for the rest of the week (`shared/lineupPlan.ts`, inputs in
+  `shared/lineupInputs.ts`). A score in hand goes with its player (gone once a
+  later game of his is planned); locks are chosen by what they add to the
+  expected total. Live data: `shared/freshness.ts` (`gamePhase` live, pregame
+  or quiet), the keep-fresh loop runs every 15 s then, `keepLiveFresh` brings
+  the day being played up to date every 45 s, the view polls `PLAN_POLL_MS`.
+  Display only: never fed into strength, grades or trade ideas.
 - The player card's depth chart (`shared/depthChart.ts`, `DepthChart.tsx`) is
   worked out from recent minutes (no source publishes one), minutes colored
   only when well off his season's (`minutesTone`); how long a player is out

@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import compression from "compression";
 import express from "express";
-import type { AppConfig, LeagueSnapshot, Matchup, ScheduleAhead, ScoreHistory, WeekData, WeekMatchups } from "../shared/types.ts";
+import type { AppConfig, LeagueSnapshot, LivePlanData, Matchup, ScheduleAhead, ScoreHistory, WeekData, WeekMatchups } from "../shared/types.ts";
 import { buildModel, modelCalendar } from "../shared/strength.ts";
 import type { ProjectionLedger } from "../shared/realisation.ts";
 import { projectedThisWeek } from "../shared/teamProfile.ts";
@@ -21,10 +21,11 @@ import {
 } from "./auth.ts";
 import { Cache } from "./cache.ts";
 import { MemoryStorage, storageFromEnv } from "./storage.ts";
-import { gamesLive } from "../shared/matchup.ts";
+import { gamePhase, type GamePhase, liveDates, PLAN_POLL_MS } from "../shared/freshness.ts";
+import type { InjuryNews } from "../shared/injury.ts";
 import { inAwakeHours, localHour } from "./keepAwake.ts";
 import { createLogoSource } from "./logos.ts";
-import { fetchFromMock, MOCK_LEAGUE_ID } from "./mock.ts";
+import { fetchFromMock, MOCK_LEAGUE_ID, MOCK_PLAN_NOW } from "./mock.ts";
 import { fetchFromSleeper, SleeperError } from "./sleeper.ts";
 import { buildMatchups, buildSnapshot, loadDraftBoard, loadPlayers, loadUserLeagues } from "./snapshot.ts";
 import { createBalldontlie } from "./stats/balldontlie.ts";
@@ -53,23 +54,32 @@ const port = Number(process.env.PORT) || 8787;
 // being played (from the cached schedule). Every figure stays far inside the
 // sources' limits: see README "Keeping data fresh".
 const minutes = (name: string, fallback: number) => (Number(process.env[name]) || fallback) * MINUTE;
+const seconds = (name: string, fallback: number) => (Number(process.env[name]) || fallback) * 1000;
 // Sleeper league data (about 8 requests a refresh): Sleeper asks to stay under 1000 a minute.
+// While games are played its scores move by the minute (two refreshes a minute is about 16
+// requests); in the run-up to a tip-off, lineups are being set.
 const leagueTtl = minutes("LEAGUE_CACHE_MINUTES", 5);
-const liveLeagueTtl = minutes("LIVE_LEAGUE_MINUTES", 1);
+const liveLeagueTtl = seconds("LIVE_LEAGUE_SECONDS", 30);
+const pregameLeagueTtl = minutes("PREGAME_LEAGUE_MINUTES", 1);
 // Sleeper asks that the full player list be fetched at most once a day.
 const playersTtl = 24 * 60 * MINUTE;
 // The NBA schedule (one or two balldontlie requests): scores and game states change on game nights.
 const scheduleTtl = minutes("SCHEDULE_CACHE_MINUTES", 15);
-const liveScheduleTtl = minutes("LIVE_SCHEDULE_MINUTES", 2);
-// Box scores (a sync re-downloads the last few days, about 5 to 10 requests). balldontlie updates
-// live stats about every 10 minutes, so checking every 5 while games are on catches each update.
+const liveScheduleTtl = minutes("LIVE_SCHEDULE_MINUTES", 1);
+const pregameScheduleTtl = minutes("PREGAME_SCHEDULE_MINUTES", 5);
+// Box scores (a sync re-downloads the last few days, about 5 to 10 requests) every 5 minutes while
+// games are on, and the days being played on their own (a request or two, the source updates
+// games in progress as they go) every 45 seconds: a few requests a minute of balldontlie's 60.
 const liveStatsMs = minutes("LIVE_STATS_MINUTES", 5);
+const liveBoxMs = seconds("LIVE_BOX_SECONDS", 45);
 const statsTtl = minutes("STATS_CACHE_MINUTES", 30);
 // A finished draft never changes.
 const finishedDraftTtl = 7 * 24 * 60 * MINUTE;
 // The injury report: one or two requests. Return dates and notes change a
 // few times a day, mostly before games.
 const injuriesTtl = minutes("INJURY_CACHE_MINUTES", 15);
+// Late scratches come in the run-up to tip-off: every 5 minutes then and while games are on.
+const pregameInjuriesTtl = minutes("PREGAME_INJURY_MINUTES", 5);
 // A finished week's matchups only change with Sleeper's stat corrections in
 // the days after it, so last week is checked a few times a day and older
 // weeks weekly. A finished week's schedule never changes.
@@ -77,6 +87,8 @@ const lastWeekTtl = 6 * 60 * MINUTE;
 const finishedWeekTtl = 7 * 24 * 60 * MINUTE;
 /** How often the keep-fresh loop looks over the leagues in use (it calls out only for data past its time). */
 const KEEP_FRESH_MS = MINUTE;
+/** As often while games are on or about to tip, so live data is never more than its own time old. */
+const KEEP_FRESH_LIVE_MS = 15_000;
 /** A league opened in the app is kept fresh for this long after its last visit (the configured league always). */
 const KEEP_FRESH_FOR_MS = 24 * 60 * MINUTE;
 
@@ -199,17 +211,23 @@ function weekOf(snapshot: LeagueSnapshot) {
   return seasonStart ? weekRange(seasonStart, snapshot.week) : null;
 }
 
-/** Whether NBA games are on now, judged from the saved snapshot and schedule (no outside calls). */
-async function isLive(leagueId: string): Promise<boolean> {
+/** Games being played, about to tip, or neither, judged from the saved snapshot and schedule (no outside calls). */
+async function phaseOf(leagueId: string): Promise<GamePhase> {
   const saved = await cache.peek<LeagueSnapshot>(leagueKey(leagueId));
   const week = saved ? weekOf(saved.value) : null;
-  if (!week) return false;
+  if (!week) return "quiet";
   const schedule = await cache.peek<WeekData["games"]>(scheduleKey(week.start));
-  return gamesLive(schedule?.value ?? [], Date.now());
+  return gamePhase(schedule?.value ?? [], Date.now());
+}
+
+/** Whether NBA games are on now. */
+async function isLive(leagueId: string): Promise<boolean> {
+  return (await phaseOf(leagueId)) === "live";
 }
 
 async function getSnapshot(leagueId: string) {
-  const ttl = (await isLive(leagueId)) ? liveLeagueTtl : leagueTtl;
+  const phase = await phaseOf(leagueId);
+  const ttl = phase === "live" ? liveLeagueTtl : phase === "pregame" ? pregameLeagueTtl : leagueTtl;
   return cache.get(
     leagueKey(leagueId),
     ttl,
@@ -218,9 +236,11 @@ async function getSnapshot(leagueId: string) {
   );
 }
 
-/** This week's NBA schedule, kept fresher while games are on. */
-async function getSchedule(start: string, end: string, live: boolean) {
-  return cache.get(scheduleKey(start), live ? liveScheduleTtl : scheduleTtl, () => stats.schedule(start, end), {
+/** This week's NBA schedule, kept fresher while games are on (live) and before they tip (pregame). */
+async function getSchedule(start: string, end: string, live: boolean | GamePhase) {
+  const phase: GamePhase = live === true ? "live" : live === false ? "quiet" : live;
+  const ttl = phase === "live" ? liveScheduleTtl : phase === "pregame" ? pregameScheduleTtl : scheduleTtl;
+  return cache.get(scheduleKey(start), ttl, () => stats.schedule(start, end), {
     background: true,
   });
 }
@@ -353,10 +373,11 @@ async function mockRecordedWeeks(leagueId: string, snapshot: LeagueSnapshot): Pr
 const checkedRecorded = new Set<string>();
 
 /** The league's injury report, saved; an empty list when the source has none or it cannot be had yet. */
-async function getInjuries() {
+async function getInjuries(phase: GamePhase = "quiet") {
   if (!stats.hasInjuries()) return [];
   try {
-    return (await cache.get("injuries-v1", injuriesTtl, () => stats.injuries(), { background: true })).value;
+    const ttl = phase === "quiet" ? injuriesTtl : pregameInjuriesTtl;
+    return (await cache.get("injuries-v1", ttl, () => stats.injuries(), { background: true })).value;
   } catch (error) {
     console.error("[injuries]", error instanceof Error ? error.message : error);
     return [];
@@ -396,24 +417,33 @@ function keepFreshLeague(leagueId: string): void {
   keptFresh.set(leagueId, Date.now());
 }
 
-async function freshen(leagueId: string): Promise<void> {
+async function freshen(leagueId: string): Promise<GamePhase> {
   const snapshot = (await getSnapshot(leagueId)).value;
   await noteLedger(leagueId, snapshot).catch((error) => console.error("[ledger]", error instanceof Error ? error.message : error));
-  const live = await isLive(leagueId);
+  const phase = await phaseOf(leagueId);
+  const live = phase === "live";
   const week = weekOf(snapshot);
-  if (week && stats.hasSchedule()) await getSchedule(week.start, week.end, live).catch(() => {});
+  let games: WeekData["games"] = [];
+  if (week && stats.hasSchedule()) games = (await getSchedule(week.start, week.end, phase).catch(() => null))?.value ?? [];
+  // The days being played, on their own and often; then the usual sync of the last few days.
+  if (live) await stats.keepLiveFresh(snapshot.league.season, liveDates(games, Date.now()), liveBoxMs);
   await stats.keepFresh(snapshot.league.season, live ? liveStatsMs : statsTtl);
+  if (phase !== "quiet") await getInjuries(phase);
   // Works out the report now, so the first visit after new box scores does not wait for it.
   await statsVersion(snapshot);
   await scheduleAhead(snapshot);
   await getDraftBoard(leagueId).catch(() => {});
   void noteProjections(leagueId, snapshot).catch((error) => console.error("[projections]", error instanceof Error ? error.message : error));
+  return phase;
 }
 
 let freshening = false;
-async function freshenAll(): Promise<void> {
-  if (freshening) return;
+let lastBusy = false;
+/** Refreshes every league in use; says whether any has games on or about to tip. */
+async function freshenAll(): Promise<boolean> {
+  if (freshening) return lastBusy;
   freshening = true;
+  let busy = false;
   try {
     const now = Date.now();
     const leagues = new Set<string>(configuredLeague ? [configuredLeague] : []);
@@ -422,11 +452,24 @@ async function freshenAll(): Promise<void> {
       else keptFresh.delete(leagueId);
     }
     for (const leagueId of leagues) {
-      await freshen(leagueId).catch((error) => console.error(`[fresh] ${leagueId}:`, error instanceof Error ? error.message : error));
+      const phase = await freshen(leagueId).catch((error) => {
+        console.error(`[fresh] ${leagueId}:`, error instanceof Error ? error.message : error);
+        return "quiet" as const;
+      });
+      if (phase !== "quiet") busy = true;
     }
   } finally {
     freshening = false;
   }
+  lastBusy = busy;
+  return busy;
+}
+
+/** The keep-fresh loop: every minute, every 15 seconds while games are on or about to tip. */
+function keepFreshLoop(): void {
+  void freshenAll()
+    .catch(() => false)
+    .then((busy) => setTimeout(keepFreshLoop, busy ? KEEP_FRESH_LIVE_MS : KEEP_FRESH_MS).unref());
 }
 
 // Optional: keep an Eco dyno from sleeping. Heroku puts an Eco web dyno to sleep after 30 minutes
@@ -582,6 +625,91 @@ app.get("/api/league/:leagueId/week", async (req, res) => {
       games,
       lines,
       linesSyncedAt: syncedAt,
+    };
+    res.json(body);
+  } catch (error) {
+    sendError(res, error);
+  }
+});
+
+// Everything the Lineup plan reads, as fresh as the server has it: the matchup with Sleeper's
+// latest scores, this week's schedule and box scores, lock marks and the injury report, each
+// with the time it was brought up to date, and how soon to ask again. Answers from saved data
+// at once; anything past its time (shorter while games are on or about to tip) is refreshed in
+// the background, so the next ask has it. Admin only while the plan is experimental.
+app.get("/api/league/:leagueId/plan", requireRole(auth, "admin"), async (req, res) => {
+  try {
+    const leagueId = String(req.params.leagueId ?? "").trim();
+    const rosterId = Number(req.query.roster);
+    if (!Number.isInteger(rosterId)) {
+      res.status(400).json({ error: "Say which team: ?roster=<roster ID>." });
+      return;
+    }
+    keepFreshLeague(leagueId);
+    const [snapshotResult, players] = await Promise.all([getSnapshot(leagueId), getPlayers()]);
+    const snapshot = snapshotResult.value;
+    const seasonStart = snapshot.league.seasonStartDate;
+    if (!seasonStart) {
+      res.status(502).json({ error: "Sleeper did not report when the season started, so this week's dates are unknown." });
+      return;
+    }
+    const { start, end } = weekRange(seasonStart, snapshot.week);
+    // The sample league's week is in the past, so its plan is shown as of a moment inside that week.
+    const nowMs = mock ? Date.parse(MOCK_PLAN_NOW) : Date.now();
+    let phase = await phaseOf(leagueId);
+    let games: WeekData["games"] = [];
+    let scheduleMessage: string | null = null;
+    let scheduleAt: number | null = null;
+    if (!stats.hasSchedule()) {
+      scheduleMessage = "No stats source is set up, so the NBA schedule is not available.";
+    } else {
+      try {
+        const schedule = await getSchedule(start, end, phase);
+        games = schedule.value;
+        scheduleAt = schedule.savedAt;
+        if (mock) phase = gamePhase(games, nowMs);
+      } catch (error) {
+        scheduleMessage = error instanceof Error ? error.message : "The NBA schedule could not be loaded.";
+      }
+    }
+    // The days being played, without waiting for them (the next ask has them).
+    if (phase === "live") void stats.keepLiveFresh(snapshot.league.season, liveDates(games, Date.now()), liveBoxMs);
+    const { lines, syncedAt } = await stats.weekLines(snapshot, players.value, start, end, phase === "live" ? liveStatsMs : statsTtl);
+    const matchup = snapshot.matchups.find((entry) => entry.sides.some((side) => side.rosterId === rosterId)) ?? null;
+    const team = snapshot.teams.find((entry) => entry.rosterId === rosterId);
+    const injuryReport = await getInjuries(phase);
+    const report = await stats.report(snapshot, players.value, injuryReport);
+    const injuries: Record<string, InjuryNews | null> = {};
+    for (const side of matchup?.sides ?? []) {
+      for (const entry of [...side.starters, ...side.bench]) {
+        if (entry.player) injuries[entry.player.id] = report.players[entry.player.id]?.injury ?? null;
+      }
+    }
+    const injuriesAt = (await cache.peek("injuries-v1"))?.savedAt ?? null;
+    const body: LivePlanData = {
+      phase,
+      now: new Date(nowMs).toISOString(),
+      pollMs: PLAN_POLL_MS[phase],
+      week: {
+        week: snapshot.week,
+        start,
+        end,
+        schedule: scheduleMessage === null ? "ready" : "unavailable",
+        scheduleMessage,
+        games,
+        lines,
+        linesSyncedAt: syncedAt,
+      },
+      matchup,
+      reserve: team?.reserve.map((player) => player.id) ?? [],
+      marks: await markStorage.readLockMarks(leagueId, snapshot.week),
+      injuries,
+      asOf: {
+        league: snapshot.fetchedAt,
+        schedule: scheduleAt ? new Date(scheduleAt).toISOString() : null,
+        boxScores: syncedAt,
+        injuries: injuriesAt ? new Date(injuriesAt).toISOString() : null,
+      },
     };
     res.json(body);
   } catch (error) {
@@ -759,8 +887,7 @@ app.listen(port, () => {
       `player stats: ${statsProvider ? statsProvider.name : "off, no BALLDONTLIE_API_KEY"})`,
   );
   // Right away (saved data loads into memory, so the first page is quick), then every minute.
-  void freshenAll();
-  setInterval(() => void freshenAll(), KEEP_FRESH_MS).unref();
+  keepFreshLoop();
   if (keepAwakeUrl) {
     console.log(`[server] keeping awake: ${process.env.KEEP_AWAKE_HOURS?.trim() || "all day"}`);
     setInterval(() => {

@@ -1,6 +1,7 @@
 import type {
   AppConfig,
   DraftBoard,
+  LivePlanData,
   LockMarks,
   WeekData,
   WeekMatchups,
@@ -101,6 +102,11 @@ export function getScheduleAhead(leagueId: string): Promise<ScheduleAhead> {
 
 export function getMatchups(leagueId: string, week: number): Promise<WeekMatchups> {
   return getJson(`/api/league/${encodeURIComponent(leagueId)}/matchups?week=${week}`);
+}
+
+/** Everything the Lineup plan reads for a team, as fresh as the server has it (admin only). */
+export function getPlan(leagueId: string, rosterId: number): Promise<LivePlanData> {
+  return getJson(`/api/league/${encodeURIComponent(leagueId)}/plan?roster=${rosterId}`);
 }
 
 export function getLockMarks(leagueId: string, week?: number): Promise<LockMarks> {

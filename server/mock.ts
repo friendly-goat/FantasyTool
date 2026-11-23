@@ -9,6 +9,11 @@ import { weekRange } from "../shared/weeks.ts";
 
 export const MOCK_LEAGUE_ID = "mock-league";
 const WEEK = 4;
+/**
+ * The moment the sample league's Lineup plan is shown as of: Friday afternoon of its current
+ * week (games through Thursday are final, the weekend still to come).
+ */
+export const MOCK_PLAN_NOW = "2026-11-13T21:00:00Z";
 
 const MANAGERS = [
   ["Dana", "Backcourt Bandits"],
