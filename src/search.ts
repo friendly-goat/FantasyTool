@@ -80,6 +80,9 @@ function getWorker(): Worker | null {
   return worker;
 }
 
+/** The best-trades answer per model and team, when the work runs on this thread (as the worker keeps it). */
+const bestHere = new WeakMap<StrengthModel, Map<number, FinderResult>>();
+
 function here(
   model: StrengthModel,
   snapshot: LeagueSnapshot,
@@ -87,17 +90,41 @@ function here(
   request: SearchRequest,
   progress?: SearchProgress,
 ): Promise<FinderResult | Move[]> {
+  if (!bestHere.has(model)) bestHere.set(model, new Map());
+  const kept = bestHere.get(model)!;
+  const bestFor = (rosterId: number) => {
+    let found = kept.get(rosterId);
+    if (!found) {
+      found = findTrades(model, snapshot, rosterId, situations, {}, undefined, progress);
+      kept.set(rosterId, found);
+    }
+    return found;
+  };
   return new Promise((resolve) => {
     // Let a "Searching" label paint first.
     setTimeout(() => {
       resolve(
-        request.kind === "trades"
-          ? findTrades(model, snapshot, request.rosterId, situations, request.options, undefined, progress)
-          : topMoves(model, snapshot, request.rosterId, situations, undefined, progress),
+        request.kind === "moves"
+          ? topMoves(model, snapshot, request.rosterId, situations, undefined, progress, bestFor(request.rosterId))
+          : isBest(request)
+            ? bestFor(request.rosterId)
+            : findTrades(model, snapshot, request.rosterId, situations, request.options, undefined, progress),
       );
     }, 30);
   });
 }
+
+/** Whether a request is (or rests on) "see the best trades for my team". */
+function isBest(request: SearchRequest): boolean {
+  return request.kind === "moves" || Object.keys(request.options).length === 0;
+}
+
+/**
+ * The best-trades search under way for a model and team, with everyone following its progress:
+ * a second request for it (the Trades tab while the top moves are being worked out) follows the
+ * first one's progress, then gets the kept answer.
+ */
+const followers = new Map<string, Set<SearchProgress>>();
 
 function run(
   model: StrengthModel,
@@ -114,10 +141,34 @@ function run(
     sent = source.id;
   }
   const id = ++nextId;
+  const key = isBest(request) ? `${source.id}:${request.rosterId}` : null;
+  let report = progress;
+  let leader = false;
+  if (key) {
+    const following = followers.get(key);
+    if (following) {
+      // Already being worked out: follow it. The worker answers this request from what it keeps.
+      if (progress) following.add(progress);
+      report = undefined;
+    } else {
+      leader = true;
+      const everyone = new Set<SearchProgress>(progress ? [progress] : []);
+      followers.set(key, everyone);
+      report = (share, stage) => {
+        for (const listener of everyone) listener(share, stage);
+      };
+    }
+  }
   return new Promise<FinderResult | Move[]>((resolve, reject) => {
-    waiting.set(id, { resolve, reject, progress });
+    waiting.set(id, { resolve, reject, progress: report });
     target.postMessage({ type: "search", id, source: source.id, request } satisfies ToWorker);
-  }).catch(() => here(model, snapshot, situations, request, progress));
+  })
+    .finally(() => {
+      if (!key) return;
+      if (leader) followers.delete(key);
+      else if (progress) followers.get(key)?.delete(progress);
+    })
+    .catch(() => here(model, snapshot, situations, request, progress));
 }
 
 /** findTrades, off the page's thread when it can be. */

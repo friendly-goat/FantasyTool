@@ -11,6 +11,7 @@ import {
   gradeWord,
   type FinderOptions,
   type FinderResult,
+  type SearchStage,
   type TradeIdea,
   type TradeOffer,
   reserveMoves,
@@ -42,6 +43,10 @@ interface Props {
   /** Whether this visit's data is in (App); a search asked for before then waits for it. */
   settled?: boolean;
 }
+
+/** The least a search's bar runs (plus its fill) when the answer was already worked out. */
+const KEPT_SEARCH_MS = 600;
+const KEPT_STEPS: SearchStage[] = ["swaps", "estimates", "screening", "measuring"];
 
 /** A short label for a waiver pickup in a trade. */
 function pickupLabel(pickup: Pickup): string {
@@ -521,16 +526,33 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
     setProgress({ share: 0, stage: "setup" });
     const target = request.goal === "get" || request.goal === "send" ? (model.players.get(request.playerId)?.name ?? null) : null;
     const searchedWith = model;
+    const started = performance.now();
     void searchTrades(searchedWith, snapshot, situations, myRosterId, request.options, (share, stage) =>
       setProgress((current) => (current && current.stage !== "done" ? { share: Math.max(current.share, share), stage } : current)),
     ).then((result) => {
-      // Let the bar fill before the ideas appear.
-      setProgress({ share: 1, stage: "done" });
-      window.setTimeout(() => {
-        setFound({ ...result, model: searchedWith, target });
-        setSearching(false);
-        setProgress(null);
-      }, 450);
+      const finish = () => {
+        // Let the bar fill before the ideas appear.
+        setProgress({ share: 1, stage: "done" });
+        window.setTimeout(() => {
+          setFound({ ...result, model: searchedWith, target });
+          setSearching(false);
+          setProgress(null);
+        }, 450);
+      };
+      // An answer already worked out (the top moves ran the same search) comes back at once: the
+      // bar still runs through the search's steps, briefly, before the ideas appear.
+      const left = KEPT_SEARCH_MS - (performance.now() - started);
+      if (left <= 0) return finish();
+      KEPT_STEPS.forEach((stage, index) =>
+        window.setTimeout(
+          () =>
+            setProgress((current) =>
+              current && current.stage !== "done" ? { share: Math.max(current.share, (index + 1) / (KEPT_STEPS.length + 1)), stage } : current,
+            ),
+          (left / KEPT_STEPS.length) * index,
+        ),
+      );
+      window.setTimeout(finish, left);
     });
   }
 

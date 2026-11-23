@@ -612,6 +612,14 @@ search takes a few seconds, so it runs after the page has painted, with the
 same progress bar as the trade search, and is kept until the projections
 change (only when the data they read changes, so it runs once).
 
+It is the same search as "see the best trades for my team" on the Trades tab,
+and the answer is kept for both (per team, for as long as the model stands).
+After the top moves have loaded, that search on the Trades tab answers from
+what is kept: its bar still runs through the search's steps, for about a
+second, before the ideas appear. Asked for while the top moves are still being
+worked out, it follows their progress and finishes with them, rather than
+searching again. Every other kind of search runs in full.
+
 ### Activity
 
 The league's trades, waiver claims and free agent moves from the last three

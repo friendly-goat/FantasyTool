@@ -7,7 +7,7 @@
 import { freeAgentPickups, type TeamSituation } from "./insight.ts";
 import { rosterPlayers } from "./analysis.ts";
 import { fillRoster, type ModelPlayer, projectedWeekly, type StrengthModel, strengthScore } from "./strength.ts";
-import { findTrades, type Likelihood, reserveMoves, type SearchProgress, type TradeIdea } from "./trade.ts";
+import { type FinderResult, findTrades, type Likelihood, reserveMoves, type SearchProgress, type TradeIdea } from "./trade.ts";
 import type { LeagueSnapshot } from "./types.ts";
 
 export interface Move {
@@ -33,12 +33,11 @@ export interface Move {
   notes: Record<string, string>;
 }
 
-/** How many trade ideas the search returns before they are mixed with pickups. */
-const TRADE_IDEAS = 12;
-
 /**
  * The `limit` best moves for `rosterId`, biggest strength gain first.
- * Trades are the finder's ideas that stand at least a fair chance (long
+ * Trades are the ideas from "see the best trades for my team" (the same
+ * search, `findTrades` with no options, so the page can share one answer
+ * between this and the Trades tab) that stand at least a fair chance (long
  * shots are left out: they are not moves you could make). Pickups earn a
  * place on merit; when none does, the best pickup takes the last place, so
  * the waiver wire is always in view.
@@ -51,12 +50,14 @@ export function topMoves(
   limit = 5,
   /** Told how far the trade search behind the moves has got, for a progress bar. */
   onProgress?: SearchProgress,
+  /** That search's answer, when it has already been worked out. */
+  best?: FinderResult,
 ): Move[] {
   const team = snapshot.teams.find((candidate) => candidate.rosterId === rosterId);
   if (!team || limit <= 0) return [];
   const mine = rosterPlayers(team).map((player) => player.id);
 
-  const trades: Move[] = findTrades(model, snapshot, rosterId, situations, {}, TRADE_IDEAS, onProgress)
+  const trades: Move[] = (best ?? findTrades(model, snapshot, rosterId, situations, {}, undefined, onProgress))
     .ideas.filter((idea) => idea.likelihood !== "long shot")
     .map((idea) => ({
       kind: "trade",

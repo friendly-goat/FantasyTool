@@ -60,7 +60,9 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   reading to the fingerprint. The stats report carries a `version` (changes
   only when its numbers do); the league answer's `statsVersion` tells the
   page when to fetch it. A trade search waits for this visit's data
-  (`settled` in `src/App.tsx`).
+  (`settled` in `src/App.tsx`). The top moves and "see the best trades for my
+  team" are one search (`findTrades` with no options), kept per model and team
+  in the worker and shared in flight (`src/search.ts`).
 - Sleeper's NBA responses are not formally documented. Treat every raw field as
   optional (`server/sleeper.ts`) and convert to the strict shapes in
   `shared/types.ts` inside `server/snapshot.ts`.

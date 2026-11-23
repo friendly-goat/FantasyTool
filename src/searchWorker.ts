@@ -2,7 +2,7 @@
 import { teamSituations } from "../shared/insight.ts";
 import { topMoves } from "../shared/moves.ts";
 import { buildModel, leagueStrength } from "../shared/strength.ts";
-import { findTrades, type SearchStage } from "../shared/trade.ts";
+import { type FinderResult, findTrades, type SearchStage } from "../shared/trade.ts";
 import type { FromWorker, ToWorker } from "./search.ts";
 
 const scope = globalThis as unknown as {
@@ -12,6 +12,9 @@ const scope = globalThis as unknown as {
 
 let current: { source: number; build: () => ReturnType<typeof prepare> } | null = null;
 let prepared: { source: number; data: ReturnType<typeof prepare> } | null = null;
+// "See the best trades for my team" and the top moves share one search: its answer is kept per
+// team for as long as the model stands, so whichever asks second gets it at once.
+let best: { source: number; byRoster: Map<number, FinderResult> } | null = null;
 
 function prepare(message: Extract<ToWorker, { type: "data" }>) {
   const model = buildModel(message.snapshot, message.report, undefined, message.schedule);
@@ -44,10 +47,22 @@ scope.onmessage = (event) => {
       sentStage = stage;
       scope.postMessage({ id: message.id, progress: share, stage });
     };
+    if (!best || best.source !== prepared.source) best = { source: prepared.source, byRoster: new Map() };
+    const kept = best.byRoster;
+    const bestFor = (rosterId: number) => {
+      let found = kept.get(rosterId);
+      if (!found) {
+        found = findTrades(model, snapshot, rosterId, situations, {}, undefined, progress);
+        kept.set(rosterId, found);
+      }
+      return found;
+    };
     const result =
-      request.kind === "trades"
-        ? findTrades(model, snapshot, request.rosterId, situations, request.options, undefined, progress)
-        : topMoves(model, snapshot, request.rosterId, situations, undefined, progress);
+      request.kind === "moves"
+        ? topMoves(model, snapshot, request.rosterId, situations, undefined, progress, bestFor(request.rosterId))
+        : Object.keys(request.options).length === 0
+          ? bestFor(request.rosterId)
+          : findTrades(model, snapshot, request.rosterId, situations, request.options, undefined, progress);
     scope.postMessage({ id: message.id, result });
   } catch (error) {
     scope.postMessage({ id: message.id, error: error instanceof Error ? error.message : String(error) });
