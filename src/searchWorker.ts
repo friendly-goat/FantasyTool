@@ -1,9 +1,9 @@
 // Runs the trade search and the top moves off the page's thread (see search.ts).
 import { teamSituations } from "../shared/insight.ts";
-import { topMoves } from "../shared/moves.ts";
 import { buildModel, leagueStrength } from "../shared/strength.ts";
-import { type FinderResult, findTrades, type SearchStage } from "../shared/trade.ts";
+import type { FinderResult, SearchStage } from "../shared/trade.ts";
 import type { FromWorker, ToWorker } from "./search.ts";
+import { answer } from "./searchAnswer.ts";
 
 const scope = globalThis as unknown as {
   onmessage: ((event: MessageEvent<ToWorker>) => void) | null;
@@ -12,9 +12,8 @@ const scope = globalThis as unknown as {
 
 let current: { source: number; build: () => ReturnType<typeof prepare> } | null = null;
 let prepared: { source: number; data: ReturnType<typeof prepare> } | null = null;
-// "See the best trades for my team" and the top moves share one search: its answer is kept per
-// team for as long as the model stands, so whichever asks second gets it at once.
-let best: { source: number; byRoster: Map<number, FinderResult> } | null = null;
+// Trade searches' answers, kept per team and options for as long as the model stands (searchAnswer.ts).
+let kept: { source: number; byKey: Map<string, FinderResult> } | null = null;
 
 function prepare(message: Extract<ToWorker, { type: "data" }>) {
   const model = buildModel(message.snapshot, message.report, undefined, message.schedule);
@@ -47,22 +46,8 @@ scope.onmessage = (event) => {
       sentStage = stage;
       scope.postMessage({ id: message.id, progress: share, stage });
     };
-    if (!best || best.source !== prepared.source) best = { source: prepared.source, byRoster: new Map() };
-    const kept = best.byRoster;
-    const bestFor = (rosterId: number) => {
-      let found = kept.get(rosterId);
-      if (!found) {
-        found = findTrades(model, snapshot, rosterId, situations, {}, undefined, progress);
-        kept.set(rosterId, found);
-      }
-      return found;
-    };
-    const result =
-      request.kind === "moves"
-        ? topMoves(model, snapshot, request.rosterId, situations, undefined, progress, bestFor(request.rosterId))
-        : Object.keys(request.options).length === 0
-          ? bestFor(request.rosterId)
-          : findTrades(model, snapshot, request.rosterId, situations, request.options, undefined, progress);
+    if (!kept || kept.source !== prepared.source) kept = { source: prepared.source, byKey: new Map() };
+    const result = answer(model, snapshot, situations, request, kept.byKey, progress);
     scope.postMessage({ id: message.id, result });
   } catch (error) {
     scope.postMessage({ id: message.id, error: error instanceof Error ? error.message : String(error) });

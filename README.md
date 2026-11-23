@@ -467,14 +467,17 @@ an injured player's average scaled down by the share of weeks he will miss
 weeks who are due back this season, one for one or two of yours for one of
 theirs (packages are matched to his level once he is back).
 
-The finder's "Injured players" switch (on by default) leaves injured players
-out of every trade when turned off, on both sides: nobody who is out now (a
-return window on the injury report) or eligible for IR (`isInjuredNow`). A
-player you name to send or to get is still allowed. It is a filter on which
-players the search tries, never a weight on any trade. "Trade for an injured
-player" turns the switch on and locks it, since that search is only injured
-players. Turned off, the search is its own (`leaveOutInjured`), not the shared
-"best trades" search the top moves use.
+The finder's "Injured players" switch is off by default: players with a long
+injury are left out of every trade, on both sides. A long injury is about a
+week and a half or more (`LONG_INJURY_DAYS`, 10 days; `isLongInjury`), counted
+from today on each week's chance he is still out (`daysOut`), so a player
+missing one or a few games stays in. A player you name to send or to get is
+always allowed. It is a filter on which players the search tries, never a
+weight on any trade. Turned on (`includeInjured`), long injuries can be part of
+a trade. "Trade for an injured player" turns the switch on and locks it, since
+that search is only injured players. A player who is out shows how long beside
+his name in the trade ideas and the top moves (`outLabel`: "Out 3 weeks",
+"Out 5 days", "Out for season", or the report's status for a game or two).
 
 An injured player's player value counts only the weeks he plays (his value
 above a free agent once back, times the share of weeks he plays): while he is
@@ -645,22 +648,31 @@ Matchups view still reads Sleeper's weekly feed.
 `topMoves` in `shared/moves.ts`. The My team tab lists the five moves that
 would raise your team's strength most over the rest of the season: the trades
 from "see the best trades for my team" (only those with at least a fair chance
-of being accepted; long shots are left out) and the best waiver pickups, each
-measured the same way, as the change in strength from the full projection. A
-pickup drops the player your roster would miss least. Pickups compete on
-merit; when none makes the five, the best one takes the last place so the
-waiver wire stays in view. A trade opens in the builder on the Trades tab. The
-search takes a few seconds, so it runs after the page has painted, with the
-same progress bar as the trade search, and is kept until the projections
-change (only when the data they read changes, so it runs once).
+of being accepted; long shots are left out; no long injuries, as the finder's
+default) and the best waiver pickups, each measured the same way, as the change
+in strength from the full projection. A pickup drops the player your roster
+would miss least. Pickups compete on merit; when none makes the five, the best
+one that still raises your team gets a place so the waiver wire stays in view.
+The best trade from "trade for an injured player" that raises your team with
+at least a fair chance gets a place too (`forInjured`). Places given this way
+come off the bottom; the list is then in order of strength gain. A trade opens
+in the builder on the Trades tab. The two searches take a few seconds, so they
+run after the page has painted, with the same progress bar as the trade
+search (the main search most of it), and are kept until the projections
+change (only when the data they read changes, so they run once).
 
-It is the same search as "see the best trades for my team" on the Trades tab,
-and the answer is kept for both (per team, for as long as the model stands).
-After the top moves have loaded, that search on the Trades tab answers from
-what is kept: its bar still runs through the search's steps, for about a
-second, before the ideas appear. Asked for while the top moves are still being
-worked out, it follows their progress and finishes with them, rather than
-searching again. Every other kind of search runs in full.
+Every trade search's answer is kept per team and options for as long as the
+model stands (`src/searchAnswer.ts`), so the top moves' two searches answer
+"see the best trades for my team" (switch off) and "trade for an injured
+player" on the Trades tab at once: the bar still runs through the search's
+steps, for about a second, before the ideas appear. Asked for while the top
+moves are still being worked out, "see the best trades" follows their progress
+and finishes with them, rather than searching again. Any other search runs in
+full the first time.
+
+A fantasy team's name in the trade ideas, the builder's results and the top
+moves opens its card (`TeamPanel`, `TeamName`): its charts and roster, a bottom
+sheet on a phone and a wide panel on a computer, closed like a player's card.
 
 ### Activity
 

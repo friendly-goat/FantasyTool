@@ -5,6 +5,7 @@ import { createMockStats, mockInjuries } from "../server/stats/mock.ts";
 import { StatsService } from "../server/stats/service.ts";
 import { rosterPlayers } from "./analysis.ts";
 import { teamSituations } from "./insight.ts";
+import { topMoves } from "./moves.ts";
 import {
   buildModel,
   expectedOnceBack,
@@ -22,7 +23,9 @@ import {
   droppedOnArrival,
   evaluateTrade,
   findTrades,
-  isInjuredNow,
+  isLongInjury,
+  outLabel,
+  daysOut,
   isInjuredTarget,
   playerValue,
   POSSIBLE,
@@ -204,26 +207,62 @@ describe("injuries, IR and waiver pickups (against the mock league)", async () =
     expect(found).toBeGreaterThan(0);
   }, 30_000);
 
-  it("leaves injured players out of every trade when asked, on both sides, but never a named player", () => {
+  it("calls only long injuries long: a few games out is not", () => {
+    expect(isLongInjury(model, named(/ankle soreness/))).toBe(false);
+    expect(daysOut(model, named(/ankle soreness/))).toBeLessThan(5);
+    expect(isLongInjury(model, named(/three weeks/))).toBe(true);
+    expect(isLongInjury(model, named(/six weeks/))).toBe(true);
+    expect(isLongInjury(model, named(/for the season/))).toBe(true);
+    expect(isLongInjury(healthy, healthy.players.get(named(/six weeks/).id)!)).toBe(false);
+    expect(outLabel(model, named(/for the season/))).toBe("Out for season");
+    expect(outLabel(model, named(/six weeks/))).toMatch(/^Out \d+ weeks$/);
+    expect(outLabel(model, named(/ankle soreness/)) ?? "").not.toMatch(/weeks|days/);
+  });
+
+  it("leaves long injuries out of every trade by default, on both sides, but never a named player", () => {
+    const longOut = (player: ModelPlayer) => isLongInjury(model, player);
     let found = 0;
     for (const { rosterId } of strengths.slice(0, 4)) {
-      const { ideas } = findTrades(model, snapshot, rosterId, situations, { leaveOutInjured: true });
+      const { ideas } = findTrades(model, snapshot, rosterId, situations);
       for (const idea of ideas) {
         found++;
-        expect([...idea.result.a.gives, ...idea.result.a.gets].some(isInjuredNow)).toBe(false);
+        expect([...idea.result.a.gives, ...idea.result.a.gets].some(longOut)).toBe(false);
       }
     }
     expect(found).toBeGreaterThan(0);
     // Named: an injured player asked for by name is still searched for.
     const injured = named(/six weeks/);
     const buyer = strengths.find((entry) => entry.rosterId !== teamOf(injured).rosterId)!.rosterId;
-    const { ideas } = findTrades(model, snapshot, buyer, situations, { getPlayerId: injured.id, leaveOutInjured: true });
+    const { ideas } = findTrades(model, snapshot, buyer, situations, { getPlayerId: injured.id });
     for (const idea of ideas) expect(idea.result.a.gets.some((player) => player.id === injured.id)).toBe(true);
-    // Trading for an injured player overrides it.
-    const forInjured = findTrades(model, snapshot, strengths[0]!.rosterId, situations, { getInjured: true, leaveOutInjured: true });
+    // Trading for an injured player lets them in, as does asking for them.
+    const forInjured = findTrades(model, snapshot, strengths[0]!.rosterId, situations, { getInjured: true, includeInjured: true });
     const plain = findTrades(model, snapshot, strengths[0]!.rosterId, situations, { getInjured: true });
     expect(forInjured.ideas.map((idea) => idea.offer)).toEqual(plain.ideas.map((idea) => idea.offer));
   }, 60_000);
+
+  it("gives the top moves one trade for an injured player, and no long injuries elsewhere", () => {
+    let withInjured = 0;
+    for (const { rosterId } of strengths.slice(0, 4)) {
+      const best = findTrades(model, snapshot, rosterId, situations);
+      const injured = findTrades(model, snapshot, rosterId, situations, { getInjured: true });
+      const moves = topMoves(model, snapshot, rosterId, situations, undefined, undefined, best, injured);
+      expect(moves.length).toBeLessThanOrEqual(5);
+      const forInjured = moves.filter((move) => move.forInjured);
+      expect(forInjured.length).toBeLessThanOrEqual(1);
+      const helps = injured.ideas.some((idea) => idea.likelihood !== "long shot" && idea.result.a.teamChange > 0);
+      if (helps) expect(forInjured.length).toBe(1);
+      withInjured += forInjured.length;
+      for (const move of moves.filter((candidate) => candidate.kind === "trade" && !candidate.forInjured)) {
+        expect([...move.gets, ...move.gives].some((player) => isLongInjury(model, player))).toBe(false);
+      }
+      moves.forEach((move, index) => {
+        expect(move.weeklyChange).toBeGreaterThan(0);
+        if (index > 0) expect(move.strengthChange).toBeLessThanOrEqual(moves[index - 1]!.strengthChange);
+      });
+    }
+    expect(withInjured).toBeGreaterThan(0);
+  }, 120_000);
 
   it("counts an injured player's value only in the weeks he plays", () => {
     const injured = named(/six weeks/);

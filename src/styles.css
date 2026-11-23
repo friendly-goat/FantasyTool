@@ -1764,7 +1764,8 @@ th[aria-sort] .sort-button {
   width: 4.5rem;
 }
 
-.player-link {
+.player-link,
+.team-link {
   background: none;
   border: 0;
   padding: 0;
@@ -1776,9 +1777,31 @@ th[aria-sort] .sort-button {
   text-underline-offset: 0.2em;
 }
 
-.player-link:hover {
+.player-link:hover,
+.team-link:hover {
   color: var(--accent);
   text-decoration-color: currentColor;
+}
+
+/* A fantasy team's name that opens its card: the text it replaces, as a button. */
+.team-link {
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  max-width: 100%;
+}
+
+/* A team's card: wide enough on a computer for its three charts side by side. */
+.player-panel.team-panel {
+  width: min(70rem, calc(100vw - 2rem));
+}
+
+.team-panel .team-charts-wrap {
+  margin: 0 0 1.25rem;
+}
+
+.team-panel .panel-head {
+  margin-bottom: 1.25rem;
 }
 
 .player-panel {
@@ -2929,6 +2952,10 @@ th[aria-sort] .sort-button {
 }
 
 .idea-deal dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  min-width: 0;
   margin: 0;
   font-size: 1.0625rem;
   font-weight: 700;
@@ -2945,6 +2972,11 @@ th[aria-sort] .sort-button {
 
 .idea-player {
   white-space: nowrap;
+}
+
+.idea-out-tag {
+  margin: 0 0 0 0.4rem;
+  vertical-align: 0.08em;
 }
 
 .idea-plus {
@@ -5267,6 +5299,16 @@ th[aria-sort] .sort-button {
 
   .player-panel .panel-close {
     padding-right: max(1rem, env(safe-area-inset-right));
+  }
+
+  /* The chart carousel runs to the sheet's edges, pulling out by the sheet's own padding. */
+  .team-panel .panel-body {
+    --gutter-left: max(1rem, env(safe-area-inset-left));
+    --gutter-right: max(1rem, env(safe-area-inset-right));
+  }
+
+  .player-panel.team-panel {
+    width: 100%;
   }
 
   .panel-close-button {

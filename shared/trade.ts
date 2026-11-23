@@ -19,6 +19,7 @@ import {
   strengthScore,
   type StrengthModel,
 } from "./strength.ts";
+import { daysBetween } from "./injury.ts";
 import type { LeagueSnapshot } from "./types.ts";
 
 // Trade evaluation. A trade is judged by what it does to each team's
@@ -485,11 +486,12 @@ export interface FinderOptions {
   /** Only trades that bring back a player who is out now with a return date this season. */
   getInjured?: boolean;
   /**
-   * Leave injured players out of the trades, on both sides (`isInjuredNow`). A player named to
-   * send or to get is always allowed, and `getInjured` overrides it. Left unset (not false) when off, so the search stays the
+   * Let players with a long injury (`isLongInjury`) be part of the trades. By default they are
+   * left out, on both sides; a player named to send or to get is always allowed, and
+   * `getInjured` lets them in. Left unset (not false) when off, so the default search stays the
    * shared "best trades" search.
    */
-  leaveOutInjured?: boolean;
+  includeInjured?: boolean;
   /** How many search layers at most (1 swaps only); the default goes as deep as it needs to. */
   maxDepth?: number;
 }
@@ -502,9 +504,43 @@ export function isInjuredTarget(player: ModelPlayer): boolean {
   return Boolean(player.back) && player.outShare >= INJURED_TARGET_SHARE && player.outShare < 0.95 && player.projected > 0;
 }
 
-/** Injured now: out with a return window on the injury report, or eligible for an IR slot. */
-export function isInjuredNow(player: ModelPlayer): boolean {
-  return Boolean(player.back) || player.irEligible;
+/**
+ * Days a long injury lasts at least: about a week and a half, five games or so. A player missing
+ * one or a few games is not left out of trades.
+ */
+export const LONG_INJURY_DAYS = 10;
+
+/** Days he is expected to miss from today: each real week's days, times his chance of being out that week. */
+export function daysOut(model: StrengthModel, player: ModelPlayer): number {
+  if (!player.back) return 0;
+  const { weeks, today } = model.calendar;
+  let days = 0;
+  for (const [index, chance] of player.back.entries()) {
+    const week = weeks[index];
+    if (!week) continue;
+    const from = week.start < today ? today : week.start;
+    if (from > week.end) continue;
+    days += (1 - chance) * (daysBetween(from, week.end) + 1);
+  }
+  return days;
+}
+
+/**
+ * A short tag for a player who is out, beside his name in trade ideas: how long he is expected
+ * to miss ("Out 3 weeks", "Out 5 days", "Out for season"), or for a game or two the injury
+ * report's own status ("Day-To-Day"). Null when he is not on the report. Display only.
+ */
+export function outLabel(model: StrengthModel, player: ModelPlayer): string | null {
+  if (player.back && player.outShare >= 0.95) return "Out for season";
+  const days = Math.round(daysOut(model, player));
+  if (days >= 14) return `Out ${Math.round(days / 7)} weeks`;
+  if (days >= 3) return `Out ${days} days`;
+  return player.injuryStatus ?? null;
+}
+
+/** Out with a long injury (`LONG_INJURY_DAYS` or more from today, out for the season included). */
+export function isLongInjury(model: StrengthModel, player: ModelPlayer): boolean {
+  return daysOut(model, player) >= LONG_INJURY_DAYS;
 }
 
 /**
@@ -990,11 +1026,17 @@ export function findTrades(
   const estimateWeeks = roundsOf(ESTIMATE_WEEKS);
   const firstLookWeeks = roundsOf(FIRST_LOOK_WEEKS);
   const mine = rosterIds(snapshot, rosterId);
-  // With injured players left out, they are never a piece of a trade (a named player still is).
+  // Players with a long injury are never a piece of a trade unless asked for (a named player always may be).
+  const longOut = new Map<string, boolean>();
+  const isOut = (player: ModelPlayer) => {
+    let out = longOut.get(player.id);
+    if (out === undefined) longOut.set(player.id, (out = isLongInjury(model, player)));
+    return out;
+  };
   const allowed = (player: ModelPlayer) =>
-    !options.leaveOutInjured ||
-    options.getInjured || // trading for an injured player overrides it
-    !isInjuredNow(player) ||
+    options.includeInjured ||
+    options.getInjured || // trading for an injured player lets them in
+    !isOut(player) ||
     player.id === options.givePlayerId ||
     player.id === options.getPlayerId;
   const myPlayers = players(model, mine).filter(allowed);

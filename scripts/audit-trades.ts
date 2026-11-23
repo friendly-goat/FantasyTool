@@ -30,6 +30,7 @@ import {
   findTrades,
   ideaRank,
   isInjuredTarget,
+  isLongInjury,
   type Likelihood,
   likelihood,
   limitRepeats,
@@ -111,10 +112,13 @@ function reference(rosterId: number, options: FinderOptions) {
   const before = (roster: string[], sent: number, received: number) =>
     projectedWeekly(model, quickRosterBefore(model, roster, freeUpgrades(sent, received)), weeks);
   const at = (position?: string) => (player: ModelPlayer) => !position || player.positions.includes(position);
-  const givers = players(model, mine).filter(
+  // As findTrades: long injuries are left out unless let in or named.
+  const allowed = (p: ModelPlayer) =>
+    options.includeInjured || options.getInjured || !isLongInjury(model, p) || p.id === options.givePlayerId || p.id === options.getPlayerId;
+  const givers = players(model, mine).filter(allowed).filter(
     (p) => p.games > 0 && at(options.givePosition)(p) && (!options.givePlayerId || p.id === options.givePlayerId),
   );
-  const giveSets = pairs(players(model, mine).filter((p) => p.games > 0)).filter((set) =>
+  const giveSets = pairs(players(model, mine).filter((p) => p.games > 0 && allowed(p))).filter((set) =>
     options.givePlayerId ? set.some((p) => p.id === options.givePlayerId) : set.some((p) => givers.includes(p)),
   );
   const quick: { offer: TradeOffer; quick: number; chance: number }[] = [];
@@ -123,7 +127,7 @@ function reference(rosterId: number, options: FinderOptions) {
     if (team.rosterId === rosterId) continue;
     const theirs = rosterIds(snapshot, team.rosterId);
     const byValue = players(model, theirs).sort((a, b) => a.expected - b.expected);
-    const targets = players(model, theirs).filter((p) => p.games > 0 || isInjuredTarget(p));
+    const targets = players(model, theirs).filter((p) => (p.games > 0 || isInjuredTarget(p)) && allowed(p));
     const getSets = pairs(targets).filter((set) =>
       set.some(
         (p) =>

@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import type { StrengthModel, TeamStrength } from "../../shared/strength.ts";
-import type { LeagueSnapshot, PlayerRef, PlayerStats, StatsReport } from "../../shared/types.ts";
+import type { LeagueSnapshot, PlayerRef, PlayerStats, StatsReport, Team } from "../../shared/types.ts";
 import { formatPoints, formatRecord } from "../format.ts";
 import { Avatar } from "./Avatar.tsx";
 import { PositionChip } from "./PositionChip.tsx";
@@ -54,15 +54,9 @@ function PlayerLine({ slot, player, stats, showStats }: LineProps) {
 
 const NO_PLAYERS: Record<string, PlayerStats> = {};
 
-export function Teams({ snapshot, modelSnapshot, model, strengths, stats, myRosterId, selectedRosterId, onSelect }: Props) {
-  const team =
-    snapshot.teams.find((candidate) => candidate.rosterId === selectedRosterId) ?? snapshot.teams[0];
+/** A team's roster as Sleeper has it set: starters, bench and IR, with averages. Used by Teams and the team card. */
+export function TeamRoster({ team, stats }: { team: Team; stats: StatsReport | null }) {
   const players = stats?.players ?? NO_PLAYERS;
-  // Every team's charts, worked out once per model and shared with My team.
-  const profiles = useProfiles(modelSnapshot, model, strengths, players, stats?.allowed);
-  const head = useRef<HTMLDivElement>(null);
-  if (!team) return <p className="quiet">This league has no teams yet.</p>;
-
   const showStats = Object.keys(players).length > 0;
   const groups: { title: string; lines: { slot: string; player: PlayerRef | null }[] }[] = [
     { title: "Starters", lines: team.starters },
@@ -74,6 +68,62 @@ export function Teams({ snapshot, modelSnapshot, model, strengths, stats, myRost
     (sum, starter) => sum + (starter.player ? (players[starter.player.id]?.fantasyAvg ?? 0) : 0),
     0,
   );
+
+  return (
+    <>
+      {showStats && (
+        <p className="roster-summary">
+          Starters average <strong>{formatPoints(starterTotal)}</strong> fantasy points per game combined.
+        </p>
+      )}
+
+      <div className="roster-scroll">
+        <table className="roster-table">
+          {groups.map((group, groupIndex) => (
+            <tbody key={group.title}>
+              <tr className="group-row">
+                <th scope="col" colSpan={2}>
+                  {group.title}
+                </th>
+                {showStats && (
+                  <>
+                    <th scope="col" className="num">
+                      {groupIndex === 0 ? "Fantasy avg" : ""}
+                    </th>
+                    <th scope="col" className="num">
+                      {groupIndex === 0 ? `Last ${stats?.recentWindow ?? 5}` : ""}
+                    </th>
+                    <th scope="col" className="num hide-narrow">
+                      {groupIndex === 0 ? "Games" : ""}
+                    </th>
+                  </>
+                )}
+              </tr>
+              {group.lines.map((line, index) => (
+                <PlayerLine
+                  key={line.player?.id ?? `empty-${index}`}
+                  slot={line.slot}
+                  player={line.player}
+                  stats={line.player ? players[line.player.id] : undefined}
+                  showStats={showStats}
+                />
+              ))}
+            </tbody>
+          ))}
+        </table>
+      </div>
+    </>
+  );
+}
+
+export function Teams({ snapshot, modelSnapshot, model, strengths, stats, myRosterId, selectedRosterId, onSelect }: Props) {
+  const team =
+    snapshot.teams.find((candidate) => candidate.rosterId === selectedRosterId) ?? snapshot.teams[0];
+  const players = stats?.players ?? NO_PLAYERS;
+  // Every team's charts, worked out once per model and shared with My team.
+  const profiles = useProfiles(modelSnapshot, model, strengths, players, stats?.allowed);
+  const head = useRef<HTMLDivElement>(null);
+  if (!team) return <p className="quiet">This league has no teams yet.</p>;
 
   return (
     <section className="teams" aria-label="Teams">
@@ -125,47 +175,7 @@ export function Teams({ snapshot, modelSnapshot, model, strengths, stats, myRost
       </div>
 
       <div className="card roster">
-        {showStats && (
-          <p className="roster-summary">
-            Starters average <strong>{formatPoints(starterTotal)}</strong> fantasy points per game combined.
-          </p>
-        )}
-
-        <div className="roster-scroll">
-          <table className="roster-table">
-            {groups.map((group, groupIndex) => (
-              <tbody key={group.title}>
-                <tr className="group-row">
-                  <th scope="col" colSpan={2}>
-                    {group.title}
-                  </th>
-                  {showStats && (
-                    <>
-                      <th scope="col" className="num">
-                        {groupIndex === 0 ? "Fantasy avg" : ""}
-                      </th>
-                      <th scope="col" className="num">
-                        {groupIndex === 0 ? `Last ${stats?.recentWindow ?? 5}` : ""}
-                      </th>
-                      <th scope="col" className="num hide-narrow">
-                        {groupIndex === 0 ? "Games" : ""}
-                      </th>
-                    </>
-                  )}
-                </tr>
-                {group.lines.map((line, index) => (
-                  <PlayerLine
-                    key={line.player?.id ?? `empty-${index}`}
-                    slot={line.slot}
-                    player={line.player}
-                    stats={line.player ? players[line.player.id] : undefined}
-                    showStats={showStats}
-                  />
-                ))}
-              </tbody>
-            ))}
-          </table>
-        </div>
+        <TeamRoster team={team} stats={stats} />
       </div>
     </section>
   );

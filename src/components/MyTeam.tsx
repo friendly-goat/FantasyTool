@@ -4,8 +4,9 @@ import type { TeamSituation } from "../../shared/insight.ts";
 import type { Move } from "../../shared/moves.ts";
 import { searchMoves } from "../search.ts";
 import { TeamCharts, useProfiles } from "./TeamCharts.tsx";
+import { TeamName } from "./TeamName.tsx";
 import { bestNineLineup, type StrengthModel, type TeamStrength } from "../../shared/strength.ts";
-import type { SearchStage, TradeOffer } from "../../shared/trade.ts";
+import { outLabel, type SearchStage, type TradeOffer } from "../../shared/trade.ts";
 import type { LeagueSnapshot, PlayerRef, StatsReport, Team } from "../../shared/types.ts";
 import { formatPoints, formatRecord, formatSigned, formatStrength, formatStrengthChange, ordinal } from "../format.ts";
 import { StrengthStars } from "./StrengthStars.tsx";
@@ -88,11 +89,12 @@ function useTopMoves(
   return { moves, progress };
 }
 
-function MovePlayers({ players, notes }: { players: Move["gets"]; notes: Move["notes"] }) {
+function MovePlayers({ players, notes, model }: { players: Move["gets"]; notes: Move["notes"]; model: StrengthModel | null }) {
   return (
     <span className="move-players">
       {players.map((player) => (
-        <PlayerCell key={player.id} player={player} extra={notes[player.id]} />
+        // How long a player is out, as in the trade ideas.
+        <PlayerCell key={player.id} player={player} extra={notes[player.id]} tag={model ? outLabel(model, player) : undefined} />
       ))}
     </span>
   );
@@ -105,8 +107,6 @@ export function MyTeam({ snapshot, stats, model, strengths, team, onChangeTeam, 
 
   const strength = strengths?.find((entry) => entry.rosterId === team.rosterId) ?? null;
   const { moves, progress: movesProgress } = useTopMoves(model, snapshot, team.rosterId, situations);
-  const teamName = (rosterId: number | null) =>
-    snapshot.teams.find((candidate) => candidate.rosterId === rosterId)?.teamName ?? "another team";
 
   const profiles = useProfiles(snapshot, model, strengths, players, stats?.allowed);
   const profile = profiles?.get(team.rosterId) ?? null;
@@ -308,7 +308,13 @@ export function MyTeam({ snapshot, stats, model, strengths, team, onChangeTeam, 
                             {move.kind === "trade" ? (
                               <>
                                 <span className="move-tag move-tag-trade">Trade</span>
-                                <span className="quiet">with {teamName(move.partner)}</span>
+                                <span className="quiet">
+                                  with{" "}
+                                  {(() => {
+                                    const partner = snapshot.teams.find((candidate) => candidate.rosterId === move.partner);
+                                    return partner ? <TeamName team={partner} /> : "another team";
+                                  })()}
+                                </span>
                               </>
                             ) : (
                               <>
@@ -318,10 +324,10 @@ export function MyTeam({ snapshot, stats, model, strengths, team, onChangeTeam, 
                             )}
                           </th>
                           <td className="move-get" data-label="You get">
-                            <MovePlayers players={move.gets} notes={move.notes} />
+                            <MovePlayers players={move.gets} notes={move.notes} model={model} />
                           </td>
                           <td className="move-give" data-label="You give">
-                            <MovePlayers players={move.gives} notes={move.notes} />
+                            <MovePlayers players={move.gives} notes={move.notes} model={model} />
                           </td>
 
                           <td className="num move-change">
@@ -379,10 +385,11 @@ export function MyTeam({ snapshot, stats, model, strengths, team, onChangeTeam, 
       {hasStats && (
         <p className="quiet legend">
           Top moves are the trades from "see the best trades for my team" on the Trades tab (only those with at least a
-          fair chance of being accepted) and the best waiver pickups, ranked together by how much each raises your
-          team's strength over the rest of the season. A pickup drops the player your roster would miss least. When no
-          pickup makes the top five on merit, the best one that still raises your team takes the last place. Under each strength change is the
-          change in your projected weekly score behind it.
+          fair chance of being accepted, and none with a player out a week and a half or more) and the best waiver
+          pickups, ranked together by how much each raises your team's strength over the rest of the season. A pickup
+          drops the player your roster would miss least. When no pickup makes the top five on merit, the best one that
+          still raises your team gets a place, and so does the best trade for an injured player (from "trade for an
+          injured player"). Under each strength change is the change in your projected weekly score behind it.
         </p>
       )}
     </section>

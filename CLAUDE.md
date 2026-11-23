@@ -122,10 +122,14 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   the sample league). The search runs in a web worker (`src/search.ts`);
   a trade is made on the roster after its free upgrades (every worthwhile
   one for a team the trade opens a spot for, none otherwise, `freeUpgrades`;
-  decided once before the trade, never below the team as it stands); the finder's "Injured players" switch, when off, sets
-  `leaveOutInjured` (a filter on trade pieces, named players exempt, locked
-  on for "trade for an injured player"; never sent when on, so the shared
-  best search stays shared); never suggest an offer that is a big
+  decided once before the trade, never below the team as it stands); findTrades leaves long injuries (`isLongInjury`, 10+ days, not a few
+  games) out of trade pieces by default (named players exempt); the finder's
+  "Injured players" switch is off by default and sets `includeInjured` only
+  when on (locked on for "trade for an injured player"), so the default stays
+  the shared best search. The top moves rest on that search plus the
+  `getInjured` one (one place for the best injured trade, one for a pickup
+  when none earns it); every search's answer is kept per team and options
+  (`src/searchAnswer.ts`); never suggest an offer that is a big
   loss (F) for the other team, or one where either side drops a player it
   receives (`droppedOnArrival`). IR slots come from Sleeper's
   `settings.reserve_slots`, not `roster_positions`.
@@ -135,6 +139,9 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   (`bestNineLineup`, picked by weekly value, the nine "best nine alone"
   counts), never the lineup set in Sleeper; full health (used by the
   acceptance chance) still picks its nine by value when fit.
+- A fantasy team's name in the trade area renders with `TeamName`
+  (`OpenTeamContext`), opening `TeamPanel` (charts and roster, no team
+  switching).
 - The user's own team is chosen once per league (`myRosterId` in `src/App.tsx`).
   Features that give advice take that team's point of view.
 - Player stats come through the `StatsProvider` interface

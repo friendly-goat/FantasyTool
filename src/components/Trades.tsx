@@ -3,6 +3,7 @@ import { rosterPlayers } from "../../shared/analysis.ts";
 import { deepestSpot, POSITIONS, positionProfile, type TeamSituation, thinnestSpot } from "../../shared/insight.ts";
 import { bestNineLineup, type ModelPlayer, type Pickup, type StrengthModel } from "../../shared/strength.ts";
 import {
+  outLabel,
   acceptance,
   evaluateTrade,
   chanceWord,
@@ -29,6 +30,7 @@ import { formatPoints, formatRecord, formatSigned, formatStrength, formatStrengt
 import { Avatar } from "./Avatar.tsx";
 import { ChanceTag, EffectBar, RecordTag } from "./TeamEffect.tsx";
 import { PlayerName } from "./PlayerName.tsx";
+import { TeamName } from "./TeamName.tsx";
 import { PlayerCell } from "./PlayerCell.tsx";
 import { PlayerMoves } from "./PlayerMoves.tsx";
 import { PositionChip } from "./PositionChip.tsx";
@@ -62,17 +64,21 @@ const percent = new Intl.NumberFormat("en-US", { style: "percent", maximumFracti
 const tone = (grade: number) => (grade >= 57 ? "up" : grade <= 43 ? "down" : "");
 
 /** Players in a trade idea, joined with a quiet "+". */
-function joined(players: ModelPlayer[]) {
-  return players.map((player, index) => (
-    <span key={player.id} className="idea-player">
-      {index > 0 && (
-        <span className="idea-plus" aria-hidden="true">
-          +
-        </span>
-      )}
-      <PlayerName player={player} />
-    </span>
-  ));
+function joined(players: ModelPlayer[], model: StrengthModel) {
+  return players.map((player, index) => {
+    const out = outLabel(model, player);
+    return (
+      <span key={player.id} className="idea-player">
+        {index > 0 && (
+          <span className="idea-plus" aria-hidden="true">
+            +
+          </span>
+        )}
+        <PlayerName player={player} />
+        {out && <span className="injury idea-out-tag">{out}</span>}
+      </span>
+    );
+  });
 }
 
 /** Who the trade is with: the other team's avatar, name, manager and record. */
@@ -82,7 +88,7 @@ function IdeaPartner({ team }: { team: Team | undefined }) {
     <div className="idea-partner">
       <Avatar url={team.avatarUrl} name={team.teamName} size="sm" />
       <span className="idea-partner-text">
-        <span className="idea-partner-name">{team.teamName}</span>
+        <TeamName team={team} className="idea-partner-name" />
         <span className="idea-partner-manager">
           {team.managerName}
           <RecordTag team={team} />
@@ -279,7 +285,7 @@ function SideResult({ side, team, scale, model }: { side: TradeSide; team: Team 
       <div className="team-cell">
         <Avatar url={team?.avatarUrl ?? null} name={team?.teamName ?? "?"} />
         <div>
-          <span className="league-option-name">{team?.teamName}</span>
+          {team && <TeamName team={team} className="league-option-name" />}
           <span className="team-meta">
             <span className="quiet manager">{team?.managerName}</span>
             {team && <RecordTag team={team} />}
@@ -463,8 +469,9 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
   const [position, setPosition] = useState("SF");
   const [sendId, setSendId] = useState("");
   const [getId, setGetId] = useState("");
-  // Injured players in the ideas (on by default). Trading for an injured player keeps it on.
-  const [injuredOn, setInjuredOn] = useState(true);
+  // Players with a long injury in the ideas (off by default, as in the top moves). Trading for an
+  // injured player keeps it on.
+  const [injuredOn, setInjuredOn] = useState(false);
   const injuredLocked = goal === "injured";
   const includeInjured = injuredLocked || injuredOn;
   // Both sides start closed; opening an idea in the builder opens both.
@@ -540,7 +547,7 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
         // Let the bar fill before the ideas appear.
         setProgress({ share: 1, stage: "done" });
         window.setTimeout(() => {
-          setFound({ ...result, model: searchedWith, target, leftOutInjured: Boolean(request.options.leaveOutInjured) });
+          setFound({ ...result, model: searchedWith, target, leftOutInjured: !request.options.includeInjured && !request.options.getInjured });
           setSearching(false);
           setProgress(null);
         }, 450);
@@ -613,8 +620,8 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
             : goal === "injured"
               ? { getInjured: true }
               : {};
-    // Only set when injured players are left out, so the default stays the shared best-trades search.
-    const options: FinderOptions = includeInjured ? goalOptions : { ...goalOptions, leaveOutInjured: true };
+    // Only set when long injuries are let in, so the default stays the shared best-trades search.
+    const options: FinderOptions = includeInjured && !injuredLocked ? { ...goalOptions, includeInjured: true } : goalOptions;
     const request = { options, goal, playerId: goal === "get" ? getId : goal === "send" ? sendId : "" };
     // Right after the app opens, the latest data may still be on its way: wait a moment for it
     // rather than show ideas that are overtaken a second later.
@@ -673,8 +680,8 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
               injuredLocked
                 ? "Always on when trading for an injured player"
                 : includeInjured
-                  ? "Injured players can be part of a trade"
-                  : "Injured players are left out of every trade (a player you name is still allowed)"
+                  ? "Players out with a long injury can be part of a trade"
+                  : "Players out a week and a half or more are left out (a player you name is still allowed)"
             }
           >
             <span>
@@ -752,8 +759,9 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
       )}
       {found?.leftOutInjured && (
         <p className="finder-outlook quiet">
-          Injured players are left out: nobody who is out now or eligible for IR is in these trades
-          {found.target ? `, apart from ${found.target} if he is` : ""}.
+          Players out a week and a half or more are left out
+          {found.target ? ` (${found.target} may still be, as you named him)` : ""}. Turn on Injured players to include
+          them.
         </p>
       )}
       {found?.ideas.some((idea) => idea.depth > 1) && (
@@ -788,11 +796,11 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
               <dl className="idea-deal">
                 <div className="idea-deal-row idea-out">
                   <dt>You send</dt>
-                  <dd>{joined(idea.result.a.gives)}</dd>
+                  <dd>{joined(idea.result.a.gives, model)}</dd>
                 </div>
                 <div className="idea-deal-row idea-in">
                   <dt>You get</dt>
-                  <dd>{joined(idea.result.a.gets)}</dd>
+                  <dd>{joined(idea.result.a.gets, model)}</dd>
                 </div>
               </dl>
               <div className="idea-main">

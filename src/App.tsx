@@ -29,6 +29,8 @@ import { LeaguePicker } from "./components/LeaguePicker.tsx";
 import { Matchups } from "./components/Matchups.tsx";
 import { MyTeam } from "./components/MyTeam.tsx";
 import { OpenPlayerContext } from "./components/PlayerName.tsx";
+import { TeamPanel } from "./components/TeamPanel.tsx";
+import { OpenTeamContext } from "./components/TeamName.tsx";
 import { PlayerPanel } from "./components/PlayerPanel.tsx";
 import { Players } from "./components/Players.tsx";
 import { StatsNotice } from "./components/StatsNotice.tsx";
@@ -87,6 +89,8 @@ export function App() {
   const [builderOffer, setBuilderOffer] = useState<{ offer: TradeOffer; at: number } | null>(null);
   const [selectedRosterId, setSelectedRosterId] = useState<number | null>(null);
   const [openPlayer, setOpenPlayer] = useState<PlayerRef | null>(null);
+  // A fantasy team's card, opened from its name in the trade area (TeamName).
+  const [openTeamCard, setOpenTeamCard] = useState<number | null>(null);
   const { theme, toggleTheme } = useTheme();
   const [session, setSession] = useState<Session | null>(null);
 
@@ -560,6 +564,7 @@ export function App() {
 
         {snapshot && myTeam && !choosingTeam && (
           <OpenPlayerContext.Provider value={setOpenPlayer}>
+          <OpenTeamContext.Provider value={setOpenTeamCard}>
             <MobileNav
               primary={PHONE_TABS}
               featured="Trades"
@@ -658,6 +663,20 @@ export function App() {
                 onClose={() => setOpenPlayer(null)}
               />
             )}
+            {openTeamCard !== null && (
+              <TeamPanel
+                key={openTeamCard}
+                snapshot={snapshot}
+                modelSnapshot={modelSnapshot ?? snapshot}
+                model={model}
+                strengths={strengths}
+                stats={stats}
+                rosterId={openTeamCard}
+                myRosterId={myRosterId}
+                onClose={() => setOpenTeamCard(null)}
+              />
+            )}
+          </OpenTeamContext.Provider>
           </OpenPlayerContext.Provider>
         )}
       </main>

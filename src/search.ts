@@ -5,11 +5,11 @@
 // match what this thread would work out. Without workers (tests, old
 // browsers) the work runs here instead, after the page has painted.
 import type { FinderOptions, FinderResult, SearchProgress, SearchStage } from "../shared/trade.ts";
-import { findTrades } from "../shared/trade.ts";
-import { type Move, topMoves } from "../shared/moves.ts";
+import type { Move } from "../shared/moves.ts";
 import type { TeamSituation } from "../shared/insight.ts";
 import type { StrengthModel } from "../shared/strength.ts";
 import type { LeagueSnapshot, ScheduleAhead, StatsReport } from "../shared/types.ts";
+import { answer } from "./searchAnswer.ts";
 
 export type SearchRequest =
   | { kind: "trades"; rosterId: number; options: FinderOptions }
@@ -80,8 +80,8 @@ function getWorker(): Worker | null {
   return worker;
 }
 
-/** The best-trades answer per model and team, when the work runs on this thread (as the worker keeps it). */
-const bestHere = new WeakMap<StrengthModel, Map<number, FinderResult>>();
+/** Trade searches' answers per model, team and options, when the work runs on this thread (as the worker keeps them). */
+const keptHere = new WeakMap<StrengthModel, Map<string, FinderResult>>();
 
 function here(
   model: StrengthModel,
@@ -90,27 +90,11 @@ function here(
   request: SearchRequest,
   progress?: SearchProgress,
 ): Promise<FinderResult | Move[]> {
-  if (!bestHere.has(model)) bestHere.set(model, new Map());
-  const kept = bestHere.get(model)!;
-  const bestFor = (rosterId: number) => {
-    let found = kept.get(rosterId);
-    if (!found) {
-      found = findTrades(model, snapshot, rosterId, situations, {}, undefined, progress);
-      kept.set(rosterId, found);
-    }
-    return found;
-  };
+  if (!keptHere.has(model)) keptHere.set(model, new Map());
+  const kept = keptHere.get(model)!;
   return new Promise((resolve) => {
     // Let a "Searching" label paint first.
-    setTimeout(() => {
-      resolve(
-        request.kind === "moves"
-          ? topMoves(model, snapshot, request.rosterId, situations, undefined, progress, bestFor(request.rosterId))
-          : isBest(request)
-            ? bestFor(request.rosterId)
-            : findTrades(model, snapshot, request.rosterId, situations, request.options, undefined, progress),
-      );
-    }, 30);
+    setTimeout(() => resolve(answer(model, snapshot, situations, request, kept, progress)), 30);
   });
 }
 
