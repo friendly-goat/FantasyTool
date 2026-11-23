@@ -369,6 +369,9 @@ export function MyTeam({ snapshot, stats, model, strengths, team, onChangeTeam, 
           ) : (
             <p className="quiet">No trade or pickup would raise your team's strength right now.</p>
           )}
+          {moves && moves.length > 0 && !moves.some((move) => move.kind === "pickup") && (
+            <p className="quiet moves-note">No waiver pickup would raise your team right now, so none is listed.</p>
+          )}
         </>
       )}
 
@@ -377,7 +380,7 @@ export function MyTeam({ snapshot, stats, model, strengths, team, onChangeTeam, 
           Top moves are the trades from "see the best trades for my team" on the Trades tab (only those with at least a
           fair chance of being accepted) and the best waiver pickups, ranked together by how much each raises your
           team's strength over the rest of the season. A pickup drops the player your roster would miss least. When no
-          pickup makes the top five on merit, the best one takes the last place. Under each strength change is the
+          pickup makes the top five on merit, the best one that still raises your team takes the last place. Under each strength change is the
           change in your projected weekly score behind it.
         </p>
       )}

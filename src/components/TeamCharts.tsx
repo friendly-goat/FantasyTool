@@ -110,14 +110,21 @@ export function useProfiles(
 /** A rate as a whole percentage. */
 const percent = (rate: number) => `${Math.round(100 * rate)}%`;
 
+/** How much the team's real finished weeks count toward its ceiling or floor. */
+function realNote(axis: ProfileAxis): string {
+  if (!axis.real) return "";
+  const weeks = axis.real.weeks === 1 ? "finished week" : `${axis.real.weeks} finished weeks`;
+  return `. Your ${weeks} (averaging ${formatPoints(axis.real.average)}) count for ${percent(axis.real.share)}, the projection for the rest`;
+}
+
 /** What a shape axis's figure means, short enough to fit the note under the chart. */
 function shapeNote(axis: ProfileAxis, rate: number): string {
   const scaled = rate === 1 ? "" : `, at the ${percent(rate)} of projections this league really scores`;
   switch (axis.key) {
     case "ceiling":
-      return `${formatPoints(axis.value)} in a good week (better than 9 in 10)${scaled}`;
+      return `${formatPoints(axis.value)} in a good week (better than 9 in 10)${realNote(axis)}`;
     case "floor":
-      return `${formatPoints(axis.value)} in a bad week (worse than 9 in 10)${scaled}`;
+      return `${formatPoints(axis.value)} in a bad week (worse than 9 in 10)${realNote(axis)}`;
     case "stars":
       return `${formatPoints(axis.value)} a week from your best three`;
     case "depth":
@@ -239,7 +246,7 @@ export function TeamCharts({ snapshot, profile }: { snapshot: LeagueSnapshot; pr
             mix
               ? `Most from ${mix.best.label.toLowerCase()} (${ordinal(mix.best.rank)} of ${teams}), least from ${mix.worst.label.toLowerCase()} (${ordinal(mix.worst.rank)}).${
                   profile.mistakes
-                    ? ` Turnovers and fouls cost ${formatPoints(profile.mistakes.value)} a game (${ordinal(profile.mistakes.rank)} fewest).`
+                    ? ` Turnovers and fouls cost ${formatPoints(profile.mistakes.value)} a week (${ordinal(profile.mistakes.rank)} fewest).`
                     : ""
                 }`
               : "Shows once the stats have been updated."
@@ -250,7 +257,7 @@ export function TeamCharts({ snapshot, profile }: { snapshot: LeagueSnapshot; pr
               <Radar
                 axes={profile.mix}
                 onFocus={(axis) =>
-                  onFocus(axis && `${axis.label}: ${formatPoints(axis.value)} a game from your main players. ${ordinal(axis.rank)} of ${teams}.`)
+                  onFocus(axis && `${axis.label}: ${formatPoints(axis.value)} of your points a week. ${ordinal(axis.rank)} of ${teams}.`)
                 }
               />
             ) : (

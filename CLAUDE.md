@@ -162,7 +162,10 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   measures each move on today's roster, with and without it; display only,
   never fed into strength, grades or trade ideas.
 - The team charts on My team (`shared/teamProfile.ts`, `TeamCharts.tsx`)
-  place a team on the league's range (0 lowest team, 10 highest); display
+  place a team around the league's average (the middle ring, `place`: two
+  rings per standard deviation across the league, never min to max), with
+  ceiling and floor leaning on the team's real finished weeks (capped,
+  `MAX_REAL_SHARE`) and the mix in points a week; display
   only, never fed into strength, grades or trade ideas. Their Schedule axis
   uses the real games left and opponents' `allowed` ratios; Week by week shows
   finished weeks' final scores (`/history`) apart from projected weeks.

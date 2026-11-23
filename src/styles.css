@@ -2597,6 +2597,11 @@ th[aria-sort] .sort-button {
 }
 
 /* Top moves on My team: a trade or a pickup, who comes and goes, and the strength it adds. */
+.moves-note {
+  margin: 0.6rem 0 0;
+  font-size: 0.875rem;
+}
+
 .moves-table th,
 .moves-table td {
   vertical-align: top;

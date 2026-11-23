@@ -13,9 +13,14 @@
 //   Weeks:  its final score in each finished week (Sleeper's matchups) and its
 //           projected score in each real week left, against the league.
 //
-// Radar values are placed on the league's own range: 0 is the lowest team,
-// 10 the highest. A range narrower than the axis's MIN_RANGE is widened to
-// it, so a tiny gap between teams does not look like the whole scale. Display only: none of this feeds strength, grades or trade
+// Radar values are placed around the league's average: the average is always
+// the middle ring (5 of 10), and each team sits RINGS_PER_SPREAD rings out or
+// in for each typical gap between teams (the axis's standard deviation across
+// the league, never less than its MIN_SPREAD). So a team's shape changes only
+// when its own figures move against the league's, not when the best or worst
+// team does, and a weak team still has a shape to read. Ceiling and floor lean
+// on the team's real finished weeks as well as the model (REAL_WEEKS_PRIOR,
+// MAX_REAL_SHARE). Display only: none of this feeds strength, grades or trade
 // ideas.
 import { rosterPlayers } from "./analysis.ts";
 import { realisation } from "./realisation.ts";
@@ -38,6 +43,8 @@ export interface ProfileAxis {
   unit: "points" | "percent" | "games";
   /** Schedule only: real games a week per main player, and how much opponents give up against the league average (1.04: 4% more). Absent when the real schedule is not available and the model's games stand in. */
   schedule?: { games: number; opponents: number };
+  /** Ceiling and floor only: how much the team's real finished weeks count (0 to MAX_REAL_SHARE), over how many weeks, and their average. */
+  real?: { share: number; weeks: number; average: number };
 }
 
 export interface WeekPoint {
@@ -61,7 +68,7 @@ export interface TeamProfile {
   shape: ProfileAxis[];
   /** Empty when the stats report has no split by source yet. */
   mix: ProfileAxis[];
-  /** Fantasy points a game the team's main players lose to turnovers and fouls (positive), and its rank (1: fewest). */
+  /** Fantasy points a week the team loses to turnovers and fouls (positive), and its rank (1: fewest). */
   mistakes: { value: number; rank: number } | null;
   weeks: WeekPoint[];
   /**
@@ -98,22 +105,31 @@ interface AxisDef {
   key: string;
   label: string;
   unit: ProfileAxis["unit"];
-  /** The narrowest range the league is placed on, in the axis's unit. */
-  minRange: number;
-  /** Widen a narrow range downward from the best team (health: the healthiest is the edge), not around the middle. */
-  fromTop?: boolean;
+  /** The smallest typical gap the league is placed by, in the axis's unit, so a near tie does not look like the whole scale. */
+  minSpread: number;
 }
 const SHAPE_AXES: AxisDef[] = [
-  { key: "ceiling", label: "Ceiling", unit: "points", minRange: 10 },
-  { key: "stars", label: "Top three", unit: "points", minRange: 6 },
-  { key: "depth", label: "Depth", unit: "points", minRange: 5 },
-  { key: "schedule", label: "Schedule", unit: "games", minRange: 0.3 },
-  { key: "health", label: "Health", unit: "percent", minRange: 25, fromTop: true },
-  { key: "trend", label: "Trend", unit: "percent", minRange: 6 },
-  { key: "floor", label: "Floor", unit: "points", minRange: 10 },
+  { key: "ceiling", label: "Ceiling", unit: "points", minSpread: 8 },
+  { key: "stars", label: "Top three", unit: "points", minSpread: 4 },
+  { key: "depth", label: "Depth", unit: "points", minSpread: 2 },
+  { key: "schedule", label: "Schedule", unit: "games", minSpread: 0.08 },
+  { key: "health", label: "Health", unit: "percent", minSpread: 6 },
+  { key: "trend", label: "Trend", unit: "percent", minSpread: 2 },
+  { key: "floor", label: "Floor", unit: "points", minSpread: 8 },
 ];
-/** Points a game: the narrowest range for a source in the mix. */
-const MIX_MIN_RANGE = 2;
+/** Points a week: the smallest typical gap for a source in the mix. */
+const MIX_MIN_SPREAD = 3;
+/** Rings (of 10) a team sits from the league's average for each typical gap; ±2.5 gaps reach the edge and the middle. */
+export const RINGS_PER_SPREAD = 2;
+/** The innermost a team is drawn, so its shape stays readable however far below average it is. */
+const INNERMOST = 0.6;
+/**
+ * Ceiling and floor: the team's real finished weeks count as `weeks / (weeks + REAL_WEEKS_PRIOR)`
+ * against the model's (four weeks in: half), never more than MAX_REAL_SHARE, so the current
+ * roster (trades since, injuries now) always has its say.
+ */
+export const REAL_WEEKS_PRIOR = 4;
+export const MAX_REAL_SHARE = 0.75;
 const MIX_LABELS: Record<Exclude<FantasySource, "mistakes">, string> = {
   scoring: "Scoring",
   threes: "Threes",
@@ -123,34 +139,37 @@ const MIX_LABELS: Record<Exclude<FantasySource, "mistakes">, string> = {
   bonuses: "Bonuses",
 };
 
+function standardDeviation(values: number[]): number {
+  if (values.length < 2) return 0;
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  return Math.sqrt(values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (values.length - 1));
+}
+
 function quantile(sorted: number[], share: number): number {
   if (sorted.length === 0) return 0;
   const at = Math.min(sorted.length - 1, Math.max(0, Math.round(share * (sorted.length - 1))));
   return sorted[at]!;
 }
 
-/** Each team's figure placed on the league's range (0 to 10), its rank, and the league's average on that scale. */
-function place(raw: Map<number, number>, def: AxisDef): Map<number, { scaled: number; rank: number; league: number }> {
+/**
+ * Each team's figure placed around the league's average (always 5 of 10), RINGS_PER_SPREAD rings
+ * per typical gap (the standard deviation across the league, at least the axis's MIN_SPREAD), and
+ * its rank.
+ */
+export function place(raw: Map<number, number>, minSpread: number): Map<number, { scaled: number; rank: number; league: number }> {
   const values = [...raw.values()];
-  let low = Math.min(...values);
-  let high = Math.max(...values);
-  if (high - low < def.minRange) {
-    if (def.fromTop) low = high - def.minRange;
-    else {
-      const middle = (low + high) / 2;
-      [low, high] = [middle - def.minRange / 2, middle + def.minRange / 2];
-    }
-  }
-  const scale = (value: number) => (high - low < 1e-9 ? 5 : (10 * (value - low)) / (high - low));
+  const mean = values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length);
+  const sd = Math.sqrt(values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / Math.max(1, values.length));
+  const spread = Math.max(sd, minSpread);
+  const scale = (value: number) => Math.min(10, Math.max(INNERMOST, 5 + (RINGS_PER_SPREAD * (value - mean)) / spread));
   const order = [...raw.entries()].sort((a, b) => b[1] - a[1]).map(([rosterId]) => rosterId);
-  const league = values.reduce((sum, value) => sum + scale(value), 0) / Math.max(1, values.length);
-  return new Map([...raw.entries()].map(([rosterId, value]) => [rosterId, { scaled: scale(value), rank: order.indexOf(rosterId) + 1, league }]));
+  return new Map([...raw.entries()].map(([rosterId, value]) => [rosterId, { scaled: scale(value), rank: order.indexOf(rosterId) + 1, league: 5 }]));
 }
 
 function axes(rows: Map<number, Record<string, number>>, defs: AxisDef[], rosterId: number): ProfileAxis[] {
   return defs.map((def) => {
     const raw = new Map([...rows.entries()].map(([id, row]) => [id, row[def.key] ?? 0]));
-    const placed = place(raw, def).get(rosterId)!;
+    const placed = place(raw, def.minSpread).get(rosterId)!;
     return { key: def.key, label: def.label, unit: def.unit, value: raw.get(rosterId) ?? 0, ...placed };
   });
 }
@@ -180,7 +199,6 @@ export function leagueProfiles(
     // Run as its manager would, as team strength does: IR, open spots from waivers.
     const totals = weeklyTotals(model, fillRoster(model, ids).ids);
     weekTotals.set(team.rosterId, totals);
-    const sorted = [...totals].sort((a, b) => a - b);
     const byValue = [...players].sort((a, b) => b.expected - a.expected);
     const main = byValue.slice(0, MIX_PLAYERS);
     const strength = strengths.find((entry) => entry.rosterId === team.rosterId);
@@ -217,8 +235,9 @@ export function leagueProfiles(
     }
     const average = seen.reduce((sum, player) => sum + player.average, 0);
     shapeRows.set(team.rosterId, {
-      ceiling: quantile(sorted, 0.9),
-      floor: quantile(sorted, 0.1),
+      // Ceiling and floor are worked out below, with the league's rate and the real weeks.
+      ceiling: 0,
+      floor: 0,
       stars: byValue.slice(0, 3).reduce((sum, player) => sum + player.expected, 0),
       depth: strength?.benchAdds ?? 0,
       schedule,
@@ -256,10 +275,42 @@ export function leagueProfiles(
   const rates = realisation(extras.history, { weeks: extras.history?.projections ?? {} }, today);
   const leagueMean = [...today.values()].reduce((sum, value) => sum + value, 0) / Math.max(1, today.size);
   const leagueShortfall = (1 - rates.league) * leagueMean;
-  for (const row of shapeRows.values()) {
-    row.ceiling = (row.ceiling ?? 0) - leagueShortfall;
-    row.floor = (row.floor ?? 0) - leagueShortfall;
+  const finished = (extras.history?.weeks ?? []).filter((entry) => entry.week < (model.calendar.weeks[0]?.week ?? snapshot.week));
+  const realParts = new Map<number, { share: number; weeks: number; average: number }>();
+  for (const [id, row] of shapeRows) {
     row.depth = (row.depth ?? 0) * rates.league;
+    // Ceiling and floor: the team's good and bad weeks. The model gives the roster's weeks as its
+    // manager runs them (its weeks less the team's own shortfall, as the weeks ahead are); the
+    // team's real finished weeks say where it has actually been. Each counts by how much evidence it is: the real weeks
+    // weeks / (weeks + REAL_WEEKS_PRIOR), at most MAX_REAL_SHARE. The middle of the team's weeks is
+    // the blend of the two averages; the swing either side is the model's, widened or narrowed by
+    // how widely the real weeks swung against the model's (blended the same way).
+    const totals = weekTotals.get(id) ?? [];
+    const modelMean = today.get(id) ?? 0;
+    const modelSpread = standardDeviation(totals);
+    const sorted = [...totals].sort((a, b) => a - b);
+    const real = finished.flatMap((entry) => {
+      const score = entry.points[id];
+      return typeof score === "number" ? [score] : [];
+    });
+    const share = real.length > 0 ? Math.min(MAX_REAL_SHARE, real.length / (real.length + REAL_WEEKS_PRIOR)) : 0;
+    const spreadShare = real.length > 1 ? Math.min(MAX_REAL_SHARE, (real.length - 1) / (real.length - 1 + REAL_WEEKS_PRIOR)) : 0;
+    const realMean = real.length > 0 ? real.reduce((sum, score) => sum + score, 0) / real.length : 0;
+    const ownShortfall = (1 - (rates.teams.get(id) ?? rates.league)) * modelMean;
+    const middle = share * realMean + (1 - share) * (modelMean - ownShortfall);
+    const spread = Math.sqrt(spreadShare * standardDeviation(real) ** 2 + (1 - spreadShare) * modelSpread ** 2);
+    const widen = modelSpread > 0 ? spread / modelSpread : 1;
+    row.ceiling = middle + (quantile(sorted, 0.9) - modelMean) * widen;
+    row.floor = middle - (modelMean - quantile(sorted, 0.1)) * widen;
+    if (real.length > 0) realParts.set(id, { share, weeks: real.length, average: realMean });
+  }
+
+  // The mix in points a week: each source's share of the main players' points a game, applied to
+  // the team's week as this league runs it (the same week the shape's middle starts from).
+  for (const [id, row] of mixRows) {
+    const net = FANTASY_SOURCES.reduce((sum, source) => sum + (row[source] ?? 0), 0);
+    const week = (today.get(id) ?? 0) - leagueShortfall;
+    for (const source of FANTASY_SOURCES) row[source] = net > 0 ? ((row[source] ?? 0) / net) * week : 0;
   }
   const shortfall = (id: number) => (1 - (rates.teams.get(id) ?? 1)) * (today.get(id) ?? 0);
   for (const [id, row] of weekRows) weekRows.set(id, row.map((value) => value - shortfall(id)));
@@ -288,9 +339,8 @@ export function leagueProfiles(
   // A source the league does not score (threes, in a league that gives nothing for them) is left out.
   const mixDefs = (Object.keys(MIX_LABELS) as (keyof typeof MIX_LABELS)[])
     .filter((key) => [...mixRows.values()].some((row) => Math.abs(row[key] ?? 0) > 0.01))
-    .map((key): AxisDef => ({ key, label: MIX_LABELS[key], unit: "points", minRange: MIX_MIN_RANGE }));
+    .map((key): AxisDef => ({ key, label: MIX_LABELS[key], unit: "points", minSpread: MIX_MIN_SPREAD }));
 
-  const finished = (extras.history?.weeks ?? []).filter((entry) => entry.week < (model.calendar.weeks[0]?.week ?? snapshot.week));
   const settled = settledWeeks(snapshot.teams) ?? 0;
   // The weeks ahead on average: the team's locks a week (team strength's figure) less its shortfall.
   const aheadAverage = new Map([...today.entries()].map(([id, mean]) => [id, mean - shortfall(id)]));
@@ -329,7 +379,10 @@ export function leagueProfiles(
       rosterId: team.rosterId,
       shape: axes(shapeRows, SHAPE_AXES, team.rosterId).map((axis) => {
         const parts = scheduleParts.get(team.rosterId);
-        return axis.key === "schedule" && parts ? { ...axis, schedule: parts } : axis;
+        if (axis.key === "schedule" && parts) return { ...axis, schedule: parts };
+        const real = realParts.get(team.rosterId);
+        if ((axis.key === "ceiling" || axis.key === "floor") && real) return { ...axis, real };
+        return axis;
       }),
       mix: hasMix ? axes(mixRows, mixDefs, team.rosterId) : [],
       mistakes: hasMix ? { value: mistakes.get(team.rosterId) ?? 0, rank: fewestMistakes.indexOf(team.rosterId) + 1 } : null,

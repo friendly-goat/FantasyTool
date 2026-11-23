@@ -159,7 +159,8 @@ happens to its projected weekly score.
 | What they see on averages (players they would drop subtracted) | chance they accept | +0.8 to -2.0 on the log-odds scale |
 | What the trade does to their team (a gain counts 0.75, a loss 1.5) | chance they accept | +1.25 to -2.0 on the log-odds scale |
 | Pressure on the other team (absences, record, this week's matchup) | chance they accept | 0 to +0.6 on the log-odds scale |
-| How much of its projection a team really scores (`shared/realisation.ts`) | team charts only: each team's projected weeks by its own rate; ceiling, floor and depth by the league's rate alike, so their placings stay a comparison of rosters; never strength, grades or trade ideas | between 70% and 110%; a team's own record counts like its weeks (weeks compared with today's projection at half weight) against 2 weeks of the league's rate |
+| How much of its projection a team really scores (`shared/realisation.ts`) | team charts only: each team's projected weeks, ceiling and floor by its own rate; depth by the league's rate alike, so its placings stay a comparison of rosters; never strength, grades or trade ideas | between 70% and 110%; a team's own record counts like its weeks (weeks compared with today's projection at half weight) against 2 weeks of the league's rate |
+| Real finished weeks (ceiling and floor) | team charts only (`shared/teamProfile.ts`); shown on hover | `weeks / (weeks + 4)` of the middle and the swing, at most 75% |
 
 ### Projections
 
@@ -508,7 +509,7 @@ charts fade in; while newer data is measured the last charts stay on screen.
 
 - **Team shape** (radar): from the same lock-in simulation as team strength,
   run for every team: ceiling and floor (a week better than 9 in 10, and
-  worse than 9 in 10), top three (your three best players' expected locked
+  worse than 9 in 10; see below), top three (your three best players' expected locked
   scores), depth (what the bench adds over the best nine), schedule (the real NBA
   games left in the regular season for your ten main players' teams, a week,
   each game weighted by how many fantasy points that opponent gives up
@@ -519,12 +520,25 @@ charts fade in; while newer data is measured the last charts stay on screen.
   stand in), health (share of the
   value of your ten best players when fit that is on hand over the next four
   weeks, injuries only, so a star out for three weeks counts now) and trend
-  (projection against their averages). A range narrower than the axis's
-  minimum (health: 25 points, ceiling and floor: 10 points a week) is widened
-  to it, so a tiny gap between teams does not fill the whole scale.
-- **Scoring mix** (radar): where your ten main players' fantasy points come
-  from (scoring, threes, boards, playmaking, defense, bonuses), each counted
-  as often as he is expected to play, plus what turnovers and fouls cost. The
+  (projection against their averages).
+- **Ceiling and floor** lean on the team's real finished weeks as well as the
+  model. The model gives the roster's weeks as its manager runs them (its
+  simulated weeks less the team's own shortfall, as the weeks ahead are); the
+  real weeks say where the team has actually been. The middle of the team's
+  weeks is a blend of the two averages, the real weeks counting
+  `weeks / (weeks + 4)` (four weeks in: half), never more than 75%
+  (`REAL_WEEKS_PRIOR`, `MAX_REAL_SHARE`), so the current roster always has its
+  say; the swing either side is the model's, widened or narrowed by how
+  widely the real weeks swung (blended the same way). Hovering shows how much
+  the real weeks count. On the owner's saved data (weeks 1 to 4: 357, 381,
+  355 and 448) the ceiling went from 386 (model only, at the league's rate)
+  to 421, the floor from 310 to 328. Only finished weeks count: a game in
+  progress never does, here or in any average.
+- **Scoring mix** (radar): where your points a week come from (scoring,
+  threes, boards, playmaking, defense, bonuses): each source's share of your
+  ten main players' points a game (each counted as often as he is expected to
+  play), applied to your week as this league runs it, so the sources less
+  turnovers and fouls add up to that week. The
   split by source is worked out on the server (`fantasySources` in
   `server/scoring.ts`, saved on each player's stats as `sources`); a source
   the league does not score, such as threes in the owner's league, is left
@@ -546,9 +560,15 @@ charts fade in; while newer data is measured the last charts stay on screen.
   real: how many games your players have that week, and who is back from
   injury.
 
-On the radars 0 is the league's lowest team and 10 its highest, and the
-dashed shape is the league average. Display only: nothing here feeds
-strength, grades or trade ideas.
+On the radars the dashed shape is the league average, always the middle
+ring, and each team sits two rings out (or in) for each typical gap between
+teams on that axis (its standard deviation across the league, at least a set
+minimum, so a near tie does not look like the whole scale). It used to run
+from the league's lowest team (the middle) to its highest (the edge), so one
+team at either end moving shifted every team's shape, and a weak team's
+shape collapsed into the middle. Now a team's shape moves only when its own
+figures move against the league's. The ranks in the notes are unchanged.
+Display only: nothing here feeds strength, grades or trade ideas.
 
 ### Projected points as the league really scores them
 
@@ -564,10 +584,10 @@ off, not scaled: a team's good and bad weeks swing as widely as the model's
 scaling would have squeezed the range. The weeks ahead take the team's own
 rate (a forecast of its scores; their average is the team's locks a week less
 its shortfall, so it ties to the figure on the roster card). The shape's
-ceiling and floor take the league's shortfall and depth the league's rate,
-the same for everyone: the shape compares rosters, and a team's own rate
-would move it past teams with better rosters (a 5% rate is as wide as the
-league's whole spread of ceilings). The server saves every team's
+ceiling and floor are about the scores a team really reaches, so they start
+from the team's own rate too and lean on its real weeks (see "Team charts"
+above, with the limit there). Depth takes the league's rate, the same for
+everyone, as a comparison of benches. The server saves every team's
 projection once a week (`projections-v1-<league>`, with the same model the
 page builds); weeks before it began use today's projection at half weight. A
 team's rate starts from the league's as if it had 2 weeks of its own and
