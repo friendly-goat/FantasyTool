@@ -28,14 +28,18 @@ export function closeDialog(dialog: HTMLDialogElement | null): void {
 
 /** The button or link last pressed, so a sheet can hand focus back to it when it closes. */
 let lastPressed: HTMLElement | null = null;
+/** Whether the keyboard was used last (rather than a finger or mouse), so focus should stay visible. */
+let usingKeyboard = false;
 if (typeof document !== "undefined") {
   document.addEventListener(
     "pointerdown",
     (event) => {
+      usingKeyboard = false;
       lastPressed = (event.target as Element | null)?.closest<HTMLElement>("button, a[href], summary, [tabindex]") ?? null;
     },
     true,
   );
+  document.addEventListener("keydown", () => (usingKeyboard = true), true);
 }
 
 /**
@@ -46,7 +50,9 @@ if (typeof document !== "undefined") {
  * a box tapped earlier, somewhere else on the page (on Trades, the builder near the bottom), and
  * closing a player card jumped there. So the button that opened the dialog takes focus first
  * (without scrolling), and the page's scroll position is put back when the dialog closes, and
- * again after Back steps over the dialog's history entry.
+ * again after Back steps over the dialog's history entry. Opened by a tap, the button then lets go of
+ * focus, so it shows no focus box (Safari draws one on focus handed back); opened from the keyboard
+ * it keeps focus, so keyboard users carry on from it.
  */
 export function openDialog(dialog: HTMLDialogElement | null): void {
   if (!dialog || dialog.open) return;
@@ -63,6 +69,8 @@ export function openDialog(dialog: HTMLDialogElement | null): void {
     () => {
       restore();
       requestAnimationFrame(restore);
+      const back = document.activeElement;
+      if (!usingKeyboard && back instanceof HTMLElement && back === opener) back.blur();
       window.addEventListener("popstate", restore);
       window.setTimeout(() => window.removeEventListener("popstate", restore), 1000);
     },

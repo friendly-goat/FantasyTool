@@ -1229,7 +1229,8 @@ phone's back gesture or the browser's) closes the sheet on top instead of
 leaving the app (`useBackToClose`, a history entry per open sheet). Closing a
 card or sheet, however it is closed, leaves the page exactly where it was
 (`openDialog` in `src/closeDialog.ts`): the button that opened it gets focus
-back (an iPhone does not focus a tapped button, so the browser used to hand
+back (and lets go of it again when it was tapped, so no focus box lingers;
+from the keyboard it keeps focus) (an iPhone does not focus a tapped button, so the browser used to hand
 focus to a dropdown tapped earlier and scroll the page to it), the scroll
 position is put back, and the app keeps its own scroll position on Back
 (`history.scrollRestoration` is manual). The page behind a sheet does not scroll, tapping the tab you are on scrolls back to the
