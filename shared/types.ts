@@ -401,10 +401,20 @@ export interface PlayerGame {
   fantasyPoints: number;
 }
 
+/** A game his team played that he did not (injured, resting, or no minutes). */
+export interface MissedGame {
+  /** YYYY-MM-DD. */
+  date: string;
+  opponent: string | null;
+  home: boolean | null;
+}
+
 export interface PlayerDetail {
   player: PlayerRef;
   /** Null when the player has no counted games this season. */
   stats: PlayerStats | null;
   /** Newest first. */
   games: PlayerGame[];
+  /** His team's finished games this season that he missed, newest first (absent from older answers). */
+  missed?: MissedGame[];
 }

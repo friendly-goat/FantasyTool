@@ -1,5 +1,5 @@
 import type { InjuryNews } from "../../shared/injury.ts";
-import { FANTASY_SOURCES, type FantasySource, type PlayerGame, type PlayerRef, type PlayerStats, type StatLine } from "../../shared/types.ts";
+import { FANTASY_SOURCES, type FantasySource, type MissedGame, type PlayerGame, type PlayerRef, type PlayerStats, type StatLine } from "../../shared/types.ts";
 import { lockInValue, lockInValues } from "../../shared/lockin.ts";
 import { availabilityOutlook, projectPlayer } from "../../shared/projection.ts";
 import { fantasyPoints, fantasySources, sleeperDisplayedAverage } from "../scoring.ts";
@@ -216,9 +216,9 @@ export function playerLog(
   scoring: Record<string, number>,
   seasonStart: string | null = null,
   lastSeason: LastSeason = new Map(),
-): { stats: PlayerStats | null; games: PlayerGame[] } {
+): { stats: PlayerStats | null; games: PlayerGame[]; missed: MissedGame[] } {
   const games = sourceId ? (countedGames(lines, seasonStart).get(sourceId) ?? []) : [];
-  if (games.length === 0) return { stats: null, games: [] };
+  if (games.length === 0) return { stats: null, games: [], missed: [] };
 
   // Opponents may be stored as IDs only; learn each team's abbreviation
   // from the lines of the players on it.
@@ -227,9 +227,11 @@ export function playerLog(
     if (line.teamId && line.team) abbreviations.set(line.teamId, line.team);
   }
 
+  const teamDates = teamGameDates(lines, seasonStart);
   return {
+    missed: missedGames(games, lines, teamDates, abbreviations),
     stats: summarizePlayer(player, games, scoring, {
-      teamDates: teamGameDates(lines, seasonStart),
+      teamDates,
       lastSeason: sourceId ? lastSeason.get(sourceId) : null,
     }),
     games: games
@@ -243,6 +245,48 @@ export function playerLog(
       }))
       .reverse(),
   };
+}
+
+/**
+ * His team's finished games he did not play in, newest first. His team on a date is the team of
+ * his latest game on or before it (his first game's team before that), so a traded player's
+ * misses are counted against the team he was on. A game he sat with no minutes counts as missed.
+ */
+export function missedGames(
+  games: GameLine[],
+  lines: GameLine[],
+  teamDates: Map<string, string[]>,
+  abbreviations: Map<string, string>,
+): MissedGame[] {
+  if (games.length === 0) return [];
+  const played = new Set(games.map((game) => game.date));
+  // Each team's opponent and venue on each date, from its players' lines.
+  const fixtures = new Map<string, { opponent: string | null; home: boolean | null }>();
+  for (const line of lines) {
+    if (!line.team || !line.final) continue;
+    const key = `${line.team}|${line.date}`;
+    if (fixtures.has(key)) continue;
+    const opponent = line.opponent ?? (line.opponentId ? (abbreviations.get(line.opponentId) ?? null) : null);
+    fixtures.set(key, { opponent, home: line.home ?? null });
+  }
+  const teamOn = (date: string): string | null => {
+    let team = games[0]!.team;
+    for (const game of games) {
+      if (game.date > date) break;
+      team = game.team ?? team;
+    }
+    return team;
+  };
+  const teams = new Set(games.flatMap((game) => (game.team ? [game.team] : [])));
+  const missed: MissedGame[] = [];
+  for (const team of teams) {
+    for (const date of teamDates.get(team) ?? []) {
+      if (played.has(date) || teamOn(date) !== team) continue;
+      const fixture = fixtures.get(`${team}|${date}`);
+      missed.push({ date, opponent: fixture?.opponent ?? null, home: fixture?.home ?? null });
+    }
+  }
+  return missed.sort((a, b) => b.date.localeCompare(a.date));
 }
 
 /** Games against a team counted as league average, so a team seen a few times is not judged on them alone. */

@@ -276,7 +276,7 @@ export class StatsService {
   ): Promise<PlayerDetail | null> {
     const player = sleeperPlayers[playerId];
     if (!player) return null;
-    if (!this.provider) return { player, stats: null, games: [] };
+    if (!this.provider) return { player, stats: null, games: [], missed: [] };
 
     const season = snapshot.league.season;
     const lines = [...(await this.load(season)).lines.values()];

@@ -743,6 +743,20 @@ locked it". On Heroku's Eco dyno the server sleeps after 30 minutes without
 visits and nothing is refreshed while it sleeps; keep it awake on game nights
 with `KEEP_AWAKE_URL` and `KEEP_AWAKE_HOURS` (see "Waking up").
 
+### Missed games (player card)
+
+The player detail lists every game his team finished this season that he did
+not play in, a game with no minutes included (`missedGames` in
+`server/stats/summary.ts`): his team on a date is the team of his latest game
+on or before it, so a traded player's misses count against the team he was on.
+The game log shows each as "Out" in red across the stat columns. The chart
+gives room only to five or more missed games in a row (`PAST_ABSENCE_GAMES`),
+drawn as gray bands where they happened with the line broken across them, so a
+game or two of rest stays out of it. When he is out now, the games he has missed
+since his last game start the current (amber) absence, which runs on to his
+expected return counted from today. The card also shows where he went in this
+league's draft, from the draft board saved on the device.
+
 ### Depth chart (player card)
 
 At the bottom of a player's card, his NBA team position by position

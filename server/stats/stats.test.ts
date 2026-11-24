@@ -215,7 +215,32 @@ describe("playerLog", () => {
   });
 
   it("returns nothing for a player without a match or games", () => {
-    expect(playerLog(player, undefined, [], { pts: 1 })).toEqual({ stats: null, games: [] });
+    expect(playerLog(player, undefined, [], { pts: 1 })).toEqual({ stats: null, games: [], missed: [] });
+  });
+
+  it("lists his team's games he missed, a no-minutes game included, against the team he was on", () => {
+    const teammate = (date: string, team: string, opponent: string) =>
+      gameLine({ playerId: "9", key: `${date}:9:${team}`, date, team, opponent, home: true });
+    const lines = [
+      teammate("2026-10-21", "BOS", "NYK"),
+      teammate("2026-10-23", "BOS", "MIA"),
+      teammate("2026-10-25", "BOS", "PHI"),
+      teammate("2026-10-27", "BOS", "TOR"),
+      teammate("2026-10-29", "LAL", "DEN"),
+      teammate("2026-10-31", "LAL", "PHX"),
+      teammate("2026-11-02", "LAL", "SAC"),
+      gameLine({ date: "2026-10-21", pts: 10 }),
+      gameLine({ date: "2026-10-25", minutes: 0 }), // in uniform, no minutes
+      gameLine({ date: "2026-10-31", pts: 20, team: "LAL" }), // traded
+    ];
+    const log = playerLog(player, "1", lines, { pts: 1 }, "2026-10-20");
+    expect(log.missed.map((game) => [game.date, game.opponent])).toEqual([
+      ["2026-11-02", "SAC"],
+      // Between teams (no trade date) he counts as his old team's until he plays for the new one.
+      ["2026-10-27", "TOR"],
+      ["2026-10-25", "PHI"],
+      ["2026-10-23", "MIA"],
+    ]);
   });
 });
 

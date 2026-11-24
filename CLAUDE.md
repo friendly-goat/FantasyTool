@@ -184,6 +184,12 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   or quiet), the keep-fresh loop runs every 15 s then, `keepLiveFresh` brings
   the day being played up to date every 45 s, the view polls `PLAN_POLL_MS`.
   Display only: never fed into strength, grades or trade ideas.
+- The player card's chart shows earlier absences of 5+ missed games in a row
+  as gray bands (`timeline`, `PAST_ABSENCE_GAMES` in `ProjectionChart.tsx`),
+  the current one from his first missed game; the game log lists every missed
+  game as Out (`missedGames` in `server/stats/summary.ts`, `PlayerDetail.missed`);
+  the card shows his draft pick from the saved draft board. Hover effects live
+  inside `@media (hover: hover)` only.
 - The player card's depth chart (`shared/depthChart.ts`, `DepthChart.tsx`) is
   worked out from recent minutes (no source publishes one), minutes colored
   only when well off his season's (`minutesTone`); how long a player is out

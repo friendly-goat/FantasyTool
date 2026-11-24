@@ -1,4 +1,4 @@
-import type { PlayerGame, PlayerStats } from "../../shared/types.ts";
+import type { MissedGame, PlayerGame, PlayerStats } from "../../shared/types.ts";
 import { formatGameDate, formatPoints } from "../format.ts";
 
 const WIDTH = 640;
@@ -23,24 +23,88 @@ export function absenceFor(stats: PlayerStats, today: string, expected: string |
   return { games: Math.min(remaining, Math.round((days / 7) * GAMES_PER_WEEK)), backLabel };
 }
 
+/** Missed games in a row it takes to show a past absence on the chart: more than 4. */
+export const PAST_ABSENCE_GAMES = 5;
+
+/** One place on the chart's timeline, oldest first: a game he played, or a game he missed. */
+type Slot = { kind: "game"; game: PlayerGame } | { kind: "out"; date: string };
+
+/** A stretch of missed games shown as a band: its first and last slot, and its dates. */
+interface Band {
+  from: number;
+  to: number;
+  first: string;
+  last: string;
+}
+
+/**
+ * His games and missed games in order. Only stretches of PAST_ABSENCE_GAMES or more take room on
+ * the chart (a game or two of rest stays out of it); missed games after his last game take room
+ * when he is out now (they start the current absence) or when they are such a stretch.
+ */
+export function timeline(played: PlayerGame[], missed: MissedGame[], outNow: boolean): { slots: Slot[]; trailing: number } {
+  const all: Slot[] = [
+    ...played.map((game) => ({ kind: "game" as const, game, date: game.date })),
+    ...missed.map((game) => ({ kind: "out" as const, date: game.date })),
+  ]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((entry) => (entry.kind === "game" ? { kind: "game" as const, game: entry.game } : { kind: "out" as const, date: entry.date }));
+  const slots: Slot[] = [];
+  let run: Slot[] = [];
+  for (const slot of all) {
+    if (slot.kind === "out") {
+      run.push(slot);
+      continue;
+    }
+    if (run.length >= PAST_ABSENCE_GAMES) slots.push(...run);
+    run = [];
+    slots.push(slot);
+  }
+  // Games missed since his last game: part of the current absence, or a stretch of their own.
+  const trailing = outNow || run.length >= PAST_ABSENCE_GAMES ? run.length : 0;
+  slots.push(...run.slice(0, trailing));
+  return { slots, trailing: outNow ? trailing : 0 };
+}
+
+/** The stretches of missed games in the slots (the current absence's games included, last). */
+function bandsOf(slots: Slot[]): Band[] {
+  const bands: Band[] = [];
+  slots.forEach((slot, index) => {
+    if (slot.kind !== "out") return;
+    const open = bands.at(-1);
+    if (open && open.to === index - 1) {
+      open.to = index;
+      open.last = slot.date;
+    } else bands.push({ from: index, to: index, first: slot.date, last: slot.date });
+  });
+  return bands;
+}
+
 /**
  * A player's game scores so far, then the level he is projected to hold for
- * the games he is expected to play in the rest of the season. An injured
- * player's absence shows first, as a shaded stretch, and the projection
+ * the games he is expected to play in the rest of the season. Absences of
+ * five games or more show as shaded stretches where they happened; an injured
+ * player's current absence shows after his last game, and the projection
  * starts when he is expected back.
  */
 export function ProjectionChart({
   stats,
   games,
+  missedGames = null,
   absence = null,
 }: {
   stats: PlayerStats;
   /** Null while the game log loads: the chart keeps its size and caption, and the scores fill in. */
   games: PlayerGame[] | null;
+  /** His team's games he missed, newest first; null while loading or from an older server. */
+  missedGames?: MissedGame[] | null;
   absence?: Absence | null;
 }) {
   const loading = games === null || games.length === 0;
   const played = loading ? [] : [...games].reverse(); // oldest first
+  const { slots, trailing } = timeline(played, loading ? [] : (missedGames ?? []), absence !== null);
+  const bands = bandsOf(slots);
+  const pastBands = trailing > 0 ? bands.slice(0, -1) : bands;
   const projection = stats.projection;
   const remaining = Math.max(1, SEASON_GAMES - stats.teamGames);
   const missed = absence ? Math.min(remaining, absence.games) : 0;
@@ -48,20 +112,36 @@ export function ProjectionChart({
   const playRate = absence ? (stats.playRate ?? stats.availability) : stats.availability;
   const ahead = seasonOver ? 0 : Math.max(1, Math.round((remaining - missed) * playRate));
   // While loading, the season so far takes the space his games will.
-  const total = (loading ? stats.games : played.length) + missed + ahead;
+  const shownPlayed = loading ? stats.games : slots.length;
+  const total = shownPlayed + missed + ahead;
   const top = Math.max(10, ...played.map((game) => game.fantasyPoints), projection.perGame) * 1.1;
 
   const x = (index: number) => PAD.left + ((WIDTH - PAD.left - PAD.right) * index) / Math.max(1, total - 1);
   const y = (value: number) => HEIGHT - PAD.bottom - ((HEIGHT - PAD.top - PAD.bottom) * value) / top;
+  const step = x(1) - x(0);
   const ticks = [0, top / 3, (2 * top) / 3, top].map((value) => Math.round(value / 5) * 5);
-  const shownPlayed = loading ? stats.games : played.length;
   const last = played[played.length - 1];
-  const lastX = x(shownPlayed - 1);
-  const outX = x(shownPlayed);
+  const lastIndex = slots.reduce((found, slot, index) => (slot.kind === "game" ? index : found), -1);
+  const lastX = x(loading ? shownPlayed - 1 : lastIndex);
+  const firstX = x(Math.max(0, slots.findIndex((slot) => slot.kind === "game")));
+  // The current absence starts at his first game missed since his last game, or right after it.
+  const outX = trailing > 0 ? x(shownPlayed - trailing) - step / 2 : x(shownPlayed);
   const startX = x(shownPlayed + missed);
   const endX = x(total - 1);
   const tone = projection.trend === "rising" ? "up" : projection.trend === "fading" ? "down" : "flat";
   const trendWord = { rising: "rising", fading: "fading", steady: "holding steady" }[projection.trend];
+  const outNowGames = missed + trailing;
+
+  // The line, broken at each absence: runs of games he played in a row.
+  const runs: { index: number; game: PlayerGame }[][] = [];
+  slots.forEach((slot, index) => {
+    if (slot.kind !== "game") return;
+    const open = runs.at(-1);
+    const previous = open?.at(-1);
+    if (open && previous && previous.index === index - 1) open.push({ index, game: slot.game });
+    else runs.push([{ index, game: slot.game }]);
+  });
+  const missedTotal = pastBands.reduce((sum, band) => sum + band.to - band.from + 1, 0);
 
   return (
     <figure className="chart">
@@ -69,9 +149,11 @@ export function ProjectionChart({
         <title id="chart-title">Game scores and rest-of-season projection</title>
         <desc id="chart-desc">
           {played.length} games played, averaging {formatPoints(stats.fantasyAvg)}.{" "}
+          {pastBands.length > 0 &&
+            `Missed ${pastBands.map((band) => `${band.to - band.from + 1} games from ${formatGameDate(band.first)}`).join(", ")}. `}
           {seasonOver
             ? "Out for the rest of the season."
-            : `${absence ? `Out for about ${missed} games, then projected` : "Projected"} ${formatPoints(projection.perGame)} a game over about ${ahead} more games.`}
+            : `${absence ? `Out for about ${outNowGames} games, then projected` : "Projected"} ${formatPoints(projection.perGame)} a game over about ${ahead} more games.`}
         </desc>
 
         {[...new Set(ticks)].map((tick) => (
@@ -84,12 +166,15 @@ export function ProjectionChart({
         ))}
         {played[0] && last ? (
           <>
-            <text className="chart-label" x={PAD.left} y={HEIGHT - 8}>
+            <text className="chart-label" x={firstX} y={HEIGHT - 8}>
               {formatGameDate(played[0].date)}
             </text>
-            <text className="chart-label" x={lastX} y={HEIGHT - 8} textAnchor="middle">
-              {formatGameDate(last.date)}
-            </text>
+            {/* The last game's date, unless it would run into the first's. */}
+            {lastX - firstX >= 70 && (
+              <text className="chart-label" x={lastX} y={HEIGHT - 8} textAnchor="middle">
+                {formatGameDate(last.date)}
+              </text>
+            )}
           </>
         ) : (
           <text className="chart-label" x={(PAD.left + lastX) / 2} y={y(top / 2)} textAnchor="middle">
@@ -100,13 +185,34 @@ export function ProjectionChart({
           Season end
         </text>
 
-        {/* What he has done */}
-        <polyline
-          className="chart-line"
-          points={played.map((game, index) => `${x(index)},${y(game.fantasyPoints)}`).join(" ")}
-        />
-        {/* An injury absence: the games he is expected to miss */}
-        {absence && missed > 0 && (
+        {/* Earlier absences: five games or more missed in a row */}
+        {pastBands.map((band) => {
+          const games = band.to - band.from + 1;
+          const left = x(band.from) - step / 2;
+          const width = Math.max(2, x(band.to) - x(band.from) + step);
+          const label = width >= 74 ? `Out ${games} games` : width >= 38 ? `Out ${games}` : width >= 14 ? String(games) : null;
+          return (
+            <g key={band.first}>
+              <rect className="chart-out chart-out-past" x={left} y={PAD.top} width={width} height={HEIGHT - PAD.top - PAD.bottom}>
+                <title>
+                  Out {games} games, {formatGameDate(band.first)} to {formatGameDate(band.last)}
+                </title>
+              </rect>
+              {label && (
+                <text className="chart-label chart-out-past-label" x={left + width / 2} y={HEIGHT - PAD.bottom - 8} textAnchor="middle">
+                  {label}
+                </text>
+              )}
+            </g>
+          );
+        })}
+
+        {/* What he has done, broken at each absence */}
+        {runs.map((run) => (
+          <polyline key={run[0]!.index} className="chart-line" points={run.map(({ index, game }) => `${x(index)},${y(game.fantasyPoints)}`).join(" ")} />
+        ))}
+        {/* The current absence: games missed since his last game and the games he is expected to miss */}
+        {absence && outNowGames > 0 && (
           <g>
             <rect
               className="chart-out"
@@ -123,7 +229,7 @@ export function ProjectionChart({
         {!seasonOver && (
           <>
             {/* The step from the last game to the projected level (not across an absence) */}
-            {missed === 0 && last && (
+            {outNowGames === 0 && last && lastIndex === slots.length - 1 && (
               <line className="chart-bridge" x1={lastX} y1={y(last.fantasyPoints)} x2={startX} y2={y(projection.perGame)} />
             )}
             {/* The projected level */}
@@ -134,7 +240,7 @@ export function ProjectionChart({
           </>
         )}
 
-        {played.map((game, index) => (
+        {runs.flat().map(({ index, game }) => (
           <circle key={game.date} className="chart-dot" cx={x(index)} cy={y(game.fantasyPoints)} r={4}>
             <title>
               {formatGameDate(game.date)}
@@ -145,15 +251,21 @@ export function ProjectionChart({
       </svg>
       <figcaption className="quiet">
         <span className="key key-line" /> Game scores
-        {absence && missed > 0 && (
+        {pastBands.length > 0 && (
           <>
-            <span className="key key-out" /> {seasonOver ? "Out for the season" : `Out for about ${missed} games`}
+            <span className="key key-out key-out-past" /> Missed {missedTotal} games
+            {pastBands.length > 1 ? ` in ${pastBands.length} stretches` : ""}
+          </>
+        )}
+        {absence && outNowGames > 0 && (
+          <>
+            <span className="key key-out" /> {seasonOver ? "Out for the season" : `Out for about ${outNowGames} games`}
           </>
         )}
         {!seasonOver && (
           <>
             <span className={`key key-projection ${tone}`} /> Projection, {trendWord}: {formatPoints(projection.perGame)} a
-            game over about {ahead} more games{absence && missed > 0 ? " once back" : ""} (season average{" "}
+            game over about {ahead} more games{absence && outNowGames > 0 ? " once back" : ""} (season average{" "}
             {formatPoints(stats.fantasyAvg)}).
           </>
         )}

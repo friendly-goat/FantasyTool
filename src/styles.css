@@ -292,12 +292,16 @@ code {
   border-radius: 2px 2px 0 0;
 }
 
-.app-nav-item:hover {
-  color: var(--text);
+@media (hover: hover) {
+  .app-nav-item:hover {
+    color: var(--text);
+  }
 }
 
-.app-nav-item:not([aria-current="page"]):hover::before {
-  background: var(--surface-raised);
+@media (hover: hover) {
+  .app-nav-item:not([aria-current="page"]):hover::before {
+    background: var(--surface-raised);
+  }
 }
 
 .app-nav-item[aria-current="page"] {
@@ -383,10 +387,16 @@ code {
   cursor: pointer;
 }
 
-.account-button:hover,
 .account-button[aria-expanded="true"] {
   background: var(--surface-raised);
   color: var(--text);
+}
+
+@media (hover: hover) {
+  .account-button:hover {
+    background: var(--surface-raised);
+    color: var(--text);
+  }
 }
 
 .account-chevron {
@@ -443,10 +453,16 @@ code {
   cursor: pointer;
 }
 
-.account-item:hover,
 .account-item:focus-visible {
   background: var(--surface-raised);
   outline: none;
+}
+
+@media (hover: hover) {
+  .account-item:hover {
+    background: var(--surface-raised);
+    outline: none;
+  }
 }
 
 .button {
@@ -459,9 +475,11 @@ code {
   cursor: pointer;
 }
 
-.button:hover {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
+@media (hover: hover) {
+  .button:hover {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+  }
 }
 
 .button:disabled {
@@ -476,9 +494,11 @@ code {
   font-weight: 600;
 }
 
-.button-plain:hover {
-  background: var(--surface-raised);
-  border-color: var(--line);
+@media (hover: hover) {
+  .button-plain:hover {
+    background: var(--surface-raised);
+    border-color: var(--line);
+  }
 }
 
 /* ---- Notices ---- */
@@ -732,8 +752,10 @@ code {
   cursor: pointer;
 }
 
-.team-link:hover {
-  color: var(--accent);
+@media (hover: hover) {
+  .team-link:hover {
+    color: var(--accent);
+  }
 }
 
 .manager {
@@ -866,8 +888,10 @@ code {
   white-space: nowrap;
 }
 
-.rail-item:hover {
-  background: var(--surface-raised);
+@media (hover: hover) {
+  .rail-item:hover {
+    background: var(--surface-raised);
+  }
 }
 
 .rail-item[aria-current="true"] {
@@ -1037,9 +1061,14 @@ code {
   cursor: pointer;
 }
 
-.sort-button:hover,
 th[aria-sort] .sort-button {
   color: var(--text);
+}
+
+@media (hover: hover) {
+  .sort-button:hover {
+    color: var(--text);
+  }
 }
 
 .link-button {
@@ -1165,8 +1194,10 @@ th[aria-sort] .sort-button {
   cursor: pointer;
 }
 
-.matchup-open:hover {
-  background: var(--accent-soft);
+@media (hover: hover) {
+  .matchup-open:hover {
+    background: var(--accent-soft);
+  }
 }
 
 /* ---- Matchup detail ---- */
@@ -1548,8 +1579,10 @@ th[aria-sort] .sort-button {
   cursor: pointer;
 }
 
-.mx-game:hover {
-  color: var(--text);
+@media (hover: hover) {
+  .mx-game:hover {
+    color: var(--text);
+  }
 }
 
 .mx-game:focus-visible {
@@ -1700,9 +1733,11 @@ th[aria-sort] .sort-button {
   cursor: pointer;
 }
 
-.mx-mark-button:hover:not(:disabled) {
-  border-color: var(--accent);
-  color: var(--accent);
+@media (hover: hover) {
+  .mx-mark-button:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
 }
 
 .mx-mark-button:disabled {
@@ -1903,10 +1938,12 @@ th[aria-sort] .sort-button {
   text-underline-offset: 0.2em;
 }
 
-.player-link:hover,
-.team-link:hover {
-  color: var(--accent);
-  text-decoration-color: currentColor;
+@media (hover: hover) {
+  .player-link:hover,
+  .team-link:hover {
+    color: var(--accent);
+    text-decoration-color: currentColor;
+  }
 }
 
 /* A fantasy team's name that opens its card: the text it replaces, as a button. */
@@ -1993,6 +2030,43 @@ th[aria-sort] .sort-button {
   border: 1px solid var(--warn);
 }
 
+/* Earlier absences (five games or more): quieter than the current one, in gray. */
+.chart-out.chart-out-past {
+  fill: color-mix(in oklab, var(--muted) 16%, transparent);
+}
+
+.chart-out-past-label {
+  fill: var(--muted);
+  font-weight: 600;
+}
+
+.key.key-out.key-out-past {
+  background: color-mix(in oklab, var(--muted) 16%, transparent);
+  border-color: var(--muted);
+}
+
+/* A game he missed in the game log: the date and opponent, then Out in red across the stats. */
+.log-out th,
+.log-out td {
+  color: var(--muted);
+}
+
+.log-table .log-out-cell {
+  text-align: left;
+}
+
+.log-out-tag {
+  color: var(--loss);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.player-draft {
+  margin-top: 0.1rem;
+}
+
 .injury-note {
   margin: 0 0 1rem;
   padding: 0.6rem 0.75rem;
@@ -2035,9 +2109,14 @@ th[aria-sort] .sort-button {
   cursor: pointer;
 }
 
-.info-button:hover,
 .info-button[aria-expanded="true"] {
   color: var(--text);
+}
+
+@media (hover: hover) {
+  .info-button:hover {
+    color: var(--text);
+  }
 }
 
 .info-button:focus-visible {
@@ -2335,8 +2414,10 @@ th[aria-sort] .sort-button {
   white-space: nowrap;
 }
 
-.segment:hover {
-  color: var(--text);
+@media (hover: hover) {
+  .segment:hover {
+    color: var(--text);
+  }
 }
 
 .segment[aria-pressed="true"] {
@@ -4414,8 +4495,10 @@ th[aria-sort] .sort-button {
   cursor: pointer;
 }
 
-.league-option:hover {
-  background: var(--surface-raised);
+@media (hover: hover) {
+  .league-option:hover {
+    background: var(--surface-raised);
+  }
 }
 
 .league-option-name {

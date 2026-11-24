@@ -1,8 +1,9 @@
 import { nbaDay } from "../../shared/weeks.ts";
 import { useEffect, useRef, useState } from "react";
 import { newsOutText, returnOutlook } from "../../shared/injury.ts";
-import type { LeagueSnapshot, PlayerDetail, PlayerRef, StatsReport } from "../../shared/types.ts";
-import { getPlayerDetail } from "../api.ts";
+import type { DraftBoard, LeagueSnapshot, PlayerDetail, PlayerGame, MissedGame, PlayerRef, StatsReport } from "../../shared/types.ts";
+import { getDraft, getPlayerDetail } from "../api.ts";
+import { readSaved, savedKeys, writeSaved } from "../saved.ts";
 import { closeDialog } from "../closeDialog.ts";
 import { fantasyTone, formatAverage, formatDay, formatGameDate, formatPoints, formatSigned, toneColor } from "../format.ts";
 
@@ -18,6 +19,54 @@ interface Props {
   stats: StatsReport | null;
   player: PlayerRef;
   onClose: () => void;
+}
+
+/** Where he went in this league's draft, in Sleeper's words ("Round 2, pick 7: 19th overall by ..."), or why not. */
+function draftLine(snapshot: LeagueSnapshot, board: DraftBoard | null | undefined, playerId: string): string | null {
+  if (!board || board.picks.length === 0) return null;
+  const pick = board.picks.find((entry) => entry.player.id === playerId);
+  if (!pick) return board.status === "complete" ? "Undrafted in this league" : null;
+  const by = snapshot.teams.find((team) => team.rosterId === pick.rosterId)?.teamName;
+  const label = `${pick.round}.${String(pick.pickInRound).padStart(2, "0")}`;
+  return `${pick.keeper ? "Kept at" : "Drafted"} ${label}, ${ordinal(pick.pickNo)} overall${by ? ` by ${by}` : ""}`;
+}
+
+function ordinal(value: number): string {
+  const tens = value % 100;
+  const suffix = tens >= 11 && tens <= 13 ? "th" : ({ 1: "st", 2: "nd", 3: "rd" } as Record<number, string>)[value % 10] ?? "th";
+  return `${value}${suffix}`;
+}
+
+/** The draft board: the copy kept on the device at once, then a fresh one when there is none. */
+function useDraftBoard(leagueId: string): DraftBoard | null | undefined {
+  const [board, setBoard] = useState<DraftBoard | null | undefined>(undefined);
+  useEffect(() => {
+    let current = true;
+    readSaved<DraftBoard | null>(savedKeys.draft(leagueId))
+      .catch(() => undefined)
+      .then((saved) => {
+        if (!current) return;
+        if (saved !== undefined) return setBoard(saved);
+        getDraft(leagueId)
+          .then((result) => {
+            void writeSaved(savedKeys.draft(leagueId), result.board).catch(() => {});
+            if (current) setBoard(result.board);
+          })
+          .catch(() => current && setBoard(null));
+      });
+    return () => {
+      current = false;
+    };
+  }, [leagueId]);
+  return board;
+}
+
+/** Games he played and missed, newest first, for the game log. */
+type LogRow = { kind: "game"; game: PlayerGame } | { kind: "out"; game: MissedGame };
+function logRows(games: PlayerGame[], missed: MissedGame[]): LogRow[] {
+  return [...games.map((game) => ({ kind: "game" as const, game })), ...missed.map((game) => ({ kind: "out" as const, game }))].sort((a, b) =>
+    b.game.date.localeCompare(a.game.date),
+  );
 }
 
 function fantasyTeamOf(snapshot: LeagueSnapshot, playerId: string): string | null {
@@ -48,6 +97,24 @@ function FantasyCell({ points, average }: { points: number; average: number }) {
     <td className="num strong log-fpts" style={tone === null ? undefined : { color: toneColor(tone) }}>
       {formatPoints(points)}
     </td>
+  );
+}
+
+/** One game he played in the game log. */
+function GameRow({ game, average }: { game: PlayerGame; average: number }) {
+  return (
+    <tr>
+      <th scope="row">{formatGameDate(game.date)}</th>
+      <td>{game.opponent ? `${game.home === false ? "at" : "vs"} ${game.opponent}` : "–"}</td>
+      <FantasyCell points={game.fantasyPoints} average={average} />
+      <td className="num">{Math.round(game.minutes)}</td>
+      <td className="num">{game.stats.pts}</td>
+      <td className="num">{game.stats.reb}</td>
+      <td className="num">{game.stats.ast}</td>
+      <td className="num">{game.stats.stl}</td>
+      <td className="num">{game.stats.blk}</td>
+      <td className="num">{game.stats.tov}</td>
+    </tr>
   );
 }
 
@@ -87,6 +154,9 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
   // detail adds the game log (and the numbers for a player the report lacks).
   const season = stats?.players[player.id] ?? detail?.stats ?? null;
   const games = detail?.games ?? null;
+  const missedGames = detail?.missed ?? null;
+  const draft = draftLine(snapshot, useDraftBoard(snapshot.league.id), player.id);
+  const today = nbaDay(Date.now());
   const recentLabel = `Last ${stats?.recentWindow ?? 5}`;
   // The injury report entry comes with the league's stats report.
   const injury = stats?.players[player.id]?.injury ?? null;
@@ -130,6 +200,7 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
               {outTag && <span className="injury">{outTag}</span>}
             </p>
             <p className="quiet">{fantasyTeam ? `On ${fantasyTeam}` : "Free agent in this league"}</p>
+            {draft && <p className="quiet player-draft">{draft}</p>}
           </div>
         </div>
 
@@ -189,11 +260,18 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
             <ProjectionChart
               stats={season}
               games={games}
+              missedGames={missedGames}
               absence={
+                // From today: the games he has missed since the report are on the chart already.
                 injury && outlook?.kind === "season"
-                  ? absenceFor(season, injury.asOf, null, null)
+                  ? absenceFor(season, today > injury.asOf ? today : injury.asOf, null, null)
                   : injury && outlook?.kind === "window"
-                    ? absenceFor(season, injury.asOf, outlook.window.expected, formatDay(outlook.window.expected, injury.asOf))
+                    ? absenceFor(
+                        season,
+                        today > injury.asOf ? today : injury.asOf,
+                        outlook.window.expected,
+                        formatDay(outlook.window.expected, injury.asOf),
+                      )
                     : null
               }
             />
@@ -259,22 +337,20 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
                         ))}
                       </tr>
                     ))}
-                  {games?.map((game) => (
-                    <tr key={game.date}>
-                      <th scope="row">{formatGameDate(game.date)}</th>
-                      <td>
-                        {game.opponent ? `${game.home === false ? "at" : "vs"} ${game.opponent}` : "–"}
-                      </td>
-                      <FantasyCell points={game.fantasyPoints} average={season.fantasyAvg} />
-                      <td className="num">{Math.round(game.minutes)}</td>
-                      <td className="num">{game.stats.pts}</td>
-                      <td className="num">{game.stats.reb}</td>
-                      <td className="num">{game.stats.ast}</td>
-                      <td className="num">{game.stats.stl}</td>
-                      <td className="num">{game.stats.blk}</td>
-                      <td className="num">{game.stats.tov}</td>
-                    </tr>
-                  ))}
+                  {games &&
+                    logRows(games, missedGames ?? []).map((row) =>
+                      row.kind === "out" ? (
+                        <tr key={row.game.date} className="log-out">
+                          <th scope="row">{formatGameDate(row.game.date)}</th>
+                          <td>{row.game.opponent ? `${row.game.home === false ? "at" : "vs"} ${row.game.opponent}` : "–"}</td>
+                          <td colSpan={8} className="log-out-cell">
+                            <span className="log-out-tag">Out</span>
+                          </td>
+                        </tr>
+                      ) : (
+                        <GameRow key={row.game.date} game={row.game} average={season.fantasyAvg} />
+                      ),
+                    )}
                 </tbody>
                 <tfoot>
                   <tr>
