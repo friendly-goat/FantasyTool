@@ -26,41 +26,31 @@ export function closeDialog(dialog: HTMLDialogElement | null): void {
   timer = window.setTimeout(finish, 500); // in case the animation never reports its end
 }
 
-/** The button or link last pressed, so a sheet can hand focus back to it when it closes. */
-let lastPressed: HTMLElement | null = null;
-/** Whether the keyboard was used last (rather than a finger or mouse), so focus should stay visible. */
+/** Whether the keyboard was used last (rather than a finger or mouse), so focus should come back. */
 let usingKeyboard = false;
 if (typeof document !== "undefined") {
-  document.addEventListener(
-    "pointerdown",
-    (event) => {
-      usingKeyboard = false;
-      lastPressed = (event.target as Element | null)?.closest<HTMLElement>("button, a[href], summary, [tabindex]") ?? null;
-    },
-    true,
-  );
+  document.addEventListener("pointerdown", () => (usingKeyboard = false), true);
   document.addEventListener("keydown", () => (usingKeyboard = true), true);
 }
 
 /**
  * Opens a dialog (a card or sheet) so that closing it leaves the page exactly where it was.
  *
- * A dialog hands focus back, when it closes, to whatever had focus when it opened, and the browser
- * scrolls that into view. An iPhone does not focus a tapped button, so that was often a dropdown or
- * a box tapped earlier, somewhere else on the page (on Trades, the builder near the bottom), and
- * closing a player card jumped there. So the button that opened the dialog takes focus first
- * (without scrolling), and the page's scroll position is put back when the dialog closes, and
- * again after Back steps over the dialog's history entry. Opened by a tap, the button then lets go of
- * focus, so it shows no focus box (Safari draws one on focus handed back); opened from the keyboard
- * it keeps focus, so keyboard users carry on from it.
+ * A dialog hands focus back, when it closes, to whatever had focus when it opened: the browser
+ * scrolls that into view and Safari draws a focus box on it. An iPhone does not focus a tapped
+ * button, so that was often a dropdown or box tapped earlier somewhere else on the page (on Trades,
+ * the builder near the bottom), and closing a player card jumped there; handing focus to the tapped
+ * name instead showed a box around it. So a dialog opened by a tap or click lets go of focus first:
+ * nothing gets it back on close, so nothing scrolls into view and no box is drawn, not even for a
+ * frame. Opened from the keyboard, the button that opened it keeps focus and gets it back, so
+ * keyboard users carry on from it. The page's scroll position is also put back when the dialog
+ * closes, and again after Back steps over the dialog's history entry.
  */
 export function openDialog(dialog: HTMLDialogElement | null): void {
   if (!dialog || dialog.open) return;
   const top = window.scrollY;
   const focused = document.activeElement;
-  const opener = lastPressed?.isConnected && !dialog.contains(lastPressed) ? lastPressed : null;
-  if (opener && focused !== opener) opener.focus({ preventScroll: true });
-  else if (!opener && focused instanceof HTMLElement && focused.matches("input, select, textarea")) focused.blur();
+  if (!usingKeyboard && focused instanceof HTMLElement && focused !== document.body) focused.blur();
   const restore = () => {
     if (Math.abs(window.scrollY - top) > 1) window.scrollTo({ top, behavior: "instant" });
   };
@@ -69,8 +59,6 @@ export function openDialog(dialog: HTMLDialogElement | null): void {
     () => {
       restore();
       requestAnimationFrame(restore);
-      const back = document.activeElement;
-      if (!usingKeyboard && back instanceof HTMLElement && back === opener) back.blur();
       window.addEventListener("popstate", restore);
       window.setTimeout(() => window.removeEventListener("popstate", restore), 1000);
     },
