@@ -6,6 +6,7 @@ import { getDraft, getPlayerCareer, getPlayerDetail } from "../api.ts";
 import { CareerChart } from "./CareerChart.tsx";
 import { readSaved, savedKeys, writeSaved } from "../saved.ts";
 import { closeDialog } from "../closeDialog.ts";
+import { useBackToClose, useSheetPull } from "../sheetGestures.ts";
 import { fantasyTone, formatAverage, formatDay, formatGameDate, formatPoints, formatSigned, toneColor } from "../format.ts";
 
 const percent = new Intl.NumberFormat("en-US", { style: "percent", maximumFractionDigits: 0 });
@@ -311,6 +312,9 @@ function GameLog({
 
 export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
+  // On a phone: pull down from the top to close; Back closes the card instead of leaving the page.
+  useSheetPull(dialog);
+  useBackToClose(true, () => closeDialog(dialog.current));
   const [detail, setDetail] = useState<PlayerDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -389,6 +393,7 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
       }}
     >
       {/* Stays at the top right while the panel scrolls. */}
+      <div className="sheet-grabber panel-grabber" aria-hidden="true" />
       <div className="panel-close">
         <button type="button" className="button button-plain panel-close-button" onClick={() => closeDialog(dialog.current)}>
           Close

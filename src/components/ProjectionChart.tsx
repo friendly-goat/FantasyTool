@@ -1,8 +1,12 @@
 import type { MissedGame, PlayerGame, PlayerStats } from "../../shared/types.ts";
+import { useRef } from "react";
 import { formatGameDate, formatPoints } from "../format.ts";
+import { useWidth } from "../useWidth.ts";
 
-const WIDTH = 640;
+/** Drawn at the card's real width (so labels stay readable on a phone); a little shorter on a phone. */
 const HEIGHT = 230;
+const PHONE_HEIGHT = 200;
+const PHONE_WIDTH = 560;
 const PAD = { top: 16, right: 16, bottom: 30, left: 40 };
 const SEASON_GAMES = 82;
 
@@ -103,6 +107,9 @@ export function ProjectionChart({
   /** A finished season: his games and missed stretches only, no projection or current absence. */
   finished?: boolean;
 }) {
+  const box = useRef<HTMLElement>(null);
+  const width = useWidth(box);
+  const height = width < PHONE_WIDTH ? PHONE_HEIGHT : HEIGHT;
   const loading = games === null || games.length === 0;
   const played = loading ? [] : [...games].reverse(); // oldest first
   if (finished) absence = null;
@@ -121,9 +128,11 @@ export function ProjectionChart({
   const total = finished ? Math.max(2, shownPlayed) : shownPlayed + missed + ahead;
   const top = Math.max(10, ...played.map((game) => game.fantasyPoints), projection.perGame) * 1.1;
 
-  const x = (index: number) => PAD.left + ((WIDTH - PAD.left - PAD.right) * index) / Math.max(1, total - 1);
-  const y = (value: number) => HEIGHT - PAD.bottom - ((HEIGHT - PAD.top - PAD.bottom) * value) / top;
+  const x = (index: number) => PAD.left + ((width - PAD.left - PAD.right) * index) / Math.max(1, total - 1);
+  const y = (value: number) => height - PAD.bottom - ((height - PAD.top - PAD.bottom) * value) / top;
   const step = x(1) - x(0);
+  // Dots no wider than the room between games, so a full season on a phone does not run together.
+  const dot = Math.min(4, Math.max(1.75, step * 0.38));
   const ticks = [0, top / 3, (2 * top) / 3, top].map((value) => Math.round(value / 5) * 5);
   const last = played[played.length - 1];
   const lastIndex = slots.reduce((found, slot, index) => (slot.kind === "game" ? index : found), -1);
@@ -149,8 +158,8 @@ export function ProjectionChart({
   const missedTotal = pastBands.reduce((sum, band) => sum + band.to - band.from + 1, 0);
 
   return (
-    <figure className="chart">
-      <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} role="img" aria-labelledby="chart-title chart-desc">
+    <figure className="chart" ref={box}>
+      <svg viewBox={`0 0 ${width} ${height}`} width={width} height={height} role="img" aria-labelledby="chart-title chart-desc">
         <title id="chart-title">Game scores and rest-of-season projection</title>
         <desc id="chart-desc">
           {played.length} games played, averaging {formatPoints(stats.fantasyAvg)}.{" "}
@@ -165,7 +174,7 @@ export function ProjectionChart({
 
         {[...new Set(ticks)].map((tick) => (
           <g key={tick}>
-            <line className="chart-grid" x1={PAD.left} x2={WIDTH - PAD.right} y1={y(tick)} y2={y(tick)} />
+            <line className="chart-grid" x1={PAD.left} x2={width - PAD.right} y1={y(tick)} y2={y(tick)} />
             <text className="chart-label" x={PAD.left - 8} y={y(tick)} textAnchor="end" dominantBaseline="middle">
               {tick}
             </text>
@@ -173,12 +182,12 @@ export function ProjectionChart({
         ))}
         {played[0] && last ? (
           <>
-            <text className="chart-label" x={firstX} y={HEIGHT - 8}>
+            <text className="chart-label" x={firstX} y={height - 8}>
               {formatGameDate(played[0].date)}
             </text>
             {/* The last game's date, unless it would run into the first's. */}
             {lastX - firstX >= 70 && (
-              <text className="chart-label" x={lastX} y={HEIGHT - 8} textAnchor="middle">
+              <text className="chart-label" x={lastX} y={height - 8} textAnchor="middle">
                 {formatGameDate(last.date)}
               </text>
             )}
@@ -189,7 +198,7 @@ export function ProjectionChart({
           </text>
         )}
         {!finished && (
-          <text className="chart-label" x={endX} y={HEIGHT - 8} textAnchor="end">
+          <text className="chart-label" x={endX} y={height - 8} textAnchor="end">
             Season end
           </text>
         )}
@@ -202,13 +211,13 @@ export function ProjectionChart({
           const label = width >= 74 ? `Out ${games} games` : width >= 38 ? `Out ${games}` : width >= 14 ? String(games) : null;
           return (
             <g key={band.first}>
-              <rect className="chart-out chart-out-past" x={left} y={PAD.top} width={width} height={HEIGHT - PAD.top - PAD.bottom}>
+              <rect className="chart-out chart-out-past" x={left} y={PAD.top} width={width} height={height - PAD.top - PAD.bottom}>
                 <title>
                   Out {games} games, {formatGameDate(band.first)} to {formatGameDate(band.last)}
                 </title>
               </rect>
               {label && (
-                <text className="chart-label chart-out-past-label" x={left + width / 2} y={HEIGHT - PAD.bottom - 8} textAnchor="middle">
+                <text className="chart-label chart-out-past-label" x={left + width / 2} y={height - PAD.bottom - 8} textAnchor="middle">
                   {label}
                 </text>
               )}
@@ -228,7 +237,7 @@ export function ProjectionChart({
               x={outX}
               y={PAD.top}
               width={Math.max(2, (seasonOver ? endX : startX) - outX)}
-              height={HEIGHT - PAD.top - PAD.bottom}
+              height={height - PAD.top - PAD.bottom}
             />
             <text className="chart-label chart-out-label" x={outX + 6} y={PAD.top + 14}>
               {seasonOver ? "Out for the season" : `Out, back about ${absence.backLabel}`}
@@ -250,7 +259,7 @@ export function ProjectionChart({
         )}
 
         {runs.flat().map(({ index, game }) => (
-          <circle key={game.date} className="chart-dot" cx={x(index)} cy={y(game.fantasyPoints)} r={4}>
+          <circle key={game.date} className="chart-dot" cx={x(index)} cy={y(game.fantasyPoints)} r={dot}>
             <title>
               {formatGameDate(game.date)}
               {game.opponent ? ` ${game.home === false ? "at" : "vs"} ${game.opponent}` : ""}: {formatPoints(game.fantasyPoints)}

@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useRef } from "react";
 import { closeDialog } from "../closeDialog.ts";
+import { useBackToClose, useSheetPull } from "../sheetGestures.ts";
 
 /**
  * Phone navigation, in the way iPhone apps do it: a tab bar along the
@@ -85,6 +86,9 @@ export function MobileNav<View extends string>({
   onOpenChange: (open: boolean) => void;
 }) {
   const sheet = useRef<HTMLDialogElement>(null);
+  // Pull down to close, and Back closes the sheet, as on an iPhone.
+  useSheetPull(sheet);
+  useBackToClose(open, () => onOpenChange(false));
   useEffect(() => {
     const element = sheet.current;
     if (!element) return;

@@ -1218,9 +1218,18 @@ rest), the update time, and a menu behind your team's avatar for
 light or dark mode, changing your team, switching league and signing out.
 On a phone the app works like an iPhone app: a tab bar along the bottom (My
 team, Rankings, Trades set apart in the middle, Draft, and More for the rest
-and the settings), bottom sheets for More and player details, and the iPhone's
-safe areas respected. Added to the home screen it opens full screen as
-"Fantasy Tool". Secondary table columns are hidden,
+and the settings), bottom sheets for More and the player and team cards, and
+the iPhone's safe areas respected. Added to the home screen it opens full
+screen as "Fantasy Tool". The sheets behave like an iPhone's
+(`src/sheetGestures.ts`): pull one down from its top (or its grabber) and it
+follows the finger and closes when let go far or fast enough
+(`pullCloses`: 140 px, a quarter of the sheet, or a quick flick), otherwise it
+springs back; sideways swipes and scrolling inside are left alone. Back (the
+phone's back gesture or the browser's) closes the sheet on top instead of
+leaving the app (`useBackToClose`, a history entry per open sheet). The page
+behind a sheet does not scroll, tapping the tab you are on scrolls back to the
+top, buttons and links show a pressed state, and the player card's chart is
+drawn at the card's real width (`useWidth`) so its labels stay readable. Secondary table columns are hidden,
 wide tables keep player names in view while they scroll, notes fold away under
 "About these numbers", and the trade rosters start folded so the trade finder
 is close at hand.

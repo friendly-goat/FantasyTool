@@ -262,7 +262,10 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   the team avatar (`AccountMenu.tsx`) and in the phone's More sheet. On wider
   screens navigation is the sticky app bar (`.app-bar`, height
   `--app-bar-height`; anything sticky below it uses that offset). Hover
-  effects that would linger on touch go inside `@media (hover: hover)`. Dialogs open as bottom sheets on phones.
+  effects that would linger on touch go inside `@media (hover: hover)`. Dialogs open as bottom sheets on phones,
+  with pull-down to close (`useSheetPull`) and Back to close (`useBackToClose`)
+  from `src/sheetGestures.ts`; give any new sheet both. Charts draw at their
+  real width (`useWidth`), never a fixed viewBox scaled down on a phone.
   Respect `env(safe-area-inset-*)` for anything fixed to an edge.
 - Fantasy points display with two decimals (`formatPoints`), box-score
   averages with one (`formatAverage`). Keep full precision until display.

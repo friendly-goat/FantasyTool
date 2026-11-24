@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import type { StrengthModel, TeamStrength } from "../../shared/strength.ts";
 import type { LeagueSnapshot, PlayerStats, StatsReport } from "../../shared/types.ts";
 import { closeDialog } from "../closeDialog.ts";
+import { useBackToClose, useSheetPull } from "../sheetGestures.ts";
 import { formatPoints, formatRecord } from "../format.ts";
 import { Avatar } from "./Avatar.tsx";
 import { TeamCharts, useProfiles } from "./TeamCharts.tsx";
@@ -30,6 +31,9 @@ const NO_PLAYERS: Record<string, PlayerStats> = {};
  */
 export function TeamPanel({ snapshot, modelSnapshot, model, strengths, stats, rosterId, myRosterId, onClose }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
+  // On a phone: pull down from the top to close; Back closes the card instead of leaving the page.
+  useSheetPull(dialog);
+  useBackToClose(true, () => closeDialog(dialog.current));
   const players = stats?.players ?? NO_PLAYERS;
   // The same profiles as My team and Teams (worked out once per model).
   const profiles = useProfiles(modelSnapshot, model, strengths, players, stats?.allowed);
@@ -56,6 +60,7 @@ export function TeamPanel({ snapshot, modelSnapshot, model, strengths, stats, ro
         if (event.target === dialog.current) closeDialog(dialog.current);
       }}
     >
+      <div className="sheet-grabber panel-grabber" aria-hidden="true" />
       <div className="panel-close">
         <button type="button" className="button button-plain panel-close-button" onClick={() => closeDialog(dialog.current)}>
           Close

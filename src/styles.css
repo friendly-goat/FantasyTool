@@ -5376,6 +5376,18 @@ th[aria-sort] .sort-button {
   display: none;
 }
 
+/* The pull handle on the player and team cards shows only where they are bottom sheets. */
+.panel-grabber {
+  display: none;
+}
+
+/* No gray flash on tap: buttons and links show their own pressed state. */
+button,
+a,
+summary {
+  -webkit-tap-highlight-color: transparent;
+}
+
 .sheet {
   display: none;
 }
@@ -5678,6 +5690,51 @@ th[aria-sort] .sort-button {
 
   .player-panel {
     max-height: calc(100dvh - 2.5rem - env(safe-area-inset-top));
+  }
+
+  /* A sheet's scrolling stays in the sheet, and the page behind it does not scroll. */
+  .sheet,
+  .player-panel {
+    overscroll-behavior: contain;
+  }
+
+  html:has(dialog[open]) {
+    overflow: hidden;
+  }
+
+  /* Pulling a sheet down (src/sheetGestures.ts): the page behind brightens as it goes. */
+  .sheet.pulling::backdrop,
+  .player-panel.pulling::backdrop,
+  .sheet.settling::backdrop,
+  .player-panel.settling::backdrop {
+    animation: none;
+    opacity: var(--sheet-dim, 1);
+  }
+
+  .sheet.settling::backdrop,
+  .player-panel.settling::backdrop {
+    transition: opacity 0.2s ease;
+  }
+
+  .player-panel .panel-grabber {
+    display: block;
+    margin: 0.5rem auto 0;
+  }
+
+  .player-panel .panel-grabber + .panel-close + .panel-body {
+    padding-top: 0.75rem;
+  }
+
+  /* Pressed states, since a touch has no hover. */
+  .button:active {
+    transform: scale(0.97);
+  }
+
+  .player-link:active,
+  .team-link:active,
+  .link-button:active,
+  .tab-bar-item:active {
+    opacity: 0.6;
   }
 
   .player-panel .panel-body {

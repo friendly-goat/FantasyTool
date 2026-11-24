@@ -578,8 +578,9 @@ export function App() {
               more={phoneMore}
               view={view}
               onSelect={(name) => {
+                // Tapping the tab you are on scrolls back to the top, as on an iPhone.
+                window.scrollTo({ top: 0, behavior: name === view ? "smooth" : "auto" });
                 selectView(name);
-                window.scrollTo({ top: 0 });
               }}
               settings={settingsItems}
               open={moreOpen}

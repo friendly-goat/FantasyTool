@@ -1,8 +1,9 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { careerLayout, careerScale, fittingLabels, MISSED_RED_SHARE, missedStops, seasonLabel } from "../../shared/career.ts";
 import type { CareerSeason, PlayerCareer } from "../../shared/types.ts";
 import { formatAverage, formatPoints } from "../format.ts";
 import { TeamTag } from "./TeamTag.tsx";
+import { useWidth } from "../useWidth.ts";
 
 // The player card's career graph and table: his form across every game of his
 // career (shared/career.ts lays it out), each season's average, and the season
@@ -14,23 +15,6 @@ const PAD = { top: 18, right: 14, bottom: 48, left: 54 };
 /** Below this width (a phone) the y axis has no side title: the unit sits above the graph. */
 const COMPACT_WIDTH = 560;
 const COMPACT_LEFT = 34;
-/** Width drawn before the card has been measured. */
-const START_WIDTH = 640;
-
-/** The element's width in pixels, followed as it changes. */
-function useWidth(ref: React.RefObject<HTMLElement | null>): number {
-  const [width, setWidth] = useState(START_WIDTH);
-  useEffect(() => {
-    const element = ref.current;
-    if (!element) return;
-    const measure = () => setWidth(Math.max(280, Math.round(element.getBoundingClientRect().width)));
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [ref]);
-  return width;
-}
 
 const count = new Intl.NumberFormat("en-US");
 
