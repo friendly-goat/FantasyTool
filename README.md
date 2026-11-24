@@ -793,15 +793,27 @@ career, whatever its length:
   point averages grows with the career (`formWindow`: about 0.6 × √games, 5 to
   25, shown in the legend), so a two-season player shows his form within each
   season and a long career shows his level year to year.
-- **Room by games played:** each season gets room for the games he played, at
-  least 20 games' worth (`MIN_SEASON_ROOM`), so a short or current season stays
-  readable. A season he did not play after his debut is a gray "Out" band. Each
-  played season's line runs across its whole room, so the line always goes from
-  the left edge to the right one.
+- **Room by team games:** each season gets room for his teams' games while he
+  was on them, played or missed, at least 20 games' worth (`MIN_SEASON_ROOM`),
+  so a short or current season stays readable and an injury keeps its place.
+  The line runs straight across games he missed, from his form before to his
+  form after. A season he did not play after his debut is a gray "Out" band.
+  Each played season's line runs across its whole room, so the line always goes
+  from the left edge to the right one.
+- **Missed games color:** the line is colored by the share of his teams' games
+  he missed around each point (`missedTone`, the `--chance-*` scale): green for
+  none, through yellow, to red at 60% or more (`MISSED_RED_SHARE`). The window
+  it looks at grows with the career the same way as the form's (`formWindow`
+  on team games), so two seasons show each stretch and a long career shows
+  his injury seasons. A missed game is counted the way the game log counts one
+  (`missedGames`): a team game while he was on that team that he did not play.
+  The summary, each season's note and the table's Missed column give the
+  counts.
 - **Season averages:** a dashed line per season, labeled where there is room.
   The x axis names the seasons that fit (2015-16, 15-16 or ’15 by room) and the
-  y axis is fantasy points per game; the graph is drawn at the card's real
-  width so the labels stay readable on a phone. Hover or tap a season for its
+  y axis is fantasy points per game (on a phone, narrower than 560px, the unit
+  sits above the graph instead of along its side); the graph is drawn at the
+  card's real width so the labels stay readable on a phone. Hover or tap a season for its
   numbers; the "Career by season" table below lists every season (open one from
   its name) with the career average.
 
@@ -810,7 +822,11 @@ This season and last come from saved box scores. Older seasons are read from
 storage (`player-games-v1-{id}-{season}`, or the season view's saved copy).
 Any not saved yet are fetched in the background in one paged request for all of
 them (`fetchPlayerSeasons`: a long career is about a dozen requests through the
-shared queue) and stored for good, an empty season too. Until then the answer
+shared queue) and stored for good, an empty season too. Then his teams'
+schedules for those seasons, one paged request per team (`fetchTeamSeasons`,
+about a page a season), stored for good under `team-season-v1-{team}-{season}`
+and shared by every player on that team that season (the season view uses the
+same store), so later careers need fewer requests. Until then the answer
 says "loading" and the card asks again every 2.5 seconds. The season view reuses
 those saved games, fetching only the team schedules. Display only.
 

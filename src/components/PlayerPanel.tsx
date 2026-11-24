@@ -110,7 +110,7 @@ function SeasonPick({ seasons, value, onChange }: { seasons: string[]; value: st
         value={value}
         onChange={(event) => onChange(event.target.value)}
       >
-        <option value={CAREER}>📈 Career graph</option>
+        <option value={CAREER}>Career graph</option>
         <optgroup label="Seasons">
           {seasons.map((year) => (
             <option key={year} value={year}>
@@ -150,7 +150,7 @@ function useCareer(leagueId: string, playerId: string, wanted: boolean): PlayerC
           if (loaded.status === "loading") timer = setTimeout(ask, CAREER_POLL_MS);
         })
         .catch((cause) => {
-          if (current) setState({ key, career: { status: "error", error: cause instanceof Error ? cause.message : "Could not load his career.", seasons: [], games: [] } });
+          if (current) setState({ key, career: { status: "error", error: cause instanceof Error ? cause.message : "Could not load his career.", seasons: [], games: [], missed: [] } });
         });
     void ask();
     return () => {

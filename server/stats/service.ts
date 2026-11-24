@@ -12,7 +12,7 @@ import type { GameLine, InjuryReport, ScheduledGame, StatsProvider } from "./pro
 function injuriesBySource(report: InjuryReport[], today: string): Map<string, InjuryNews> {
   return new Map(report.map((entry) => [entry.playerId, readInjury(entry, today)]));
 }
-import { careerSeasonOf, counts, lastSeasonLevels, playerLog, pointsAllowed, RECENT_WINDOW, regularSeasonLines, summarize, type LastSeason } from "./summary.ts";
+import { careerSeasonOf, counts, lastSeasonLevels, missedGames, teamGameDates, playerLog, pointsAllowed, RECENT_WINDOW, regularSeasonLines, summarize, type LastSeason } from "./summary.ts";
 
 // Keeps a season of game lines on disk and brings it up to date in the
 // background. The first sync downloads the whole season so far; later
@@ -53,6 +53,26 @@ export const MAX_CAREER_SEASONS = 25;
 const PAST_SEASONS_KEPT = 60;
 /** Players whose older seasons are kept in memory for the career graph. */
 const CAREERS_KEPT = 40;
+/** Team schedules for finished seasons kept in memory once read (30 teams, a few seasons each). */
+const TEAM_SEASONS_KEPT = 300;
+
+/** An NBA team as a player's lines name it. */
+interface TeamRef {
+  id: string | null;
+  abbreviation: string;
+}
+
+/** The teams a player's lines name, in order of first appearance. */
+function teamsOf(lines: GameLine[]): TeamRef[] {
+  const teams = new Map<string, TeamRef>();
+  for (const line of lines) if (line.team && !teams.has(line.team)) teams.set(line.team, { id: line.teamId ?? null, abbreviation: line.team });
+  return [...teams.values()];
+}
+
+/** Where a team's finished-season schedule is stored: by the source's team id when there is one. */
+function teamSeasonKey(team: TeamRef, season: string): string {
+  return `team-season-v1-${team.id ?? team.abbreviation}-${season}`;
+}
 
 /**
  * The seasons a player can be viewed in, newest first. With Sleeper's years of experience: this
@@ -392,10 +412,8 @@ export class StatsService {
       const provider = this.provider!;
       // His games may already be saved by the career graph; only the team schedules are new then.
       const games = (await this.savedPlayerGames(sourceId, season)) ?? (await provider.fetchPlayerSeason!(sourceId, season));
-      const teams = new Map<string, string | null>();
-      for (const game of games) if (game.team && !teams.has(game.team)) teams.set(game.team, game.teamId ?? null);
       const schedules = await Promise.all(
-        [...teams].map(async ([abbreviation, id]) => teamLines(abbreviation, await provider.fetchTeamSeason!({ id, abbreviation }, season))),
+        teamsOf(games).map(async (team) => teamLines(team.abbreviation, await this.teamSeason(team, season))),
       );
       const lines = regularSeasonLines([...games, ...schedules.flat()]);
       await this.storage?.writeEntry(key, { savedAt: this.now(), value: lines }).catch((error: Error) => {
@@ -434,65 +452,98 @@ export class StatsService {
   }
 
   /**
-   * A player's career for the career graph: every season in his list, this season and last from
-   * the box scores already saved, older ones from storage. Never waits on the stats source: older
-   * seasons not saved yet are fetched in the background (one paged request for all of them, then
-   * stored for good, an empty season too) and the answer says "loading" until they are in.
+   * A player's career for the career graph: every season in his list, with the games he played and
+   * his teams' games he missed. This season and last come from the box scores already saved; older
+   * ones from storage. Never waits on the stats source: what is not saved yet (his games, then his
+   * teams' schedules) is fetched in the background and stored for good, and the answer says
+   * "loading" until it is in.
    */
   async career(snapshot: LeagueSnapshot, sleeperPlayers: Record<string, PlayerRef>, playerId: string): Promise<PlayerCareer | null> {
     const sleeperPlayer = sleeperPlayers[playerId];
     if (!sleeperPlayer) return null;
     const current = snapshot.league.season;
     const previous = previousSeason(current);
-    if (!this.provider) return { status: "ready", seasons: [], games: [] };
+    const nothing: PlayerCareer = { status: "ready", seasons: [], games: [], missed: [] };
+    if (!this.provider) return nothing;
 
     const lines = [...(await this.load(current)).lines.values()];
     const scoring = snapshot.league.scoringSettings;
     const prior = await this.load(previous);
     const { matches } = this.context(sleeperPlayers, lines, prior, scoring);
     const sourceId = matches.get(playerId);
-    if (!sourceId) return { status: "ready", seasons: [], games: [] };
+    if (!sourceId) return nothing;
     const seasons = careerSeasons(current, sleeperPlayer.yearsExp, this.canFetchPastSeasons(), () =>
       this.priorRegular(prior).some((line) => line.playerId === sourceId && line.minutes > 0),
     );
 
     const older = seasons.filter((season) => season !== current && season !== previous);
     const olderLines = await this.careerLines(sourceId, older);
-    if (olderLines.status !== "ready") return { status: olderLines.status, error: olderLines.error, seasons: [], games: [] };
-    if (seasons.includes(previous) && prior.syncedAt === null) return { status: "loading", seasons: [], games: [] };
+    if (olderLines.status !== "ready") return { ...nothing, status: olderLines.status, error: olderLines.error };
+    if (seasons.includes(previous) && prior.syncedAt === null) return { ...nothing, status: "loading" };
 
+    const seasonStart = snapshot.league.seasonStartDate;
+    // Each season's lines: his own, plus his teams' games (from every player's lines this season
+    // and last, from the saved schedules before that), so the games he missed can be told.
     const linesOf = (season: string): GameLine[] =>
       season === current
-        ? lines.filter((line) => line.playerId === sourceId && counts(line, snapshot.league.seasonStartDate))
+        ? lines
         : season === previous
-          ? this.priorRegular(prior).filter((line) => line.playerId === sourceId)
+          ? this.priorRegular(prior)
           : (olderLines.lines.get(season) ?? []);
-    const built = [...seasons].reverse().map((season) => careerSeasonOf(season, linesOf(season), scoring, season === current));
-    return { status: "ready", seasons: built.map((season) => season.summary), games: built.flatMap((season) => season.games) };
+    const built = [...seasons].reverse().map((season) => {
+      const all = linesOf(season);
+      const his = all.filter((line) => line.playerId === sourceId && counts(line, season === current ? seasonStart : null));
+      const missed = missedGames(his, all, teamGameDates(all, season === current ? seasonStart : null), new Map());
+      return careerSeasonOf(season, his, scoring, season === current, missed.map((game) => game.date));
+    });
+    return {
+      status: "ready",
+      seasons: built.map((season) => season.summary),
+      games: built.flatMap((season) => season.games),
+      missed: built.flatMap((season) => season.missed),
+    };
   }
 
-  /** His older seasons' games, once all are saved; otherwise starts fetching what is missing. */
+  /**
+   * His older seasons' lines (his games plus his teams' game-less lines), once all are saved;
+   * otherwise starts fetching what is missing and answers "loading".
+   */
   private async careerLines(
     sourceId: string,
     seasons: string[],
   ): Promise<{ status: "ready"; lines: Map<string, GameLine[]>; error?: undefined } | { status: "loading" | "error"; error?: string }> {
     const kept = this.careerKept.get(sourceId) ?? new Map<string, GameLine[]>();
-    const missing: string[] = [];
+    const missingGames: string[] = [];
     for (const season of seasons) {
       if (kept.has(season)) continue;
       const saved = await this.savedPlayerGames(sourceId, season);
       if (saved) kept.set(season, saved);
-      else missing.push(season);
+      else missingGames.push(season);
     }
     this.careerKept.delete(sourceId);
     this.careerKept.set(sourceId, kept);
     while (this.careerKept.size > CAREERS_KEPT) this.careerKept.delete(this.careerKept.keys().next().value!);
-    if (missing.length === 0) return { status: "ready", lines: kept };
+
+    // His teams' schedules in the seasons whose games are in.
+    const lines = new Map<string, GameLine[]>();
+    let missingTeams = false;
+    for (const season of seasons) {
+      const games = kept.get(season);
+      if (!games) continue;
+      const schedules: GameLine[] = [];
+      for (const team of teamsOf(games)) {
+        const schedule = await this.savedTeamSeason(team, season);
+        if (schedule) schedules.push(...teamLines(team.abbreviation, schedule));
+        else missingTeams = true;
+      }
+      lines.set(season, [...games, ...schedules]);
+    }
+    if (missingGames.length === 0 && !missingTeams) return { status: "ready", lines };
 
     const failed = this.careerFailed.get(sourceId);
     if (failed && this.now() - failed.at < RETRY_AFTER_MS) return { status: "error", error: failed.message };
     if (!this.careerInFlight.has(sourceId)) {
-      const work = this.fetchCareer(sourceId, missing)
+      const work = this.fetchCareer(sourceId, missingGames, seasons)
         .then(() => {
           this.careerFailed.delete(sourceId);
         })
@@ -506,28 +557,94 @@ export class StatsService {
     return { status: "loading" };
   }
 
-  /** Fetches his games in the given older seasons and stores each season for good. */
-  private async fetchCareer(sourceId: string, seasons: string[]): Promise<void> {
+  /**
+   * Fetches his games in the seasons not saved yet (one paged request for all of them), then his
+   * teams' schedules not saved yet (one paged request per team), storing each season for good.
+   */
+  private async fetchCareer(sourceId: string, missingGames: string[], seasons: string[]): Promise<void> {
     const provider = this.provider!;
-    const fetched = provider.fetchPlayerSeasons
-      ? await provider.fetchPlayerSeasons(sourceId, seasons)
-      : (await Promise.all(seasons.map((season) => provider.fetchPlayerSeason!(sourceId, season)))).flat();
-    const bySeason = new Map<string, GameLine[]>(seasons.map((season) => [season, []]));
-    for (const line of fetched) if (line.playerId === sourceId) bySeason.get(seasonOfDate(line.date))?.push(line);
     const kept = this.careerKept.get(sourceId) ?? new Map<string, GameLine[]>();
-    for (const [season, games] of bySeason) {
-      await this.storage?.writeEntry(`player-games-v1-${sourceId}-${season}`, { savedAt: this.now(), value: games }).catch((error: Error) => {
-        console.error(`[stats] could not save ${sourceId}'s ${season} season:`, error.message);
-      });
-      kept.set(season, games);
+    if (missingGames.length > 0) {
+      const fetched = provider.fetchPlayerSeasons
+        ? await provider.fetchPlayerSeasons(sourceId, missingGames)
+        : (await Promise.all(missingGames.map((season) => provider.fetchPlayerSeason!(sourceId, season)))).flat();
+      const bySeason = new Map<string, GameLine[]>(missingGames.map((season) => [season, []]));
+      for (const line of fetched) if (line.playerId === sourceId) bySeason.get(seasonOfDate(line.date))?.push(line);
+      for (const [season, games] of bySeason) {
+        await this.storage?.writeEntry(`player-games-v1-${sourceId}-${season}`, { savedAt: this.now(), value: games }).catch((error: Error) => {
+          console.error(`[stats] could not save ${sourceId}'s ${season} season:`, error.message);
+        });
+        kept.set(season, games);
+      }
+      this.careerKept.set(sourceId, kept);
     }
-    this.careerKept.set(sourceId, kept);
+    // Team schedules still missing, gathered by team.
+    const wanted = new Map<string, { team: TeamRef; seasons: string[] }>();
+    for (const season of seasons) {
+      for (const team of teamsOf(kept.get(season) ?? [])) {
+        if (await this.savedTeamSeason(team, season)) continue;
+        const key = team.id ?? team.abbreviation;
+        const entry = wanted.get(key) ?? { team, seasons: [] };
+        entry.seasons.push(season);
+        wanted.set(key, entry);
+      }
+    }
+    for (const { team, seasons: teamSeasons } of wanted.values()) await this.fetchTeamSeasons(team, teamSeasons);
   }
 
   /** Players' older seasons for the career graph, most recently used last. */
   private careerKept = new Map<string, Map<string, GameLine[]>>();
   private careerInFlight = new Map<string, Promise<void>>();
   private careerFailed = new Map<string, { at: number; message: string }>();
+
+  /** A team's saved regular-season schedule for a finished season, or null when not saved yet. */
+  private async savedTeamSeason(team: TeamRef, season: string): Promise<ScheduledGame[] | null> {
+    const key = teamSeasonKey(team, season);
+    const kept = this.teamKept.get(key);
+    if (kept) return kept;
+    const saved = await this.storage?.readEntry(key).catch(() => null);
+    if (!saved || !Array.isArray(saved.value)) return null;
+    this.keepTeamSeason(key, saved.value as ScheduledGame[]);
+    return saved.value as ScheduledGame[];
+  }
+
+  /** A team's schedule for a finished season: saved, or fetched once and stored for good. */
+  private async teamSeason(team: TeamRef, season: string): Promise<ScheduledGame[]> {
+    const saved = await this.savedTeamSeason(team, season);
+    if (saved) return saved;
+    await this.fetchTeamSeasons(team, [season]);
+    return this.teamKept.get(teamSeasonKey(team, season)) ?? [];
+  }
+
+  /**
+   * Fetches a team's schedules for finished seasons and stores each one for good, shared by every
+   * player who was on that team that season.
+   */
+  private async fetchTeamSeasons(team: TeamRef, seasons: string[]): Promise<void> {
+    const provider = this.provider!;
+    const games =
+      provider.fetchTeamSeasons && seasons.length > 1
+        ? await provider.fetchTeamSeasons({ id: team.id, abbreviation: team.abbreviation }, seasons)
+        : (await Promise.all(seasons.map((season) => provider.fetchTeamSeason!({ id: team.id, abbreviation: team.abbreviation }, season)))).flat();
+    const bySeason = new Map<string, ScheduledGame[]>(seasons.map((season) => [season, []]));
+    for (const game of games) bySeason.get(seasonOfDate(game.date))?.push(game);
+    for (const [season, schedule] of bySeason) {
+      const key = teamSeasonKey(team, season);
+      await this.storage?.writeEntry(key, { savedAt: this.now(), value: schedule }).catch((error: Error) => {
+        console.error(`[stats] could not save ${key}:`, error.message);
+      });
+      this.keepTeamSeason(key, schedule);
+    }
+  }
+
+  private keepTeamSeason(key: string, schedule: ScheduledGame[]): void {
+    this.teamKept.delete(key);
+    this.teamKept.set(key, schedule);
+    while (this.teamKept.size > TEAM_SEASONS_KEPT) this.teamKept.delete(this.teamKept.keys().next().value!);
+  }
+
+  /** Team schedules for finished seasons, most recently used last. */
+  private teamKept = new Map<string, ScheduledGame[]>();
 
   /** Last season's regular-season lines, worked out once per download of it. */
   private priorRegular(prior: SeasonData): GameLine[] {

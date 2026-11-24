@@ -562,6 +562,11 @@ describe("StatsService", async () => {
     );
     expect(career.seasons.at(-1)!.current).toBe(true);
     expect(career.games).toHaveLength(career.seasons.reduce((sum, season) => sum + season.games, 0));
+    // Odd years: the four games the sample source sits him show as missed, from his team's schedule.
+    for (const season of career.seasons.filter((entry) => Number(entry.season) % 2 === 1 && !entry.current && entry.season !== "2025")) {
+      expect(season.missed).toBeGreaterThanOrEqual(4);
+    }
+    expect(career.missed).toHaveLength(career.seasons.reduce((sum, season) => sum + season.missed, 0));
     for (const season of career.seasons.filter((entry) => entry.games > 0)) {
       const points = career.games.filter((game) => game.season === season.season).map((game) => game.points);
       expect(season.fantasyAvg).toBeCloseTo(points.reduce((sum, value) => sum + value, 0) / points.length);

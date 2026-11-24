@@ -8,6 +8,9 @@ import {
   FORM_WINDOW_MAX,
   FORM_WINDOW_MIN,
   MIN_SEASON_ROOM,
+  MISSED_RED_SHARE,
+  missedStops,
+  missedTone,
   seasonLabel,
   seasonOfDate,
   smoothSeason,
@@ -18,6 +21,7 @@ const season = (year: string, games: number): CareerSeason => ({
   season: year,
   teams: games > 0 ? ["BOS"] : [],
   games,
+  missed: 0,
   fantasyAvg: games > 0 ? 40 : null,
   minutes: games > 0 ? 30 : null,
   averages: null,
@@ -87,8 +91,56 @@ describe("careerLayout", () => {
     expect(layout.line.some((point) => point.value === null)).toBe(true);
   });
 
+  it("gives missed games their slots, runs the line straight across them and colors them", () => {
+    // 10 games, then 10 missed, then 10 games: room for all 30 team games.
+    const played = gamesOf("2024", [...Array(10).fill(30), ...Array(10).fill(50)]).map((game, index) => ({
+      ...game,
+      date: `2024-11-${String(index < 10 ? index + 1 : index + 11).padStart(2, "0")}`,
+    }));
+    const missed = Array.from({ length: 10 }, (_, index) => ({ season: "2024", date: `2024-11-${String(index + 11).padStart(2, "0")}` }));
+    const layout = careerLayout([{ ...season("2024", 20), missed: 10 }, season("2025", 40)], played.concat(gamesOf("2025", Array(40).fill(40))), missed);
+    expect(layout.spans[0]).toMatchObject({ games: 20, missed: 10 });
+    expect(layout.spans[0]!.to).toBeCloseTo(30 / 70);
+    const first = layout.line.filter((point) => point.x > 0 && point.x < layout.spans[0]!.to);
+    expect(first).toHaveLength(30);
+    // Across the absence the line climbs from his form before to his form after.
+    const across = first.slice(10, 20).map((point) => point.value!);
+    expect(across.every((value, index) => index === 0 || value >= across[index - 1]!)).toBe(true);
+    // The middle of the absence is fully missed; his healthy games are not.
+    expect(first[15]!.missedShare).toBe(1);
+    expect(first[0]!.missedShare).toBe(0);
+    expect(layout.line.filter((point) => point.x > layout.spans[0]!.to).every((point) => point.missedShare === 0)).toBe(true);
+  });
+
+  it("looks at a short window for a short career, so two seasons still show each stretch", () => {
+    const short = careerLayout([season("2025", 80)], gamesOf("2025", Array(80).fill(30)));
+    const long = careerLayout(
+      Array.from({ length: 15 }, (_, index) => season(String(2010 + index), 80)),
+      Array.from({ length: 15 }, (_, index) => gamesOf(String(2010 + index), Array(80).fill(30))).flat(),
+    );
+    expect(short.missedWindow).toBeLessThan(long.missedWindow);
+  });
+
   it("draws nothing for a player with no games", () => {
     expect(careerLayout([season("2026", 0)], []).spans).toEqual([]);
+  });
+});
+
+describe("missed games color", () => {
+  it("runs from green with no games missed to red at the red share", () => {
+    expect(missedTone(0)).toBe(6);
+    expect(missedTone(MISSED_RED_SHARE / 2)).toBe(3);
+    expect(missedTone(MISSED_RED_SHARE)).toBe(0);
+    expect(missedTone(1)).toBe(0);
+  });
+
+  it("adds a stop where the color changes and keeps long careers to a few hundred", () => {
+    const line = Array.from({ length: 2000 }, (_, index) => ({ x: index / 1999, value: 30, missedShare: index > 1000 && index < 1040 ? 1 : 0 }));
+    const stops = missedStops(line);
+    expect(stops.length).toBeLessThan(120);
+    expect(stops.some((stop) => stop.tone === 0)).toBe(true);
+    expect(stops[0]).toEqual({ offset: 0, tone: 6 });
+    expect(missedStops([{ x: 0, value: null, missedShare: 0 }])).toEqual([]);
   });
 });
 

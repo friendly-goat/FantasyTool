@@ -350,7 +350,9 @@ export function careerSeasonOf(
   lines: GameLine[],
   scoring: Record<string, number>,
   current: boolean,
-): { summary: CareerSeason; games: CareerGame[] } {
+  /** Dates of his teams' games he missed that season. */
+  missedDates: string[] = [],
+): { summary: CareerSeason; games: CareerGame[]; missed: { season: string; date: string }[] } {
   const played = lines.filter((line) => line.final && line.minutes > 0).sort((a, b) => a.date.localeCompare(b.date));
   const games = played.map((line) => ({ season, date: line.date, points: fantasyPoints(line.stats, scoring) }));
   const teams: string[] = [];
@@ -358,10 +360,12 @@ export function careerSeasonOf(
   const none = played.length === 0;
   return {
     games,
+    missed: [...missedDates].sort().map((date) => ({ season, date })),
     summary: {
       season,
       teams,
       games: played.length,
+      missed: missedDates.length,
       fantasyAvg: none ? null : mean(games.map((game) => game.points)),
       minutes: none ? null : mean(played.map((line) => line.minutes)),
       averages: none ? null : (Object.fromEntries(STAT_KEYS.map((key) => [key, mean(played.map((line) => line.stats[key]))])) as unknown as StatLine),

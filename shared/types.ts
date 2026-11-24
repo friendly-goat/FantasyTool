@@ -418,6 +418,8 @@ export interface CareerSeason {
   /** NBA teams he played for that season, in order. */
   teams: string[];
   games: number;
+  /** His teams' games he missed while on their roster (from his first game with a team to his last). */
+  missed: number;
   /** Null for a season he did not play. */
   fantasyAvg: number | null;
   minutes: number | null;
@@ -445,6 +447,8 @@ export interface PlayerCareer {
   seasons: CareerSeason[];
   /** Every game he played, oldest first. */
   games: CareerGame[];
+  /** Every one of his teams' games he missed, oldest first. */
+  missed: { season: string; date: string }[];
 }
 
 export interface PlayerDetail {

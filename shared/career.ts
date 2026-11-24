@@ -40,10 +40,14 @@ export function smoothSeason(points: number[], window: number): number[] {
   });
 }
 
-/** Room a season gets, in games: the games he played, at least this many. */
+/** Room a season gets, in games: his teams' games while he was on them, at least this many. */
 export const MIN_SEASON_ROOM = 20;
 /** Room for a season he did not play at all (an "Out" band). */
 export const EMPTY_SEASON_ROOM = 12;
+/** Share of nearby games missed at which the line is fully red. */
+export const MISSED_RED_SHARE = 0.6;
+/** Color steps from red (0) to green (MISSED_TONES), as the `--chance-*` tokens. */
+export const MISSED_TONES = 6;
 
 /** One season's place on the graph, from 0 (left edge) to 1 (right edge). */
 export interface CareerSpan {
@@ -51,63 +55,143 @@ export interface CareerSpan {
   from: number;
   to: number;
   games: number;
+  /** His teams' games he missed. */
+  missed: number;
   /** His fantasy average that season; null when he did not play. */
   average: number | null;
 }
 
+export interface CareerPoint {
+  x: number;
+  /** His form here; null breaks the line (a season he did not play). */
+  value: number | null;
+  /** Share of his teams' games around here that he missed, 0 to 1. */
+  missedShare: number;
+}
+
 export interface CareerLayout {
   spans: CareerSpan[];
-  /** The form line, left to right; a null value breaks it (a season he did not play). */
-  line: { x: number; value: number | null }[];
-  /** Games each point averages. */
+  /** The form line, left to right. */
+  line: CareerPoint[];
+  /** Games each point of the form averages. */
   window: number;
+  /** Team games each point's missed share looks at. */
+  missedWindow: number;
   /** The highest value drawn (form or season average), for the scale. */
   peak: number;
 }
 
 /**
  * Lays out a career: seasons oldest first, from his first season with a game (an empty season
- * before it is left off; one after it shows as an "Out" band). Each played season's line runs
- * across its whole room, so the line starts at the left edge and ends at the right one.
+ * before it is left off; one after it shows as an "Out" band). Each season is his teams' games
+ * while he was on them, played or missed, one slot each, so a season with a long absence keeps
+ * its room. The line is his form at the games he played and runs straight across the games he
+ * missed; each point also carries the share of games missed around it, for the line's color.
+ * Each played season's line runs across its whole room, so the line starts at the left edge and
+ * ends at the right one.
  */
-export function careerLayout(seasons: CareerSeason[], games: CareerGame[]): CareerLayout {
+export function careerLayout(seasons: CareerSeason[], games: CareerGame[], missed: { season: string; date: string }[] = []): CareerLayout {
   const ordered = [...seasons].sort((a, b) => a.season.localeCompare(b.season));
   const first = ordered.findIndex((season) => season.games > 0);
   const shown = first < 0 ? [] : ordered.slice(first);
-  const bySeason = new Map<string, number[]>();
-  for (const game of [...games].sort((a, b) => a.date.localeCompare(b.date))) {
-    const list = bySeason.get(game.season);
-    if (list) list.push(game.points);
-    else bySeason.set(game.season, [game.points]);
-  }
-  const counts = shown.map((season) => bySeason.get(season.season)?.length ?? 0);
-  const window = formWindow(counts.reduce((sum, count) => sum + count, 0));
-  const rooms = counts.map((count) => (count > 0 ? Math.max(count, MIN_SEASON_ROOM) : EMPTY_SEASON_ROOM));
+  type Slot = { date: string; points: number | null };
+  const slotsOf = new Map<string, Slot[]>();
+  const add = (season: string, slot: Slot) => {
+    const list = slotsOf.get(season);
+    if (list) list.push(slot);
+    else slotsOf.set(season, [slot]);
+  };
+  for (const game of games) add(game.season, { date: game.date, points: game.points });
+  for (const game of missed) add(game.season, { date: game.date, points: null });
+  for (const list of slotsOf.values()) list.sort((a, b) => a.date.localeCompare(b.date));
+
+  const slotLists = shown.map((season) => {
+    const list = slotsOf.get(season.season) ?? [];
+    return list.some((slot) => slot.points !== null) ? list : [];
+  });
+  const playedTotal = slotLists.reduce((sum, list) => sum + list.filter((slot) => slot.points !== null).length, 0);
+  const window = formWindow(playedTotal);
+  const missedWindow = formWindow(slotLists.reduce((sum, list) => sum + list.length, 0));
+  const rooms = slotLists.map((list) => (list.length > 0 ? Math.max(list.length, MIN_SEASON_ROOM) : EMPTY_SEASON_ROOM));
   const total = rooms.reduce((sum, room) => sum + room, 0) || 1;
 
   const spans: CareerSpan[] = [];
-  const line: CareerLayout["line"] = [];
+  const line: CareerPoint[] = [];
   let peak = 0;
   let at = 0;
   shown.forEach((season, index) => {
     const from = at / total;
     at += rooms[index]!;
     const to = at / total;
-    const points = bySeason.get(season.season) ?? [];
+    const slots = slotLists[index]!;
+    const points = slots.flatMap((slot) => (slot.points === null ? [] : [slot.points]));
     const average = points.length > 0 ? points.reduce((sum, value) => sum + value, 0) / points.length : null;
-    spans.push({ season: season.season, from, to, games: points.length, average });
+    spans.push({ season: season.season, from, to, games: points.length, missed: slots.length - points.length, average });
     if (points.length === 0) {
-      line.push({ x: from, value: null });
+      line.push({ x: from, value: null, missedShare: 0 });
       return;
     }
     const form = smoothSeason(points, window);
+    const values = acrossMissed(slots, form);
+    const shares = smoothSeason(
+      slots.map((slot) => (slot.points === null ? 1 : 0)),
+      missedWindow,
+    );
     const width = to - from;
-    line.push({ x: from, value: form[0]! });
-    form.forEach((value, game) => line.push({ x: from + (width * (game + 0.5)) / form.length, value }));
-    line.push({ x: to, value: form.at(-1)! });
+    line.push({ x: from, value: values[0]!, missedShare: shares[0]! });
+    values.forEach((value, slot) => line.push({ x: from + (width * (slot + 0.5)) / slots.length, value, missedShare: shares[slot]! }));
+    line.push({ x: to, value: values.at(-1)!, missedShare: shares.at(-1)! });
     peak = Math.max(peak, average ?? 0, ...form);
   });
-  return { spans, line, window, peak };
+  return { spans, line, window, missedWindow, peak };
+}
+
+/**
+ * His form at every slot of a season: at a game he played, that game's form; across games he
+ * missed, a straight line from the form before to the form after (level at a season's ends).
+ */
+function acrossMissed(slots: { points: number | null }[], form: number[]): number[] {
+  const playedAt: number[] = [];
+  slots.forEach((slot, index) => slot.points !== null && playedAt.push(index));
+  const values: number[] = [];
+  let next = 0;
+  slots.forEach((slot, index) => {
+    while (next < playedAt.length && playedAt[next]! < index) next++;
+    if (slot.points !== null) {
+      values.push(form[next]!);
+      return;
+    }
+    const after = next < playedAt.length ? next : -1;
+    const before = next - 1;
+    if (before < 0) values.push(form[after]!);
+    else if (after < 0) values.push(form[before]!);
+    else {
+      const share = (index - playedAt[before]!) / (playedAt[after]! - playedAt[before]!);
+      values.push(form[before]! + (form[after]! - form[before]!) * share);
+    }
+  });
+  return values;
+}
+
+/** The line's color step for a share of games missed: MISSED_TONES (green) for none, 0 (red) at MISSED_RED_SHARE or more. */
+export function missedTone(share: number): number {
+  return Math.round(MISSED_TONES * (1 - Math.min(1, Math.max(0, share) / MISSED_RED_SHARE)));
+}
+
+/**
+ * Color stops for the line, as offsets 0 to 1 across the graph with a color step each: one where
+ * the step changes, plus each season's edges, so a long career stays a few hundred stops at most.
+ */
+export function missedStops(line: CareerPoint[]): { offset: number; tone: number }[] {
+  const stops: { offset: number; tone: number }[] = [];
+  for (const point of line) {
+    if (point.value === null) continue;
+    const tone = missedTone(point.missedShare);
+    const last = stops.at(-1);
+    if (last && last.tone === tone && point.x - last.offset < 0.02) continue;
+    stops.push({ offset: point.x, tone });
+  }
+  return stops;
 }
 
 /** A round top for the scale and the step between its gridlines (three or four steps). */

@@ -77,4 +77,6 @@ export interface StatsProvider {
   /** One player's regular-season games over several seasons, in one go (the career graph). */
   fetchPlayerSeasons?(playerId: string, seasons: string[]): Promise<GameLine[]>;
   fetchTeamSeason?(team: { id: string | null; abbreviation: string | null }, season: string): Promise<ScheduledGame[]>;
+  /** A team's regular-season games over several seasons, in one go (the career graph's missed games). */
+  fetchTeamSeasons?(team: { id: string | null; abbreviation: string | null }, seasons: string[]): Promise<ScheduledGame[]>;
 }

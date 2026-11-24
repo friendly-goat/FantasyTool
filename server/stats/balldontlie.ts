@@ -349,6 +349,25 @@ export function createBalldontlie(
       }
       return games;
     },
+    async fetchTeamSeasons(team, seasons) {
+      if (!team.id || seasons.length === 0) return [];
+      const games: ScheduledGame[] = [];
+      let cursor: number | null = null;
+      for (let page = 1; page <= 30; page++) {
+        const params = new URLSearchParams({ per_page: "100", season_type: "regular" });
+        params.append("team_ids[]", team.id);
+        for (const season of seasons) params.append("seasons[]", season);
+        if (cursor != null) params.set("cursor", String(cursor));
+        const body = await getPage<RawGame>(`${BASE_URL}/games?${params}`, true);
+        for (const raw of body.data ?? []) {
+          const game = toScheduledGame(raw);
+          if (game) games.push(game);
+        }
+        cursor = body.meta?.next_cursor ?? null;
+        if (cursor == null || (body.data ?? []).length === 0) break;
+      }
+      return games;
+    },
     async fetchInjuries() {
       // The whole league's report is a page or two. The NBA path is tried
       // first; the docs also list it without "/nba".

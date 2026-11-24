@@ -159,13 +159,36 @@ export function mockInjuries(players: Record<string, unknown>, today = new Date(
     });
 }
 
+/** In some even years a sample player misses a long stretch (12 to 35 games) from the 25th game. */
+function longAbsence(playerId: string, year: number): number {
+  if (year % 2 !== 0) return 0;
+  let hash = year;
+  for (const character of playerId) hash = (hash * 31 + character.charCodeAt(0)) % 9973;
+  return hash % 4 === 0 ? 12 + (hash % 24) : 0;
+}
+
 export function createMockStats(players: Record<string, unknown>): StatsProvider {
   // Every player sits a stretch in odd years: four games from the tenth.
   const playerSeason = (playerId: string, season: string): GameLine[] => {
     const year = Number(season);
     return lastSeasonLines(players, year)
       .filter((line) => line.playerId === playerId)
-      .filter((_, game) => year % 2 === 0 || game < 10 || game >= 14);
+      .filter((_, game) => year % 2 === 0 || game < 10 || game >= 14)
+      .filter((_, game) => !longAbsence(playerId, year) || game < 25 || game >= 25 + longAbsence(playerId, year));
+  };
+  const teamSeason = (abbreviation: string, season: string): ScheduledGame[] => {
+    const dates = new Set(lastSeasonLines(players, Number(season)).filter((line) => line.team === abbreviation).map((line) => line.date));
+    return [...dates].sort().map((date, index) => ({
+      id: `${abbreviation}-${date}`,
+      date,
+      startTime: null,
+      home: index % 2 === 0 ? abbreviation : TEAMS[index % TEAMS.length]!,
+      away: index % 2 === 0 ? TEAMS[index % TEAMS.length]! : abbreviation,
+      state: "final" as const,
+      homeScore: 100,
+      awayScore: 98,
+      statusText: "Final",
+    }));
   };
   return {
     name: "mock",
@@ -182,18 +205,10 @@ export function createMockStats(players: Record<string, unknown>): StatsProvider
       return seasons.flatMap((season) => playerSeason(playerId, season));
     },
     async fetchTeamSeason(team, season) {
-      const dates = new Set(lastSeasonLines(players, Number(season)).filter((line) => line.team === team.abbreviation).map((line) => line.date));
-      return [...dates].sort().map((date, index) => ({
-        id: `${team.abbreviation}-${date}`,
-        date,
-        startTime: null,
-        home: index % 2 === 0 ? team.abbreviation : TEAMS[index % TEAMS.length]!,
-        away: index % 2 === 0 ? TEAMS[index % TEAMS.length]! : team.abbreviation,
-        state: "final" as const,
-        homeScore: 100,
-        awayScore: 98,
-        statusText: "Final",
-      }));
+      return teamSeason(team.abbreviation ?? "", season);
+    },
+    async fetchTeamSeasons(team, seasons) {
+      return seasons.flatMap((season) => teamSeason(team.abbreviation ?? "", season));
     },
     async fetchGameLines(season, fromDate, onPage) {
       if (season !== MOCK_SEASON) {

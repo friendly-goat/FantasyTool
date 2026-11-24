@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { careerLayout, careerScale, fittingLabels, seasonLabel } from "../../shared/career.ts";
+import { useEffect, useId, useRef, useState } from "react";
+import { careerLayout, careerScale, fittingLabels, MISSED_RED_SHARE, missedStops, seasonLabel } from "../../shared/career.ts";
 import type { CareerSeason, PlayerCareer } from "../../shared/types.ts";
 import { formatAverage, formatPoints } from "../format.ts";
 import { TeamTag } from "./TeamTag.tsx";
@@ -11,6 +11,9 @@ import { TeamTag } from "./TeamTag.tsx";
 
 const HEIGHT = 250;
 const PAD = { top: 18, right: 14, bottom: 48, left: 54 };
+/** Below this width (a phone) the y axis has no side title: the unit sits above the graph. */
+const COMPACT_WIDTH = 560;
+const COMPACT_LEFT = 34;
 /** Width drawn before the card has been measured. */
 const START_WIDTH = 640;
 
@@ -31,13 +34,16 @@ function useWidth(ref: React.RefObject<HTMLElement | null>): number {
 
 const count = new Intl.NumberFormat("en-US");
 
-/** "2015-16 season: 52.30 a game over 82 games, with HOU." */
-function seasonNote(span: { season: string; games: number; average: number | null }, season: CareerSeason | undefined): string {
+const plural = (value: number, word: string) => `${count.format(value)} ${value === 1 ? word : `${word}s`}`;
+
+/** "2015-16 season: 52.30 a game over 82 games, with HOU. Missed 4 of his teams' 86 games." */
+function seasonNote(span: { season: string; games: number; missed: number; average: number | null }, season: CareerSeason | undefined): string {
   const name = `${seasonLabel(span.season, "full")} season`;
   if (span.average === null) return `${name}: did not play.`;
   const teams = season && season.teams.length > 0 ? `, with ${season.teams.join(" and ")}` : "";
   const sofar = season?.current ? " so far" : "";
-  return `${name}: ${formatPoints(span.average)} a game over ${span.games} ${span.games === 1 ? "game" : "games"}${sofar}${teams}.`;
+  const missed = span.missed > 0 ? ` Missed ${span.missed} of his teams' ${span.games + span.missed} games.` : " Missed no games.";
+  return `${name}: ${formatPoints(span.average)} a game over ${plural(span.games, "game")}${sofar}${teams}.${missed}`;
 }
 
 export function CareerChart({
@@ -49,15 +55,18 @@ export function CareerChart({
   /** Opens one season's view, from the table. */
   onPickSeason: (season: string) => void;
 }) {
-  const box = useRef<HTMLDivElement>(null);
+  const box = useRef<HTMLElement>(null);
   const width = useWidth(box);
+  const gradientId = `career-missed-${useId().replace(/[^a-zA-Z0-9-]/g, "")}`;
+  const compact = width < COMPACT_WIDTH;
+  const left = compact ? COMPACT_LEFT : PAD.left;
   const [active, setActive] = useState<number | null>(null);
   const ready = career?.status === "ready" ? career : null;
-  const layout = careerLayout(ready?.seasons ?? [], ready?.games ?? []);
+  const layout = careerLayout(ready?.seasons ?? [], ready?.games ?? [], ready?.missed ?? []);
   const { top, step } = careerScale(ready ? layout.peak : 60);
-  const plotWidth = width - PAD.left - PAD.right;
+  const plotWidth = width - left - PAD.right;
   const plotHeight = HEIGHT - PAD.top - PAD.bottom;
-  const x = (fraction: number) => PAD.left + fraction * plotWidth;
+  const x = (fraction: number) => left + fraction * plotWidth;
   const y = (value: number) => PAD.top + plotHeight * (1 - value / top);
   const ticks = Array.from({ length: Math.round(top / step) + 1 }, (_, index) => index * step);
 
@@ -86,6 +95,8 @@ export function CareerChart({
 
   const played = (ready?.seasons ?? []).filter((season) => season.games > 0);
   const totalGames = played.reduce((sum, season) => sum + season.games, 0);
+  const totalMissed = played.reduce((sum, season) => sum + season.missed, 0);
+  const stops = missedStops(layout.line);
   const careerAverage = totalGames > 0 ? (ready?.games ?? []).reduce((sum, game) => sum + game.points, 0) / totalGames : null;
   // His best season, among full enough ones; worth naming only with three or more to choose from.
   const eligible = played.filter((season) => !season.current || season.games >= 20);
@@ -96,7 +107,8 @@ export function CareerChart({
   const focus = active !== null && spans[active] ? seasonNote(spans[active]!, seasonOf.get(spans[active]!.season)) : null;
   const summary =
     ready && careerAverage !== null
-      ? `${spans.length} ${spans.length === 1 ? "season" : "seasons"}, ${count.format(totalGames)} games, career average ${formatPoints(careerAverage)}.` +
+      ? `${plural(spans.length, "season")}, ${plural(totalGames, "game")}, career average ${formatPoints(careerAverage)}. ` +
+        `Missed ${plural(totalMissed, "game")} of ${count.format(totalGames + totalMissed)} (${Math.round((100 * totalMissed) / Math.max(1, totalGames + totalMissed))}%).` +
         (best ? ` Best season ${seasonLabel(best.season, "full")} at ${formatPoints(best.fantasyAvg ?? 0)}.` : "") +
         " Tap a season on the graph for its numbers."
       : null;
@@ -104,6 +116,7 @@ export function CareerChart({
   return (
     <>
       <figure className="chart career-chart" ref={box}>
+        {compact && <p className="career-unit">Fantasy points per game</p>}
         <svg
           viewBox={`0 0 ${width} ${HEIGHT}`}
           width={width}
@@ -115,29 +128,39 @@ export function CareerChart({
           <title id="career-title">Career form and season averages</title>
           <desc id="career-desc">{summary ?? "Loading his career."}</desc>
 
+          <defs>
+            {/* The line's color: the share of his teams' games he missed around each point. */}
+            <linearGradient id={gradientId} gradientUnits="userSpaceOnUse" x1={x(0)} x2={x(1)} y1={0} y2={0}>
+              {stops.map((stop, index) => (
+                <stop key={index} offset={stop.offset} style={{ stopColor: `var(--chance-${stop.tone})` }} />
+              ))}
+            </linearGradient>
+          </defs>
           {ticks.map((tick) => (
             <g key={tick}>
-              <line className="chart-grid" x1={PAD.left} x2={width - PAD.right} y1={y(tick)} y2={y(tick)} />
-              <text className="chart-label" x={PAD.left - 8} y={y(tick)} textAnchor="end" dominantBaseline="middle">
+              <line className="chart-grid" x1={left} x2={width - PAD.right} y1={y(tick)} y2={y(tick)} />
+              <text className="chart-label" x={left - 8} y={y(tick)} textAnchor="end" dominantBaseline="middle">
                 {tick}
               </text>
             </g>
           ))}
-          <text
-            className="chart-axis-title"
-            x={14}
-            y={PAD.top + plotHeight / 2}
-            textAnchor="middle"
-            transform={`rotate(-90 14 ${PAD.top + plotHeight / 2})`}
-          >
-            Fantasy points per game
-          </text>
-          <text className="chart-axis-title" x={PAD.left + plotWidth / 2} y={HEIGHT - 6} textAnchor="middle">
+          {!compact && (
+            <text
+              className="chart-axis-title"
+              x={14}
+              y={PAD.top + plotHeight / 2}
+              textAnchor="middle"
+              transform={`rotate(-90 14 ${PAD.top + plotHeight / 2})`}
+            >
+              Fantasy points per game
+            </text>
+          )}
+          <text className="chart-axis-title" x={left + plotWidth / 2} y={HEIGHT - 6} textAnchor="middle">
             Season
           </text>
 
           {!ready && (
-            <text className="chart-label" x={PAD.left + plotWidth / 2} y={PAD.top + plotHeight / 2} textAnchor="middle">
+            <text className="chart-label" x={left + plotWidth / 2} y={PAD.top + plotHeight / 2} textAnchor="middle">
               {career?.status === "error" ? "Could not load his career." : "Loading his career…"}
             </text>
           )}
@@ -185,7 +208,7 @@ export function CareerChart({
           })}
 
           {paths.map((path, index) => (
-            <path key={index} className="chart-line career-line" d={path} />
+            <path key={index} className="chart-line career-line" d={path} style={stops.length > 0 ? { stroke: `url(#${gradientId})` } : undefined} />
           ))}
 
           {/* Season averages' values, over the line (with a halo) where the season has room. */}
@@ -221,10 +244,19 @@ export function CareerChart({
         <figcaption className="quiet career-caption">
           <span className="career-legend">
             <span>
-              <span className="key key-line" /> Form, average of {layout.window} games around each
+              <span className="key key-line key-missed" /> Form, average of {layout.window} games around each
             </span>
             <span>
               <span className="key key-dashed" /> Season average
+            </span>
+          </span>
+          <span className="career-scale">
+            <span className="career-scale-title">Line color: games missed nearby</span>
+            <span className="career-scale-bar" aria-hidden="true" />
+            <span className="career-scale-ends">
+              <span>None</span>
+              <span>A few</span>
+              <span>{Math.round(100 * MISSED_RED_SHARE)}% or more</span>
             </span>
           </span>
           <span className={`career-note${focus ? " is-focus" : ""}`} aria-live="polite">
@@ -232,13 +264,19 @@ export function CareerChart({
               summary ??
               (career?.status === "error"
                 ? (career.error ?? "Could not load his career.")
-                : "Fetching his earlier seasons. The first look takes a few seconds; it is saved after that.")}
+                : "Fetching his earlier seasons and his teams' schedules. The first look can take up to a minute; it is saved after that.")}
           </span>
         </figcaption>
       </figure>
       <CareerTable career={ready} onPickSeason={onPickSeason} />
     </>
   );
+}
+
+/** How much of a season he missed, for the table's color: none, some (a tenth or more), or a lot (a third or more). */
+function missedLevel(season: CareerSeason): "none" | "some" | "most" {
+  const share = season.missed / Math.max(1, season.games + season.missed);
+  return share >= 1 / 3 ? "most" : share >= 0.1 ? "some" : "none";
 }
 
 /** Each season's numbers, newest first, with the career average below. */
@@ -258,6 +296,7 @@ function CareerTable({ career, onPickSeason }: { career: PlayerCareer | null; on
               <th scope="col">Season</th>
               <th scope="col">Team</th>
               <th scope="col" className="num">GP</th>
+              <th scope="col" className="num">Missed</th>
               <th scope="col" className="num">Fpts</th>
               <th scope="col" className="num">Min</th>
               <th scope="col" className="num">Pts</th>
@@ -278,7 +317,7 @@ function CareerTable({ career, onPickSeason }: { career: PlayerCareer | null; on
                   <td>
                     <span className="skeleton skeleton-wide" />
                   </td>
-                  {Array.from({ length: 9 }, (_, cell) => (
+                  {Array.from({ length: 10 }, (_, cell) => (
                     <td key={cell} className="num">
                       <span className="skeleton" />
                     </td>
@@ -299,12 +338,14 @@ function CareerTable({ career, onPickSeason }: { career: PlayerCareer | null; on
                 {season.games === 0 || !season.averages ? (
                   <>
                     <td className="num">0</td>
+                    <td className="num">–</td>
                     <td className="num log-fpts log-out-tag">Out</td>
                     <td colSpan={7} />
                   </>
                 ) : (
                   <>
                     <td className="num">{season.games}</td>
+                    <td className={`num career-missed missed-${missedLevel(season)}`}>{season.missed}</td>
                     <td className="num strong log-fpts">{formatPoints(season.fantasyAvg ?? 0)}</td>
                     <td className="num">{formatAverage(season.minutes ?? 0)}</td>
                     <td className="num">{formatAverage(season.averages.pts)}</td>
@@ -325,6 +366,7 @@ function CareerTable({ career, onPickSeason }: { career: PlayerCareer | null; on
                   Career average
                 </th>
                 <td className="num">{count.format(total)}</td>
+                <td className="num">{count.format(played.reduce((sum, season) => sum + season.missed, 0))}</td>
                 <td className="num strong">{formatPoints(weighted((season) => season.fantasyAvg ?? 0))}</td>
                 <td className="num">{formatAverage(weighted((season) => season.minutes ?? 0))}</td>
                 <td className="num">{formatAverage(weighted((season) => season.averages!.pts))}</td>

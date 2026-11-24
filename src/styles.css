@@ -2120,7 +2120,7 @@ th[aria-sort] .sort-button {
 }
 
 .career-line {
-  stroke-width: 2.5;
+  stroke-width: 3;
   stroke-linecap: round;
 }
 
@@ -2135,6 +2135,64 @@ th[aria-sort] .sort-button {
 
 .key.key-dashed {
   background: repeating-linear-gradient(90deg, var(--muted) 0 5px, transparent 5px 8px);
+}
+
+/* On a phone the unit sits above the graph instead of along its side. */
+.career-unit {
+  margin: 0 0 0.15rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.key.key-missed {
+  background: linear-gradient(90deg, var(--chance-6), var(--chance-3), var(--chance-0));
+}
+
+.career-scale {
+  display: grid;
+  grid-template-columns: auto minmax(7rem, 12rem);
+  align-items: center;
+  column-gap: 0.6rem;
+  row-gap: 0.1rem;
+  justify-content: start;
+}
+
+.career-scale-title {
+  grid-row: span 2;
+}
+
+.career-scale-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--chance-6), var(--chance-4) 30%, var(--chance-3) 50%, var(--chance-1) 75%, var(--chance-0));
+}
+
+.career-scale-ends {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+}
+
+/* On a phone the color key stacks: its title, then the bar with its ends. */
+@media (max-width: 720px) {
+  .career-scale {
+    grid-template-columns: minmax(0, 18rem);
+  }
+
+  .career-scale-title {
+    grid-row: auto;
+  }
+}
+
+.career-missed.missed-some {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+.career-missed.missed-most {
+  color: var(--loss);
+  font-weight: 700;
 }
 
 .career-caption {
