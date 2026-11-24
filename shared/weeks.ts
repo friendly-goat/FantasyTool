@@ -16,3 +16,32 @@ export function weekRange(seasonStart: string, week: number): { start: string; e
   const start = addDays(monday, (week - 1) * 7);
   return { start: week === 1 ? seasonStart : start, end: addDays(start, 6) };
 }
+
+/**
+ * Hours behind UTC at which the NBA's day turns over: 10 puts the change at 5 AM Eastern, after
+ * the last West Coast game has finished, so a Sunday night game still counts on Sunday.
+ */
+export const NBA_DAY_OFFSET_HOURS = 10;
+
+/** The NBA day (YYYY-MM-DD) an instant belongs to. */
+export function nbaDay(ms: number): string {
+  return new Date(ms - NBA_DAY_OFFSET_HOURS * 3_600_000).toISOString().slice(0, 10);
+}
+
+/** The fantasy week a date falls in (0 or less before the season's first week). */
+export function weekOfDate(seasonStart: string, date: string): number {
+  const weekday = new Date(`${seasonStart}T00:00:00Z`).getUTCDay();
+  const monday = addDays(seasonStart, -((weekday + 6) % 7));
+  const days = Math.round((Date.parse(`${date}T00:00:00Z`) - Date.parse(`${monday}T00:00:00Z`)) / 86_400_000);
+  return Math.floor(days / 7) + 1;
+}
+
+/**
+ * The league's current week: Sleeper's, moved on to the week the date is in when Sleeper has not
+ * caught up yet (its week turns over a day or so after the fantasy week does, so on a Monday it can
+ * still name the week just finished). Never more than one week past Sleeper's, never back.
+ */
+export function leagueWeek(sleeperWeek: number, seasonStart: string | null, today: string): number {
+  if (!seasonStart) return sleeperWeek;
+  return Math.max(sleeperWeek, Math.min(weekOfDate(seasonStart, today), sleeperWeek + 1));
+}

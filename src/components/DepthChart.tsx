@@ -1,3 +1,4 @@
+import { nbaDay } from "../../shared/weeks.ts";
 import { useMemo } from "react";
 import { depthChart, DEPTH, depthMinutes, minutesTone } from "../../shared/depthChart.ts";
 import { newsOutText } from "../../shared/injury.ts";
@@ -19,7 +20,7 @@ function DepthCell({ player, current }: { player: PlayerStats; current: boolean 
   const [first, last] = splitName(player.name);
   const recent = player.recentMinutes ?? null;
   const tone = minutesTone(recent, player.minutes);
-  const out = newsOutText(player.injury, player.injuryStatus);
+  const out = newsOutText(player.injury, player.injuryStatus, nbaDay(Date.now()));
   const minutes = depthMinutes(player);
   const label =
     recent != null && recent !== player.minutes

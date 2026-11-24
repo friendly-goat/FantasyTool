@@ -82,5 +82,9 @@ describe("how long a player is out", () => {
     expect(newsOutText(news)).toMatch(/^Out \d weeks$/);
     expect(newsOutText({ ...news, returnDate: null, seasonOut: true } as InjuryNews)).toBe("Out for season");
     expect(newsOutText(null, "Questionable")).toBe("Questionable");
+    // Counted from today, not the report's day: a report from Monday read on Tuesday.
+    const paolo = { ...news, asOf: "2026-11-23", returnDate: "2026-11-29" } as InjuryNews;
+    expect(newsOutText(paolo)).toBe("Out 6 days");
+    expect(newsOutText(paolo, null, "2026-11-24")).toBe("Out 5 days");
   });
 });

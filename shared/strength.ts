@@ -3,7 +3,7 @@ import { lockInValue } from "./lockin.ts";
 import { returnOutlook, weeklyChanceBack } from "./injury.ts";
 import { nbaTeam } from "./nbaTeams.ts";
 import type { LeagueSnapshot, PlayerRef, PlayerStats, ReserveAllows, ScheduleAhead, StatsReport } from "./types.ts";
-import { weekRange } from "./weeks.ts";
+import { nbaDay, weekRange } from "./weeks.ts";
 
 const POSITIONS = ["PG", "SG", "SF", "PF", "C"];
 
@@ -433,7 +433,7 @@ export function fittedSpread(one: number, two: number): number {
  * on how long a player has already been out.
  */
 export function modelCalendar(snapshot: LeagueSnapshot): ModelCalendar {
-  const today = snapshot.fetchedAt.slice(0, 10);
+  const today = nbaDay(Date.parse(snapshot.fetchedAt));
   const seasonStart = snapshot.league.seasonStartDate;
   const playoffStart = snapshot.league.playoffs?.startWeek;
   if (!seasonStart || !playoffStart || snapshot.week < 1) return { today, weeks: [] };

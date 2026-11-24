@@ -48,7 +48,7 @@ async function main() {
     return;
   }
 
-  const snapshot = await buildSnapshot(leagueId, fetchFromSleeper, players);
+  const snapshot = await buildSnapshot(leagueId, fetchFromSleeper, players, Date.now, { followCalendar: true });
   console.log(`\nLeague: ${snapshot.league.name} (${snapshot.league.season}), week ${snapshot.week}`);
   console.log("Lineup slots:", snapshot.league.rosterPositions.join(", "));
   console.log("IR slots:", snapshot.league.reserveSlots);

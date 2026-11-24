@@ -10,7 +10,10 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   player must be in the lineup when his game starts to be lock-eligible. The manager
   may lock a score after a game and before that player's next game; if
   nothing is locked, the last game of the week counts. Weeks run Monday to
-  Sunday (`shared/weeks.ts`). Value players accordingly: a week is a few
+  Sunday (`shared/weeks.ts`). Sleeper's state can still name last week on a
+  Monday, so the snapshot's week moves on to the week today's NBA day is in
+  (`leagueWeek`, `nbaDay`: one week at most, never back, off for the sample
+  league); the model's calendar and every "current week" follow it. Value players accordingly: a week is a few
   chances at one good game, so games per week and game-to-game spread matter,
   not weekly totals.
 - 12 teams, points scoring with threshold bonuses (see the league's

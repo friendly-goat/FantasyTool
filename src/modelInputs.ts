@@ -1,3 +1,4 @@
+import { nbaDay } from "../shared/weeks.ts";
 import type { LeagueSnapshot, PlayerRef } from "../shared/types.ts";
 
 // The league snapshot changes every time the server refreshes it (live matchup points, the time
@@ -17,7 +18,7 @@ export function modelFingerprint(snapshot: LeagueSnapshot): string {
     league: snapshot.league,
     week: snapshot.week,
     // The model's calendar starts today.
-    today: snapshot.fetchedAt.slice(0, 10),
+    today: nbaDay(Date.parse(snapshot.fetchedAt)),
     teams: snapshot.teams.map((team) => ({
       rosterId: team.rosterId,
       ownerId: team.ownerId,

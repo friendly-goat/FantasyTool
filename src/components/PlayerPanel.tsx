@@ -1,3 +1,4 @@
+import { nbaDay } from "../../shared/weeks.ts";
 import { useEffect, useRef, useState } from "react";
 import { newsOutText, returnOutlook } from "../../shared/injury.ts";
 import type { LeagueSnapshot, PlayerDetail, PlayerRef, StatsReport } from "../../shared/types.ts";
@@ -91,7 +92,7 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
   const injury = stats?.players[player.id]?.injury ?? null;
   const outlook = injury ? returnOutlook(injury) : null;
   // How long he is out, as everywhere a player who is out is named.
-  const outTag = newsOutText(injury, shown.injuryStatus);
+  const outTag = newsOutText(injury, shown.injuryStatus, nbaDay(Date.now()));
 
   return (
     <dialog

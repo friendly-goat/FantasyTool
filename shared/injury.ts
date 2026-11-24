@@ -207,12 +207,18 @@ export function outText(days: number | "season" | null, status: string | null): 
   return status;
 }
 
-/** `outText` from a player's entry on the injury report: days to the expected return, from the report's day. */
-export function newsOutText(news: InjuryNews | null | undefined, status: string | null = null): string | null {
+/**
+ * `outText` from a player's entry on the injury report: days to the expected return, from today
+ * (or the report's day, when given no today or the report is newer).
+ */
+export function newsOutText(news: InjuryNews | null | undefined, status: string | null = null, today?: string): string | null {
   if (!news) return status;
   const outlook = returnOutlook(news);
   const shown = news.status || status;
   if (outlook.kind === "season") return outText("season", shown);
-  if (outlook.kind === "window") return outText(daysBetween(news.asOf, outlook.window.expected), shown);
+  if (outlook.kind === "window") {
+    const from = today && today > news.asOf ? today : news.asOf;
+    return outText(Math.max(0, daysBetween(from, outlook.window.expected)), shown);
+  }
   return shown;
 }

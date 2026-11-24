@@ -50,7 +50,7 @@ async function main() {
   if (!leagueId) throw new Error("Pass your league ID: npm run check:stats -- <league_id>");
 
   const players = await loadPlayers(fetchJson);
-  const snapshot = await buildSnapshot(leagueId, fetchJson, players);
+  const snapshot = await buildSnapshot(leagueId, fetchJson, players, Date.now, { followCalendar: true });
   console.log(`League: ${snapshot.league.name}, season ${snapshot.league.season}`);
 
   const provider = mock

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { fetchFromMock, MOCK_LEAGUE_ID } from "../server/mock.ts";
 import { buildSnapshot, loadPlayers } from "../server/snapshot.ts";
 import type { LeagueSnapshot } from "../shared/types.ts";
+import { nbaDay } from "../shared/weeks.ts";
 import { modelFingerprint } from "./modelInputs.ts";
 
 describe("modelFingerprint", async () => {
@@ -11,7 +12,8 @@ describe("modelFingerprint", async () => {
 
   it("stays the same when only live or display data changes", () => {
     const later = copy();
-    later.fetchedAt = later.fetchedAt.slice(0, 10) + "T23:59:00.000Z";
+    // Later the same NBA day (it runs 10:00 UTC to 09:59 the next day).
+    later.fetchedAt = nbaDay(Date.parse(later.fetchedAt)) + "T23:59:00.000Z";
     later.live = true;
     later.refreshing = true;
     later.stale = true;

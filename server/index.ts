@@ -231,7 +231,7 @@ async function getSnapshot(leagueId: string) {
   return cache.get(
     leagueKey(leagueId),
     ttl,
-    async () => buildSnapshot(leagueId, fetchJson, (await getPlayers()).value),
+    async () => buildSnapshot(leagueId, fetchJson, (await getPlayers()).value, Date.now, { followCalendar: !mock }),
     { background: true },
   );
 }

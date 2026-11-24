@@ -780,6 +780,20 @@ player's game, the manager can lock that score in before the player's next
 game; if nothing is locked, the last game of the week counts. Fantasy weeks
 run Monday to Sunday (`shared/weeks.ts`).
 
+## The current week
+
+Sleeper's league state names the current week, but it turns over a day or so
+after the fantasy week does: on a Monday it can still name the week that
+ended on Sunday. Everything that reads the current week (the strength model's
+calendar of weeks left, injury return weeks, the schedule ahead, matchups, the
+Lineup plan) would then be a week behind; a player due back on Sunday read as
+out "next 2 weeks". So the snapshot moves Sleeper's week on to the week the
+date is in (`leagueWeek` in `shared/weeks.ts`): never back, and never more than
+one week past Sleeper's. The date is the NBA day (`nbaDay`), which turns over at
+5 AM Eastern, so Sunday night's games still belong to Sunday. The sample league
+keeps its fixed week. How long a player is out ("Out 5 days") counts from
+today, not from the day of the injury report.
+
 ## Keeping data fresh
 
 There is no Refresh button. The server keeps every source up to date on its

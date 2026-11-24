@@ -23,6 +23,18 @@ describe("buildSnapshot (against the mock league)", async () => {
     expect(snapshot.fetchedAt).toBe("1970-01-01T00:00:00.000Z");
   });
 
+  it("moves on to the week today is in when Sleeper has not yet (one week at most), only when asked", async () => {
+    // Sleeper's state says week 4 (Nov 9-15); Monday Nov 16 is week 5.
+    const monday = () => Date.parse("2026-11-16T20:00:00Z");
+    expect((await buildSnapshot(MOCK_LEAGUE_ID, fetchFromMock, players, monday, { followCalendar: true })).week).toBe(5);
+    expect((await buildSnapshot(MOCK_LEAGUE_ID, fetchFromMock, players, monday)).week).toBe(4);
+    // Sunday night's games (early Monday UTC) still belong to week 4.
+    const sundayNight = () => Date.parse("2026-11-16T04:30:00Z");
+    expect((await buildSnapshot(MOCK_LEAGUE_ID, fetchFromMock, players, sundayNight, { followCalendar: true })).week).toBe(4);
+    const later = () => Date.parse("2026-12-20T20:00:00Z");
+    expect((await buildSnapshot(MOCK_LEAGUE_ID, fetchFromMock, players, later, { followCalendar: true })).week).toBe(5);
+  });
+
   it("ranks teams by wins, then points scored", () => {
     expect(snapshot.teams).toHaveLength(10);
     expect(snapshot.teams.map((team) => team.rank)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);

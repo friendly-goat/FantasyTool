@@ -1,3 +1,4 @@
+import { leagueWeek, nbaDay } from "../shared/weeks.ts";
 import type {
   DraftBoard,
   DraftSelection,
@@ -288,6 +289,11 @@ export async function buildSnapshot(
   fetchJson: FetchJson,
   players: PlayerMap,
   now: () => number = Date.now,
+  /**
+   * Move Sleeper's week on to the week today is in when Sleeper lags (`leagueWeek`). Off for the
+   * sample league, whose state is fixed at a made-up week.
+   */
+  { followCalendar = false }: { followCalendar?: boolean } = {},
 ): Promise<LeagueSnapshot> {
   const id = encodeURIComponent(leagueId);
   const [state, league, rosters, users] = await Promise.all([
@@ -300,7 +306,11 @@ export async function buildSnapshot(
     throw new Error(`Sleeper has no league with ID ${leagueId}.`);
   }
 
-  const week = currentWeek(state ?? {});
+  const sleeperWeek = currentWeek(state ?? {});
+  const week =
+    followCalendar && league.status === "in_season"
+      ? leagueWeek(sleeperWeek, state?.season_start_date ?? null, nbaDay(now()))
+      : sleeperWeek;
   const weeks: number[] = [];
   for (let w = week; w >= 1 && weeks.length < TRANSACTION_WEEKS; w--) weeks.push(w);
 
