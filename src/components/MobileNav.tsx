@@ -1,5 +1,5 @@
 import { type ReactNode, useEffect, useRef } from "react";
-import { closeDialog } from "../closeDialog.ts";
+import { closeDialog, openDialog } from "../closeDialog.ts";
 import { useBackToClose, useSheetPull } from "../sheetGestures.ts";
 
 /**
@@ -92,7 +92,7 @@ export function MobileNav<View extends string>({
   useEffect(() => {
     const element = sheet.current;
     if (!element) return;
-    if (open && !element.open) element.showModal();
+    if (open && !element.open) openDialog(element);
     if (!open && element.open) closeDialog(element);
   }, [open]);
 

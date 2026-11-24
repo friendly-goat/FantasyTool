@@ -25,3 +25,48 @@ export function closeDialog(dialog: HTMLDialogElement | null): void {
   dialog.addEventListener("animationend", onEnd);
   timer = window.setTimeout(finish, 500); // in case the animation never reports its end
 }
+
+/** The button or link last pressed, so a sheet can hand focus back to it when it closes. */
+let lastPressed: HTMLElement | null = null;
+if (typeof document !== "undefined") {
+  document.addEventListener(
+    "pointerdown",
+    (event) => {
+      lastPressed = (event.target as Element | null)?.closest<HTMLElement>("button, a[href], summary, [tabindex]") ?? null;
+    },
+    true,
+  );
+}
+
+/**
+ * Opens a dialog (a card or sheet) so that closing it leaves the page exactly where it was.
+ *
+ * A dialog hands focus back, when it closes, to whatever had focus when it opened, and the browser
+ * scrolls that into view. An iPhone does not focus a tapped button, so that was often a dropdown or
+ * a box tapped earlier, somewhere else on the page (on Trades, the builder near the bottom), and
+ * closing a player card jumped there. So the button that opened the dialog takes focus first
+ * (without scrolling), and the page's scroll position is put back when the dialog closes, and
+ * again after Back steps over the dialog's history entry.
+ */
+export function openDialog(dialog: HTMLDialogElement | null): void {
+  if (!dialog || dialog.open) return;
+  const top = window.scrollY;
+  const focused = document.activeElement;
+  const opener = lastPressed?.isConnected && !dialog.contains(lastPressed) ? lastPressed : null;
+  if (opener && focused !== opener) opener.focus({ preventScroll: true });
+  else if (!opener && focused instanceof HTMLElement && focused.matches("input, select, textarea")) focused.blur();
+  const restore = () => {
+    if (Math.abs(window.scrollY - top) > 1) window.scrollTo({ top, behavior: "instant" });
+  };
+  dialog.addEventListener(
+    "close",
+    () => {
+      restore();
+      requestAnimationFrame(restore);
+      window.addEventListener("popstate", restore);
+      window.setTimeout(() => window.removeEventListener("popstate", restore), 1000);
+    },
+    { once: true },
+  );
+  dialog.showModal();
+}

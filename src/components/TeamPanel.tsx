@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { StrengthModel, TeamStrength } from "../../shared/strength.ts";
 import type { LeagueSnapshot, PlayerStats, StatsReport } from "../../shared/types.ts";
-import { closeDialog } from "../closeDialog.ts";
+import { closeDialog, openDialog } from "../closeDialog.ts";
 import { useBackToClose, useSheetPull } from "../sheetGestures.ts";
 import { formatPoints, formatRecord } from "../format.ts";
 import { Avatar } from "./Avatar.tsx";
@@ -40,7 +40,7 @@ export function TeamPanel({ snapshot, modelSnapshot, model, strengths, stats, ro
 
   useEffect(() => {
     const element = dialog.current;
-    if (element && !element.open) element.showModal();
+    if (element && !element.open) openDialog(element);
   }, []);
 
   const team = snapshot.teams.find((candidate) => candidate.rosterId === rosterId);

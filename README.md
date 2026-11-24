@@ -1226,8 +1226,13 @@ follows the finger and closes when let go far or fast enough
 (`pullCloses`: 140 px, a quarter of the sheet, or a quick flick), otherwise it
 springs back; sideways swipes and scrolling inside are left alone. Back (the
 phone's back gesture or the browser's) closes the sheet on top instead of
-leaving the app (`useBackToClose`, a history entry per open sheet). The page
-behind a sheet does not scroll, tapping the tab you are on scrolls back to the
+leaving the app (`useBackToClose`, a history entry per open sheet). Closing a
+card or sheet, however it is closed, leaves the page exactly where it was
+(`openDialog` in `src/closeDialog.ts`): the button that opened it gets focus
+back (an iPhone does not focus a tapped button, so the browser used to hand
+focus to a dropdown tapped earlier and scroll the page to it), the scroll
+position is put back, and the app keeps its own scroll position on Back
+(`history.scrollRestoration` is manual). The page behind a sheet does not scroll, tapping the tab you are on scrolls back to the
 top, buttons and links show a pressed state, and the player card's chart is
 drawn at the card's real width (`useWidth`) so its labels stay readable. Secondary table columns are hidden,
 wide tables keep player names in view while they scroll, notes fold away under

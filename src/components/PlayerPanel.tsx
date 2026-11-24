@@ -5,7 +5,7 @@ import type { DraftBoard, LeagueSnapshot, PlayerCareer, PlayerDetail, PlayerGame
 import { getDraft, getPlayerCareer, getPlayerDetail } from "../api.ts";
 import { CareerChart } from "./CareerChart.tsx";
 import { readSaved, savedKeys, writeSaved } from "../saved.ts";
-import { closeDialog } from "../closeDialog.ts";
+import { closeDialog, openDialog } from "../closeDialog.ts";
 import { useBackToClose, useSheetPull } from "../sheetGestures.ts";
 import { fantasyTone, formatAverage, formatDay, formatGameDate, formatPoints, formatSigned, toneColor } from "../format.ts";
 
@@ -320,7 +320,7 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
 
   useEffect(() => {
     const element = dialog.current;
-    if (element && !element.open) element.showModal();
+    if (element && !element.open) openDialog(element);
   }, []);
 
   useEffect(() => {

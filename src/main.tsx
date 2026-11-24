@@ -4,6 +4,10 @@ import "@fontsource-variable/archivo/wdth.css";
 import "./styles.css";
 import { App } from "./App.tsx";
 
+// The app keeps its own scroll position: Back only closes a card or sheet (src/sheetGestures.ts), and
+// the browser must not move the page when it does.
+if ("scrollRestoration" in window.history) window.history.scrollRestoration = "manual";
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <App />
