@@ -6,7 +6,8 @@ import { createBalldontlie, createRequestQueue, parseMinutes, toGameLine, toSche
 import { matchPlayers, normalizeName, sameLastName } from "./match.ts";
 import { createMockStats } from "./mock.ts";
 import type { GameLine, StatsProvider } from "./provider.ts";
-import { StatsService } from "./service.ts";
+import { careerSeasons, MAX_CAREER_SEASONS, StatsService, teamLines } from "./service.ts";
+import { MemoryStorage } from "../storage.ts";
 import { playerLog, pointsAllowed, regularSeasonLines, summarize } from "./summary.ts";
 
 const EMPTY: StatLine = {
@@ -206,6 +207,39 @@ describe("regularSeasonLines", () => {
     const regular = regularSeasonLines(lines);
     expect(regular.filter((line) => line.team === "BOS")).toHaveLength(82);
     expect(regular.filter((line) => line.team === "WAS")).toHaveLength(82);
+  });
+});
+
+describe("careerSeasons", () => {
+  it("runs from this season back to his first, newest first", () => {
+    expect(careerSeasons("2026", 17, true, () => true)).toHaveLength(18);
+    expect(careerSeasons("2026", 17, true, () => true).at(-1)).toBe("2009");
+    expect(careerSeasons("2026", 0, true, () => true)).toEqual(["2026"]);
+    expect(careerSeasons("2026", 40, true, () => true)).toHaveLength(MAX_CAREER_SEASONS);
+  });
+
+  it("offers only last season without a source for older ones, and without his experience", () => {
+    expect(careerSeasons("2026", 10, false, () => true)).toEqual(["2026", "2025"]);
+    expect(careerSeasons("2026", undefined, true, () => true)).toEqual(["2026", "2025"]);
+    expect(careerSeasons("2026", undefined, true, () => false)).toEqual(["2026"]);
+  });
+});
+
+describe("teamLines", () => {
+  it("gives each finished game of the team a line with no minutes, from its side", () => {
+    const game = (id: string, home: string, away: string, state: "final" | "scheduled" = "final") => ({
+      id, date: `2015-11-0${id}`, startTime: null, home, away, state, homeScore: null, awayScore: null, statusText: null,
+    });
+    const lines = teamLines("BOS", [game("1", "BOS", "NYK"), game("2", "MIA", "BOS"), game("3", "LAL", "GSW"), game("4", "BOS", "CHI", "scheduled")]);
+    expect(lines.map((line) => [line.date, line.opponent, line.home, line.minutes])).toEqual([
+      ["2015-11-01", "NYK", true, 0],
+      ["2015-11-02", "MIA", false, 0],
+    ]);
+    // They mark his team's games without counting as anyone's.
+    const played = gameLine({ key: "p1", date: "2015-11-01", pts: 20 });
+    const log = playerLog(sleeper("a", "Ada Stone", "BOS"), played.playerId, [played, ...lines], { pts: 1 });
+    expect(log.games).toHaveLength(1);
+    expect(log.missed.map((missed) => missed.date)).toEqual(["2015-11-02"]);
   });
 });
 
@@ -435,6 +469,63 @@ describe("StatsService", async () => {
     const report = await service.report(snapshot, players);
     expect(report.players[starter.id]!.fantasyAvg).toBeCloseTo(detail.stats!.fantasyAvg);
     expect(await service.playerDetail(snapshot, players, "no-such-id")).toBeNull();
+  });
+
+  it("lists each player's seasons and fetches an older one once, then keeps it", async () => {
+    const mock = createMockStats(rawPlayers);
+    const calls: string[] = [];
+    const provider: StatsProvider = {
+      ...mock,
+      async fetchPlayerSeason(playerId, season) {
+        calls.push(`player ${season}`);
+        return mock.fetchPlayerSeason!(playerId, season);
+      },
+      async fetchTeamSeason(team, season) {
+        calls.push(`team ${team.abbreviation} ${season}`);
+        return mock.fetchTeamSeason!(team, season);
+      },
+    };
+    const storage = new MemoryStorage();
+    const service = new StatsService(provider, { storage });
+    await service.sync("2026");
+    await service.sync("2025");
+
+    // A veteran: this season back to his first. A rookie: this season only.
+    const veteran = Object.values(players).find((player) => (player.yearsExp ?? 0) >= 6 && snapshot.teams.some((team) => team.starters.some((s) => s.player?.id === player.id)))!;
+    const detail = (await service.playerDetail(snapshot, players, veteran.id))!;
+    expect(detail.seasons).toHaveLength(veteran.yearsExp! + 1);
+    expect(detail.seasons![0]).toBe("2026");
+    expect(detail.seasons!.at(-1)).toBe(String(2026 - veteran.yearsExp!));
+    expect(detail.player).not.toHaveProperty("yearsExp");
+    const rookie = Object.values(players).find((player) => player.yearsExp === 0)!;
+    expect((await service.playerDetail(snapshot, players, rookie.id))!.seasons).toEqual(["2026"]);
+
+    // Last season comes from the saved box scores: no request for it.
+    const last = (await service.playerDetail(snapshot, players, veteran.id, "2025"))!;
+    expect(last.season).toBe("2025");
+    expect(calls).toEqual([]);
+
+    // An odd year: the sample source sits him four games in a row, which show as missed.
+    const old = (await service.playerDetail(snapshot, players, veteran.id, "2023"))!;
+    expect(old.season).toBe("2023");
+    expect(old.stats!.games).toBeGreaterThan(0);
+    expect(old.games.every((game) => game.date.startsWith("2023") || game.date.startsWith("2024"))).toBe(true);
+    expect(old.missed).toHaveLength(4);
+    expect(calls).toEqual(["player 2023", `team ${veteran.team} 2023`]);
+
+    // Kept in memory, then in storage after a restart: no second fetch.
+    await service.playerDetail(snapshot, players, veteran.id, "2023");
+    const restarted = new StatsService(provider, { storage });
+    await restarted.sync("2026");
+    await restarted.sync("2025");
+    const again = (await restarted.playerDetail(snapshot, players, veteran.id, "2023"))!;
+    expect(again.stats!.games).toBe(old.stats!.games);
+    expect(calls).toHaveLength(2);
+
+    // A season outside his career is never fetched.
+    const outside = (await service.playerDetail(snapshot, players, veteran.id, "1990"))!;
+    expect(outside.stats).toBeNull();
+    expect(calls).toHaveLength(2);
   });
 
   it("asks only for recent days on later downloads and merges the result", async () => {

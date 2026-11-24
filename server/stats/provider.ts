@@ -71,4 +71,8 @@ export interface StatsProvider {
   fetchSchedule?(startDate: string, endDate: string): Promise<ScheduledGame[]>;
   /** Everyone on the league's injury report now. */
   fetchInjuries?(): Promise<InjuryReport[]>;
+  /** One player's regular-season game lines in a past season (someone is waiting for them). */
+  fetchPlayerSeason?(playerId: string, season: string): Promise<GameLine[]>;
+  /** One team's regular-season games in a past season, by the source's team ID or abbreviation. */
+  fetchTeamSeason?(team: { id: string | null; abbreviation: string | null }, season: string): Promise<ScheduledGame[]>;
 }

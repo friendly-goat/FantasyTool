@@ -184,14 +184,18 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   or quiet), the keep-fresh loop runs every 15 s then, `keepLiveFresh` brings
   the day being played up to date every 45 s, the view polls `PLAN_POLL_MS`.
   Display only: never fed into strength, grades or trade ideas.
-- The player card's chart shows earlier absences of 5+ missed games in a row
+- The player card's chart shows earlier absences of 3+ missed games in a row
   as gray bands (`timeline`, `PAST_ABSENCE_GAMES` in `ProjectionChart.tsx`),
   the current one from his first missed game; the game log lists every missed
   game as Out (`missedGames` in `server/stats/summary.ts`, `PlayerDetail.missed`);
   the card shows his draft pick from the saved draft board, and a season
-  picker for last season's regular-season log (`?season=previous`, from saved
-  box scores, `regularSeasonLines`). Hover effects live
-  inside `@media (hover: hover)` only.
+  picker with his own seasons (`PlayerDetail.seasons`, `careerSeasons` from
+  Sleeper's `years_exp`, kept server-side only; a rookie sees this season
+  only). Last season comes from saved box scores (`regularSeasonLines`); an
+  older one is fetched for him alone once and stored for good
+  (`pastSeason`, `teamLines`, `?season=YYYY`); never look up a season outside
+  his list. The depth chart is hidden while a past season is shown. Hover
+  effects live inside `@media (hover: hover)` only.
 - The player card's depth chart (`shared/depthChart.ts`, `DepthChart.tsx`) is
   worked out from recent minutes (no source publishes one), minutes colored
   only when well off his season's (`minutesTone`); how long a player is out

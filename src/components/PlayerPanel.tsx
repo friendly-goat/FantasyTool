@@ -67,28 +67,45 @@ function seasonName(year: number): string {
 }
 
 /**
- * Last season's game log, fetched the first time it is picked and then kept for the visit (a
- * finished season does not change). The server reads it from box scores it has already saved.
+ * A finished season's game log (`year`, null for none), fetched the first time it is picked and
+ * then kept for the visit, since a finished season does not change. The server reads last season
+ * from box scores it has already saved, and fetches an older one once and keeps it.
  */
-function usePreviousSeason(leagueId: string, playerId: string, wanted: boolean): { detail: PlayerDetail | null; error: string | null } {
-  const key = `${leagueId}:${playerId}:previous`;
+function usePastSeason(leagueId: string, playerId: string, year: string | null): { detail: PlayerDetail | null; error: string | null } {
+  const key = `${leagueId}:${playerId}:${year}`;
   const [state, setState] = useState<{ key: string; detail: PlayerDetail | null; error: string | null }>({ key, detail: null, error: null });
   useEffect(() => {
-    if (!wanted) return;
+    if (!year) return;
     const saved = details.get(key);
     if (saved) return setState({ key, detail: saved.detail, error: null });
     let current = true;
-    getPlayerDetail(leagueId, playerId, "previous")
+    getPlayerDetail(leagueId, playerId, year)
       .then((loaded) => {
         details.set(key, { detail: loaded, at: Date.now() });
         if (current) setState({ key, detail: loaded, error: null });
       })
-      .catch((cause) => current && setState({ key, detail: null, error: cause instanceof Error ? cause.message : "Could not load last season." }));
+      .catch((cause) => current && setState({ key, detail: null, error: cause instanceof Error ? cause.message : "Could not load that season." }));
     return () => {
       current = false;
     };
-  }, [key, wanted, leagueId, playerId]);
+  }, [key, year, leagueId, playerId]);
   return state.key === key ? state : { detail: null, error: null };
+}
+
+/** The season picker: a plain heading when he has only this season (a rookie). */
+function SeasonPick({ seasons, value, onChange }: { seasons: string[]; value: string; onChange: (season: string) => void }) {
+  if (seasons.length <= 1) return <h3 className="panel-heading">{seasonName(Number(seasons[0] ?? value))}</h3>;
+  return (
+    <div className="panel-heading season-pick">
+      <select aria-label="Season" value={value} onChange={(event) => onChange(event.target.value)}>
+        {seasons.map((year) => (
+          <option key={year} value={year}>
+            {seasonName(Number(year))}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
 }
 
 /** Games he played and missed, newest first, for the game log. */
@@ -109,6 +126,9 @@ function fantasyTeamOf(snapshot: LeagueSnapshot, playerId: string): string | nul
   }
   return null;
 }
+
+/** Rows held for a finished season's log while it loads. */
+const PAST_LOADING_ROWS = 30;
 
 // Game logs already opened this visit, so a second look is instant.
 const DETAIL_MINUTES = 5;
@@ -271,13 +291,23 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
   // rest of the page shows, so nothing changes when the detail arrives; the
   // detail adds the game log (and the numbers for a player the report lacks).
   const season = stats?.players[player.id] ?? detail?.stats ?? null;
-  // Which season the chart and game log show: this one, or last season's regular season.
-  const [which, setWhich] = useState<"current" | "previous">("current");
-  const previous = usePreviousSeason(snapshot.league.id, player.id, which === "previous");
-  const pastStats = previous.detail?.stats ?? null;
-  const games = which === "previous" ? (previous.detail?.games ?? null) : (detail?.games ?? null);
-  const missedGames = which === "previous" ? (previous.detail?.missed ?? null) : (detail?.missed ?? null);
   const seasonYear = Number(snapshot.league.season) || new Date().getUTCFullYear();
+  const thisSeason = String(seasonYear);
+  // The seasons he can be viewed in come with his details (back to his first, from his years in
+  // the league); this season alone until they arrive, last season too from an older server.
+  const seasons = detail ? (detail.seasons ?? [thisSeason, String(seasonYear - 1)]) : [thisSeason];
+  // Which season the chart and game log show: this one, or a finished one's regular season.
+  const [which, setWhich] = useState(thisSeason);
+  useEffect(() => setWhich(thisSeason), [player.id, thisSeason]);
+  const pastYear = which !== thisSeason && seasons.includes(which) ? which : null;
+  const past = usePastSeason(snapshot.league.id, player.id, pastYear);
+  const pastStats = past.detail?.stats ?? null;
+  const pastLoading = pastYear !== null && !past.detail && !past.error;
+  const games = pastYear ? (past.detail?.games ?? null) : (detail?.games ?? null);
+  const missedGames = pastYear ? (past.detail?.missed ?? null) : (detail?.missed ?? null);
+  // While a finished season loads, the chart keeps its place with this season's numbers.
+  const chartStats = pastYear ? (pastStats ?? (pastLoading ? season : null)) : season;
+  const showLog = pastYear ? pastStats !== null || pastLoading : season !== null;
   const draft = draftLine(snapshot, useDraftBoard(snapshot.league.id), player.id);
   const today = nbaDay(Date.now());
   const recentLabel = `Last ${stats?.recentWindow ?? 5}`;
@@ -347,7 +377,6 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
         )}
 
         {season && (
-          <>
             <dl className="figures">
               <div>
                 <dt>Fantasy avg</dt>
@@ -370,40 +399,37 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
                 <dd>{formatAverage(season.minutes)}</dd>
               </div>
             </dl>
+        )}
 
-            {formatPoints(season.sleeperAvg) !== formatPoints(season.fantasyAvg) && (
+        {season && formatPoints(season.sleeperAvg) !== formatPoints(season.fantasyAvg) && (
               <p className="quiet panel-note">
                 Sleeper's app shows {formatPoints(season.sleeperAvg)} as this player's average. Sleeper counts
                 each scoring bonus once against season totals, so its number differs from the average of the
                 games below.
               </p>
-            )}
+        )}
 
-            <div className="panel-heading season-pick">
-              <select
-                aria-label="Season"
-                value={which}
-                onChange={(event) => setWhich(event.target.value as "current" | "previous")}
-              >
-                <option value="current">{seasonName(seasonYear)}</option>
-                <option value="previous">{seasonName(seasonYear - 1)}</option>
-              </select>
-            </div>
-            {which === "previous" && previous.error && <p className="notice notice-error">{previous.error}</p>}
-            {which === "previous" && previous.detail && !pastStats && (
-              <p className="notice">No regular-season games for him in {seasonName(seasonYear - 1)}.</p>
+        {/* The season picker shows with this season's numbers, or for a player with only past seasons. */}
+        {(season || seasons.length > 1) && (
+          <>
+            <SeasonPick seasons={seasons} value={pastYear ?? thisSeason} onChange={setWhich} />
+            {pastYear && past.error && <p className="notice notice-error">{past.error}</p>}
+            {pastYear && past.detail && !pastStats && (
+              <p className="notice">No regular-season games for him in the {seasonName(Number(pastYear))}.</p>
             )}
-            {(which === "current" || pastStats || (!previous.detail && !previous.error)) && (
+            {chartStats && (
             <ProjectionChart
-              stats={which === "previous" ? (pastStats ?? season) : season}
+              stats={chartStats}
               games={games}
               missedGames={missedGames}
-              finished={which === "previous"}
+              finished={pastYear !== null}
               absence={
                 // From today: the games he has missed since the report are on the chart already.
-                injury && outlook?.kind === "season"
+                pastYear || !season || !injury
+                  ? null
+                  : outlook?.kind === "season"
                   ? absenceFor(season, today > injury.asOf ? today : injury.asOf, null, null)
-                  : injury && outlook?.kind === "window"
+                  : outlook?.kind === "window"
                     ? absenceFor(
                         season,
                         today > injury.asOf ? today : injury.asOf,
@@ -414,7 +440,7 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
               }
             />
             )}
-            {which === "current" && (
+            {!pastYear && season && (
             <p className="quiet panel-note">
               {season.projection.factors.length > 0 ? (
                 <>
@@ -443,18 +469,25 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
             </p>
             )}
 
-            {(which === "current" || pastStats || (!previous.detail && !previous.error)) && (
+            {showLog && (
             <GameLog
-              stats={which === "previous" ? pastStats : season}
+              stats={pastYear ? pastStats : season}
               games={games}
               missedGames={missedGames}
-              loadingRows={which === "previous" ? (season.projection.lastSeason?.games ?? 20) : season.games}
+              loadingRows={
+                pastYear === String(seasonYear - 1)
+                  ? (season?.projection.lastSeason?.games ?? PAST_LOADING_ROWS)
+                  : pastYear
+                    ? PAST_LOADING_ROWS
+                    : (season?.games ?? 0)
+              }
             />
             )}
           </>
         )}
 
-        {shown.team && <DepthChart team={shown.team} stats={stats} playerId={player.id} />}
+        {/* This season's rotation only: hidden while a past season is shown, so it is not read as that season's. */}
+        {!pastYear && shown.team && <DepthChart team={shown.team} stats={stats} playerId={player.id} />}
       </div>
     </dialog>
   );

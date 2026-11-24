@@ -5,6 +5,12 @@ import { availabilityOutlook, projectPlayer } from "../../shared/projection.ts";
 import { fantasyPoints, fantasySources, sleeperDisplayedAverage } from "../scoring.ts";
 import type { GameLine } from "./provider.ts";
 
+/** The player's reference without Sleeper's years in the league (server side only). */
+function withoutYears(player: PlayerRef): PlayerRef {
+  const { yearsExp: _yearsExp, ...ref } = player;
+  return ref;
+}
+
 /** Number of most recent games behind each player's "recent" average. */
 export const RECENT_WINDOW = 5;
 
@@ -105,7 +111,7 @@ function injuredWithoutGames(
 ): PlayerStats {
   const empty = Object.fromEntries(STAT_KEYS.map((key) => [key, 0])) as unknown as StatLine;
   return {
-    ...player,
+    ...withoutYears(player),
     games: 0,
     minutes: 0,
     fantasyAvg: 0,
@@ -163,7 +169,7 @@ function summarizePlayer(
   );
 
   return {
-    ...player,
+    ...withoutYears(player),
     games: games.length,
     minutes: mean(games.map((game) => game.minutes)),
     fantasyAvg: mean(fantasy),

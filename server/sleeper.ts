@@ -194,4 +194,6 @@ export interface RawPlayer {
   fantasy_positions?: string[] | null;
   position?: string | null;
   injury_status?: string | null;
+  /** Seasons in the league before this one (0 for a rookie). */
+  years_exp?: number | null;
 }

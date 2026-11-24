@@ -750,20 +750,36 @@ not play in, a game with no minutes included (`missedGames` in
 `server/stats/summary.ts`): his team on a date is the team of his latest game
 on or before it, so a traded player's misses count against the team he was on.
 The game log shows each as "Out" in red across the stat columns. The chart
-gives room only to five or more missed games in a row (`PAST_ABSENCE_GAMES`),
+gives room only to three or more missed games in a row (`PAST_ABSENCE_GAMES`),
 drawn as gray bands where they happened with the line broken across them, so a
 game or two of rest stays out of it. When he is out now, the games he has missed
 since his last game start the current (amber) absence, which runs on to his
 expected return counted from today. The card also shows where he went in this
 league's draft, from the draft board saved on the device.
 
-The chart's heading is a season picker: this season (with the projection) or
-last season's regular season (`GET /api/league/:id/players/:playerId?season=previous`).
-Last season's box scores are downloaded once and kept in storage, never fetched
-again, so last season's log costs no outside request: the server cuts them to
-each team's first 82 game days (`regularSeasonLines`; the stored lines do not
-mark the play-in and playoffs), worked out once per download, and the page keeps
-each player's answer for the visit.
+The chart's heading is a season picker with each player's own seasons: this
+season (with the projection) back to his first, from Sleeper's years of
+experience (`years_exp`, kept on the server only; `careerSeasons` in
+`server/stats/service.ts`, at most 25). A rookie has this season only, shown as
+a plain heading. The player detail lists them (`seasons`), and
+`GET /api/league/:id/players/:playerId?season=2015` gives one (`previous` still
+means last season); a year outside his list is never looked up.
+
+- Last season comes from box scores downloaded once and kept in storage, so it
+  costs no outside request: the server cuts them to each team's first 82 game
+  days (`regularSeasonLines`; the stored lines do not mark the play-in and
+  playoffs), worked out once per download.
+- An older season is fetched for that player alone the first time anyone picks
+  it: his regular-season box scores, then each of his teams' schedules that
+  season, so the games he missed show (a game-less line per team game,
+  `teamLines`). A few requests through the shared balldontlie queue, ahead of
+  the background sync. The result is stored for good under
+  `player-season-v1-{id}-{season}` (a finished season does not change; an empty
+  one is stored too), kept in memory for the most recent 60, and requests for
+  the same season share one fetch.
+- The page keeps each player's answer per season for the visit. While a past
+  season is shown the depth chart is hidden, since it describes this season's
+  rotation.
 
 ### Depth chart (player card)
 

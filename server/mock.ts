@@ -62,6 +62,8 @@ function build() {
       team: NBA_TEAMS[Math.floor(random() * NBA_TEAMS.length)],
       fantasy_positions: POSITIONS[Math.floor(random() * POSITIONS.length)],
       injury_status: roll < 0.06 ? "OUT" : roll < 0.12 ? "DTD" : null,
+      // Seasons in the league before this one: rookies to 14-year veterans.
+      years_exp: (i * 7) % 15,
     };
   }
 

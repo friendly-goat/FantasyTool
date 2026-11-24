@@ -81,8 +81,9 @@ export function getStats(leagueId: string, retry = false): Promise<StatsReport> 
 }
 
 /** One player's numbers and game log: this season, or last season's regular season. */
-export function getPlayerDetail(leagueId: string, playerId: string, season: "current" | "previous" = "current"): Promise<PlayerDetail> {
-  const query = season === "previous" ? "?season=previous" : "";
+/** `season`: "current", "previous", or a season's starting year such as "2015". */
+export function getPlayerDetail(leagueId: string, playerId: string, season = "current"): Promise<PlayerDetail> {
+  const query = season === "current" ? "" : `?season=${encodeURIComponent(season)}`;
   return getJson(`/api/league/${encodeURIComponent(leagueId)}/players/${encodeURIComponent(playerId)}${query}`);
 }
 

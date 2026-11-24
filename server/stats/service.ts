@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
-import type { LeagueSnapshot, NbaGame, PlayerDetail, PlayerRef, PlayerStats, StatsReport, WeekLine } from "../../shared/types.ts";
+import type { LeagueSnapshot, NbaGame, PlayerDetail, PlayerRef, PlayerStats, StatLine, StatsReport, WeekLine } from "../../shared/types.ts";
 import { fantasyPoints, ignoredSettings } from "../scoring.ts";
 import type { Storage } from "../storage.ts";
 import { matchPlayers, sameLastName } from "./match.ts";
 import { PLAYER_ID_OVERRIDES } from "./overrides.ts";
 import { type InjuryNews, readInjury } from "../../shared/injury.ts";
-import type { GameLine, InjuryReport, StatsProvider } from "./provider.ts";
+import type { GameLine, InjuryReport, ScheduledGame, StatsProvider } from "./provider.ts";
 
 /** The injury report keyed by stats-source player ID, each entry read (dates, re-evaluations). */
 function injuriesBySource(report: InjuryReport[], today: string): Map<string, InjuryNews> {
@@ -44,6 +44,58 @@ export interface StatsServiceOptions {
 
 function previousSeason(season: string): string {
   return String(Number(season) - 1);
+}
+
+/** The most seasons a player card offers, however long the career. */
+export const MAX_CAREER_SEASONS = 25;
+/** Older player seasons kept in memory once read. */
+const PAST_SEASONS_KEPT = 60;
+
+/**
+ * The seasons a player can be viewed in, newest first. With Sleeper's years of experience: this
+ * season back to his first (a rookie has this season only). Older seasons than last season need
+ * a stats source that fetches one player's season; without one, or without his experience, the
+ * list is this season, plus last season when he played in it.
+ */
+export function careerSeasons(
+  current: string,
+  yearsExp: number | undefined,
+  canFetchOlder: boolean,
+  playedLastSeason: () => boolean,
+): string[] {
+  const year = Number(current);
+  const back =
+    yearsExp === undefined
+      ? playedLastSeason() ? 1 : 0
+      : Math.min(Math.max(0, Math.floor(yearsExp)), canFetchOlder ? MAX_CAREER_SEASONS - 1 : 1);
+  return Array.from({ length: back + 1 }, (_, index) => String(year - index));
+}
+
+const NO_STATS: StatLine = { pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tov: 0, tpm: 0, tpa: 0, fgm: 0, fga: 0, ftm: 0, fta: 0, oreb: 0, dreb: 0, pf: 0 };
+
+/**
+ * A game-less line for each of a team's finished games, so a past season's log can tell which of
+ * his team's games a player missed (they count for nothing: no minutes, no player).
+ */
+export function teamLines(team: string, games: ScheduledGame[]): GameLine[] {
+  const lines: GameLine[] = [];
+  for (const game of games) {
+    if (game.state !== "final" || (game.home !== team && game.away !== team)) continue;
+    const home = game.home === team;
+    lines.push({
+      key: `team:${team}:${game.id}`,
+      playerId: `team:${team}`,
+      playerName: team,
+      team,
+      opponent: home ? game.away : game.home,
+      home,
+      date: game.date,
+      final: true,
+      minutes: 0,
+      stats: NO_STATS,
+    });
+  }
+  return lines;
 }
 
 function daysBefore(date: string, days: number): string {
@@ -268,32 +320,99 @@ export class StatsService {
     };
   }
 
-  /** One player's season numbers and game log, from the data already downloaded. */
+  /**
+   * One player's season numbers and game log. The current season and the one before come from
+   * the box scores already saved; an older season is fetched for him alone the first time it is
+   * asked for and kept for good (see pastSeason). `seasons` lists the seasons he can be viewed
+   * in, newest first.
+   */
   async playerDetail(
     snapshot: LeagueSnapshot,
     sleeperPlayers: Record<string, PlayerRef>,
     playerId: string,
-    /** "previous": last season's regular season, from the box scores already saved (no outside request). */
-    which: "current" | "previous" = "current",
+    /** "current", "previous", or a season's starting year such as "2015". */
+    wanted: string = "current",
   ): Promise<PlayerDetail | null> {
-    const player = sleeperPlayers[playerId];
-    if (!player) return null;
-    const season = which === "previous" ? previousSeason(snapshot.league.season) : snapshot.league.season;
-    if (!this.provider) return { player, season, stats: null, games: [], missed: [] };
+    const sleeperPlayer = sleeperPlayers[playerId];
+    if (!sleeperPlayer) return null;
+    const { yearsExp, ...player } = sleeperPlayer;
+    const current = snapshot.league.season;
+    const previous = previousSeason(current);
+    const season = wanted === "current" ? current : wanted === "previous" ? previous : wanted;
+    if (!this.provider) return { player, season, seasons: [current], stats: null, games: [], missed: [] };
 
-    const lines = [...(await this.load(snapshot.league.season)).lines.values()];
+    const lines = [...(await this.load(current)).lines.values()];
     const scoring = snapshot.league.scoringSettings;
-    const prior = await this.load(previousSeason(snapshot.league.season));
+    const prior = await this.load(previous);
     const { matches, lastSeason } = this.context(sleeperPlayers, lines, prior, scoring);
-    if (which === "previous") {
-      return { player, season, ...playerLog(player, matches.get(playerId), this.priorRegular(prior), scoring, null) };
+    const sourceId = matches.get(playerId);
+    const seasons = careerSeasons(current, yearsExp, this.canFetchPastSeasons(), () =>
+      sourceId !== undefined && this.priorRegular(prior).some((line) => line.playerId === sourceId && line.minutes > 0),
+    );
+    const empty = { player, season, seasons, stats: null, games: [], missed: [] };
+    // Only a season in his list is ever looked up, so a made-up year never reaches the stats source.
+    if (!seasons.includes(season)) return empty;
+    if (season === current) {
+      return { player, season, seasons, ...playerLog(player, sourceId, lines, scoring, snapshot.league.seasonStartDate, lastSeason) };
     }
-    return {
-      player,
-      season,
-      ...playerLog(player, matches.get(playerId), lines, scoring, snapshot.league.seasonStartDate, lastSeason),
-    };
+    if (season === previous) {
+      return { player, season, seasons, ...playerLog(player, sourceId, this.priorRegular(prior), scoring, null) };
+    }
+    if (!sourceId) return empty;
+    return { player, season, seasons, ...playerLog(player, sourceId, await this.pastSeason(sourceId, season), scoring, null) };
   }
+
+  /** Whether the stats source can fetch one player's older seasons. */
+  private canFetchPastSeasons(): boolean {
+    return typeof this.provider?.fetchPlayerSeason === "function" && typeof this.provider?.fetchTeamSeason === "function";
+  }
+
+  /**
+   * One player's regular season from before last season, with a game-less line for each of his
+   * teams' games (so the games he missed show). Read from storage when it has been fetched before;
+   * otherwise fetched once (his box scores, then each of his teams' schedules) and stored for good,
+   * since a finished season does not change. An empty season is stored too.
+   */
+  private async pastSeason(sourceId: string, season: string): Promise<GameLine[]> {
+    const key = `player-season-v1-${sourceId}-${season}`;
+    const kept = this.pastKept.get(key);
+    if (kept) {
+      this.pastKept.delete(key);
+      this.pastKept.set(key, kept);
+      return kept;
+    }
+    const pending = this.pastInFlight.get(key);
+    if (pending) return pending;
+    const work = (async () => {
+      const saved = await this.storage?.readEntry(key).catch(() => null);
+      if (saved && Array.isArray(saved.value)) return saved.value as GameLine[];
+      const provider = this.provider!;
+      const games = await provider.fetchPlayerSeason!(sourceId, season);
+      const teams = new Map<string, string | null>();
+      for (const game of games) if (game.team && !teams.has(game.team)) teams.set(game.team, game.teamId ?? null);
+      const schedules = await Promise.all(
+        [...teams].map(async ([abbreviation, id]) => teamLines(abbreviation, await provider.fetchTeamSeason!({ id, abbreviation }, season))),
+      );
+      const lines = regularSeasonLines([...games, ...schedules.flat()]);
+      await this.storage?.writeEntry(key, { savedAt: this.now(), value: lines }).catch((error: Error) => {
+        console.error(`[stats] could not save ${key}:`, error.message);
+      });
+      return lines;
+    })();
+    this.pastInFlight.set(key, work);
+    try {
+      const lines = await work;
+      this.pastKept.set(key, lines);
+      while (this.pastKept.size > PAST_SEASONS_KEPT) this.pastKept.delete(this.pastKept.keys().next().value!);
+      return lines;
+    } finally {
+      this.pastInFlight.delete(key);
+    }
+  }
+
+  /** Older seasons already read, most recently used last. */
+  private pastKept = new Map<string, GameLine[]>();
+  private pastInFlight = new Map<string, Promise<GameLine[]>>();
 
   /** Last season's regular-season lines, worked out once per download of it. */
   private priorRegular(prior: SeasonData): GameLine[] {

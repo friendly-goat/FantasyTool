@@ -23,8 +23,8 @@ export function absenceFor(stats: PlayerStats, today: string, expected: string |
   return { games: Math.min(remaining, Math.round((days / 7) * GAMES_PER_WEEK)), backLabel };
 }
 
-/** Missed games in a row it takes to show a past absence on the chart: more than 4. */
-export const PAST_ABSENCE_GAMES = 5;
+/** Missed games in a row it takes to show a past absence on the chart: 3 or more. */
+export const PAST_ABSENCE_GAMES = 3;
 
 /** One place on the chart's timeline, oldest first: a game he played, or a game he missed. */
 type Slot = { kind: "game"; game: PlayerGame } | { kind: "out"; date: string };
@@ -194,7 +194,7 @@ export function ProjectionChart({
           </text>
         )}
 
-        {/* Earlier absences: five games or more missed in a row */}
+        {/* Earlier absences: three games or more missed in a row */}
         {pastBands.map((band) => {
           const games = band.to - band.from + 1;
           const left = x(band.from) - step / 2;
@@ -271,7 +271,11 @@ export function ProjectionChart({
             <span className="key key-out" /> {seasonOver ? "Out for the season" : `Out for about ${outNowGames} games`}
           </>
         )}
-        {finished && played.length > 0 && <> {played.length} games, averaging {formatPoints(stats.fantasyAvg)}.</>}
+        {finished && played.length > 0 && (
+          <span className="chart-total">
+            {played.length} games, averaging {formatPoints(stats.fantasyAvg)}.
+          </span>
+        )}
         {!seasonOver && (
           <>
             <span className={`key key-projection ${tone}`} /> Projection, {trendWord}: {formatPoints(projection.perGame)} a

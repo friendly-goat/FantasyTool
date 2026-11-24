@@ -56,6 +56,7 @@ export function trimPlayers(raw: unknown): PlayerMap {
       team: value.team ?? null,
       positions,
       injuryStatus: value.injury_status || null,
+      ...(typeof value.years_exp === "number" && value.years_exp >= 0 ? { yearsExp: value.years_exp } : {}),
     };
   }
   return players;
@@ -78,6 +79,12 @@ function points(whole: number | undefined, decimal: number | undefined): number 
 }
 
 function lookup(players: PlayerMap, id: string): PlayerRef {
+  const known = players[id];
+  if (known) {
+    // Years in the league stay on the server (they only list a player's seasons).
+    const { yearsExp: _yearsExp, ...ref } = known;
+    return ref;
+  }
   return (
     players[id] ?? {
       id,

@@ -13,6 +13,8 @@ export interface PlayerRef {
   positions: string[];
   /** Sleeper's injury tag (e.g. "OUT", "DTD"), or null when healthy. */
   injuryStatus: string | null;
+  /** Seasons in the league before this one (0 for a rookie), when Sleeper says. Server side only. */
+  yearsExp?: number;
 }
 
 export interface StarterSlot {
@@ -413,6 +415,8 @@ export interface PlayerDetail {
   player: PlayerRef;
   /** The season these games are from, as Sleeper names it ("2026"); absent from older answers. */
   season?: string;
+  /** The seasons he can be viewed in, newest first (from his years in the league); absent from older answers. */
+  seasons?: string[];
   /** Null when the player has no counted games this season. */
   stats: PlayerStats | null;
   /** Newest first. */

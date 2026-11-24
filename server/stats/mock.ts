@@ -155,6 +155,27 @@ export function createMockStats(players: Record<string, unknown>): StatsProvider
     async fetchInjuries() {
       return mockInjuries(players);
     },
+    async fetchPlayerSeason(playerId, season) {
+      // Every player sits a stretch in odd years: four games from the tenth.
+      const year = Number(season);
+      return lastSeasonLines(players, year)
+        .filter((line) => line.playerId === playerId)
+        .filter((_, game) => year % 2 === 0 || game < 10 || game >= 14);
+    },
+    async fetchTeamSeason(team, season) {
+      const dates = new Set(lastSeasonLines(players, Number(season)).filter((line) => line.team === team.abbreviation).map((line) => line.date));
+      return [...dates].sort().map((date, index) => ({
+        id: `${team.abbreviation}-${date}`,
+        date,
+        startTime: null,
+        home: index % 2 === 0 ? team.abbreviation : TEAMS[index % TEAMS.length]!,
+        away: index % 2 === 0 ? TEAMS[index % TEAMS.length]! : team.abbreviation,
+        state: "final" as const,
+        homeScore: 100,
+        awayScore: 98,
+        statusText: "Final",
+      }));
+    },
     async fetchGameLines(season, fromDate, onPage) {
       if (season !== MOCK_SEASON) {
         onPage(1);

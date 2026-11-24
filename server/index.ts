@@ -554,8 +554,9 @@ app.get("/api/league/:leagueId/players/:playerId", async (req, res) => {
       getSnapshot(req.params.leagueId.trim()),
       getPlayers(),
     ]);
-    const which = req.query.season === "previous" ? "previous" : "current";
-    const detail = await stats.playerDetail(snapshot.value, players.value, req.params.playerId, which);
+    // "previous", a season's starting year ("2015"), or nothing for this season.
+    const season = typeof req.query.season === "string" && /^(previous|\d{4})$/.test(req.query.season) ? req.query.season : "current";
+    const detail = await stats.playerDetail(snapshot.value, players.value, req.params.playerId, season);
     if (!detail) {
       res.status(404).json({ error: "Sleeper has no player with that ID." });
       return;

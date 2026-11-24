@@ -2045,6 +2045,12 @@ th[aria-sort] .sort-button {
   border-color: var(--muted);
 }
 
+/* A finished season's games and average, on a line of its own under the legend. */
+.chart-total {
+  display: block;
+  margin-top: 2px;
+}
+
 /* A game he missed in the game log: the date and opponent, then Out in red in the Fpts column. */
 .log-out th,
 .log-out td {

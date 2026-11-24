@@ -293,6 +293,43 @@ export function createBalldontlie(
       }
       return games;
     },
+    async fetchPlayerSeason(playerId, season) {
+      const lines: GameLine[] = [];
+      let cursor: number | null = null;
+      for (let page = 1; page <= 5; page++) {
+        const params = new URLSearchParams({ per_page: "100", season_type: "regular" });
+        params.append("player_ids[]", playerId);
+        params.append("seasons[]", season);
+        if (cursor != null) params.set("cursor", String(cursor));
+        const body = await getPage(`${BASE_URL}/stats?${params}`, true);
+        for (const row of body.data ?? []) {
+          const line = toGameLine(row);
+          if (line) lines.push(line);
+        }
+        cursor = body.meta?.next_cursor ?? null;
+        if (cursor == null || (body.data ?? []).length === 0) break;
+      }
+      return lines;
+    },
+    async fetchTeamSeason(team, season) {
+      if (!team.id) return [];
+      const games: ScheduledGame[] = [];
+      let cursor: number | null = null;
+      for (let page = 1; page <= 5; page++) {
+        const params = new URLSearchParams({ per_page: "100", season_type: "regular" });
+        params.append("team_ids[]", team.id);
+        params.append("seasons[]", season);
+        if (cursor != null) params.set("cursor", String(cursor));
+        const body = await getPage<RawGame>(`${BASE_URL}/games?${params}`, true);
+        for (const raw of body.data ?? []) {
+          const game = toScheduledGame(raw);
+          if (game) games.push(game);
+        }
+        cursor = body.meta?.next_cursor ?? null;
+        if (cursor == null || (body.data ?? []).length === 0) break;
+      }
+      return games;
+    },
     async fetchInjuries() {
       // The whole league's report is a page or two. The NBA path is tried
       // first; the docs also list it without "/nba".
