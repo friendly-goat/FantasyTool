@@ -6,6 +6,7 @@ import type {
   WeekData,
   WeekMatchups,
   LeagueSnapshot,
+  PlayerCareer,
   PlayerDetail,
   ScheduleAhead,
   ScoreHistory,
@@ -85,6 +86,11 @@ export function getStats(leagueId: string, retry = false): Promise<StatsReport> 
 export function getPlayerDetail(leagueId: string, playerId: string, season = "current"): Promise<PlayerDetail> {
   const query = season === "current" ? "" : `?season=${encodeURIComponent(season)}`;
   return getJson(`/api/league/${encodeURIComponent(leagueId)}/players/${encodeURIComponent(playerId)}${query}`);
+}
+
+/** A player's career for the career graph; "loading" while his older seasons are fetched. */
+export function getPlayerCareer(leagueId: string, playerId: string): Promise<PlayerCareer> {
+  return getJson(`/api/league/${encodeURIComponent(leagueId)}/players/${encodeURIComponent(playerId)}/career`);
 }
 
 /** The NBA side of a fantasy week (the current one when `week` is left out): schedule and box scores. */

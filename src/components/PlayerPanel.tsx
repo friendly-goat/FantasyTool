@@ -1,8 +1,9 @@
 import { nbaDay } from "../../shared/weeks.ts";
 import { useEffect, useRef, useState } from "react";
 import { newsOutText, returnOutlook } from "../../shared/injury.ts";
-import type { DraftBoard, LeagueSnapshot, PlayerDetail, PlayerGame, MissedGame, PlayerRef, PlayerStats, StatsReport } from "../../shared/types.ts";
-import { getDraft, getPlayerDetail } from "../api.ts";
+import type { DraftBoard, LeagueSnapshot, PlayerCareer, PlayerDetail, PlayerGame, MissedGame, PlayerRef, PlayerStats, StatsReport } from "../../shared/types.ts";
+import { getDraft, getPlayerCareer, getPlayerDetail } from "../api.ts";
+import { CareerChart } from "./CareerChart.tsx";
 import { readSaved, savedKeys, writeSaved } from "../saved.ts";
 import { closeDialog } from "../closeDialog.ts";
 import { fantasyTone, formatAverage, formatDay, formatGameDate, formatPoints, formatSigned, toneColor } from "../format.ts";
@@ -92,20 +93,72 @@ function usePastSeason(leagueId: string, playerId: string, year: string | null):
   return state.key === key ? state : { detail: null, error: null };
 }
 
-/** The season picker: a plain heading when he has only this season (a rookie). */
+/** The picker's value for the career graph (seasons are years). */
+const CAREER = "career";
+
+/**
+ * The season picker: the career graph first, set apart, then each season. A plain heading when he
+ * has only this season (a rookie).
+ */
 function SeasonPick({ seasons, value, onChange }: { seasons: string[]; value: string; onChange: (season: string) => void }) {
   if (seasons.length <= 1) return <h3 className="panel-heading">{seasonName(Number(seasons[0] ?? value))}</h3>;
   return (
     <div className="panel-heading season-pick">
-      <select aria-label="Season" value={value} onChange={(event) => onChange(event.target.value)}>
-        {seasons.map((year) => (
-          <option key={year} value={year}>
-            {seasonName(Number(year))}
-          </option>
-        ))}
+      <select
+        aria-label="Season"
+        className={value === CAREER ? "is-career" : undefined}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        <option value={CAREER}>📈 Career graph</option>
+        <optgroup label="Seasons">
+          {seasons.map((year) => (
+            <option key={year} value={year}>
+              {seasonName(Number(year))}
+            </option>
+          ))}
+        </optgroup>
       </select>
     </div>
   );
+}
+
+// Careers already loaded this visit.
+const careers = new Map<string, PlayerCareer>();
+/** How often to ask again while his earlier seasons are fetched. */
+const CAREER_POLL_MS = 2500;
+
+/**
+ * A player's career for the graph, fetched when picked. While the server fetches his earlier
+ * seasons it answers "loading", and this asks again every few seconds until they are in.
+ */
+function useCareer(leagueId: string, playerId: string, wanted: boolean): PlayerCareer | null {
+  const key = `${leagueId}:${playerId}`;
+  const [state, setState] = useState<{ key: string; career: PlayerCareer | null }>({ key, career: null });
+  useEffect(() => {
+    if (!wanted) return;
+    const saved = careers.get(key);
+    if (saved) return setState({ key, career: saved });
+    let current = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const ask = () =>
+      getPlayerCareer(leagueId, playerId)
+        .then((loaded) => {
+          if (!current) return;
+          if (loaded.status === "ready") careers.set(key, loaded);
+          setState({ key, career: loaded });
+          if (loaded.status === "loading") timer = setTimeout(ask, CAREER_POLL_MS);
+        })
+        .catch((cause) => {
+          if (current) setState({ key, career: { status: "error", error: cause instanceof Error ? cause.message : "Could not load his career.", seasons: [], games: [] } });
+        });
+    void ask();
+    return () => {
+      current = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, [key, wanted, leagueId, playerId]);
+  return state.key === key ? state.career : null;
 }
 
 /** Games he played and missed, newest first, for the game log. */
@@ -299,6 +352,8 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
   // Which season the chart and game log show: this one, or a finished one's regular season.
   const [which, setWhich] = useState(thisSeason);
   useEffect(() => setWhich(thisSeason), [player.id, thisSeason]);
+  const careerView = which === CAREER && seasons.length > 1;
+  const career = useCareer(snapshot.league.id, player.id, careerView);
   const pastYear = which !== thisSeason && seasons.includes(which) ? which : null;
   const past = usePastSeason(snapshot.league.id, player.id, pastYear);
   const pastStats = past.detail?.stats ?? null;
@@ -412,12 +467,13 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
         {/* The season picker shows with this season's numbers, or for a player with only past seasons. */}
         {(season || seasons.length > 1) && (
           <>
-            <SeasonPick seasons={seasons} value={pastYear ?? thisSeason} onChange={setWhich} />
+            <SeasonPick seasons={seasons} value={careerView ? CAREER : (pastYear ?? thisSeason)} onChange={setWhich} />
+            {careerView && <CareerChart career={career} onPickSeason={setWhich} />}
             {pastYear && past.error && <p className="notice notice-error">{past.error}</p>}
             {pastYear && past.detail && !pastStats && (
               <p className="notice">No regular-season games for him in the {seasonName(Number(pastYear))}.</p>
             )}
-            {chartStats && (
+            {!careerView && chartStats && (
             <ProjectionChart
               stats={chartStats}
               games={games}
@@ -440,7 +496,7 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
               }
             />
             )}
-            {!pastYear && season && (
+            {!careerView && !pastYear && season && (
             <p className="quiet panel-note">
               {season.projection.factors.length > 0 ? (
                 <>
@@ -469,7 +525,7 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
             </p>
             )}
 
-            {showLog && (
+            {!careerView && showLog && (
             <GameLog
               stats={pastYear ? pastStats : season}
               games={games}
@@ -487,7 +543,7 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
         )}
 
         {/* This season's rotation only: hidden while a past season is shown, so it is not read as that season's. */}
-        {!pastYear && shown.team && <DepthChart team={shown.team} stats={stats} playerId={player.id} />}
+        {!careerView && !pastYear && shown.team && <DepthChart team={shown.team} stats={stats} playerId={player.id} />}
       </div>
     </dialog>
   );

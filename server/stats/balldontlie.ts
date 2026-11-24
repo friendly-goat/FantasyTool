@@ -311,6 +311,25 @@ export function createBalldontlie(
       }
       return lines;
     },
+    async fetchPlayerSeasons(playerId, seasons) {
+      // Every season asked for in one paged query: a long career is about a dozen pages.
+      const lines: GameLine[] = [];
+      let cursor: number | null = null;
+      for (let page = 1; page <= 30; page++) {
+        const params = new URLSearchParams({ per_page: "100", season_type: "regular" });
+        params.append("player_ids[]", playerId);
+        for (const season of seasons) params.append("seasons[]", season);
+        if (cursor != null) params.set("cursor", String(cursor));
+        const body = await getPage(`${BASE_URL}/stats?${params}`, true);
+        for (const row of body.data ?? []) {
+          const line = toGameLine(row);
+          if (line) lines.push(line);
+        }
+        cursor = body.meta?.next_cursor ?? null;
+        if (cursor == null || (body.data ?? []).length === 0) break;
+      }
+      return lines;
+    },
     async fetchTeamSeason(team, season) {
       if (!team.id) return [];
       const games: ScheduledGame[] = [];

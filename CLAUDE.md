@@ -194,7 +194,12 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   only). Last season comes from saved box scores (`regularSeasonLines`); an
   older one is fetched for him alone once and stored for good
   (`pastSeason`, `teamLines`, `?season=YYYY`); never look up a season outside
-  his list. The depth chart is hidden while a past season is shown. Hover
+  his list. The depth chart is hidden while a past season is shown. The
+  picker's first choice is the career graph (`CareerChart.tsx`,
+  `careerLayout` in `shared/career.ts`): a form line over every game, room
+  per season by games played with a floor, so every career fills the graph
+  left to right; `/career` never waits (background fetch, "loading", stored
+  for good under `player-games-v1-…`). Display only. Hover
   effects live inside `@media (hover: hover)` only.
 - The player card's depth chart (`shared/depthChart.ts`, `DepthChart.tsx`) is
   worked out from recent minutes (no source publishes one), minutes colored

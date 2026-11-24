@@ -1,5 +1,5 @@
 import type { InjuryNews } from "../../shared/injury.ts";
-import { FANTASY_SOURCES, type FantasySource, type MissedGame, type PlayerGame, type PlayerRef, type PlayerStats, type StatLine } from "../../shared/types.ts";
+import { type CareerGame, type CareerSeason, FANTASY_SOURCES, type FantasySource, type MissedGame, type PlayerGame, type PlayerRef, type PlayerStats, type StatLine } from "../../shared/types.ts";
 import { lockInValue, lockInValues } from "../../shared/lockin.ts";
 import { availabilityOutlook, projectPlayer } from "../../shared/projection.ts";
 import { fantasyPoints, fantasySources, sleeperDisplayedAverage } from "../scoring.ts";
@@ -339,4 +339,33 @@ export function pointsAllowed(lines: GameLine[], scoring: Record<string, number>
       (entry.points + ALLOWED_PRIOR_GAMES * average) / ((entry.games.size + ALLOWED_PRIOR_GAMES) * average),
     ]),
   );
+}
+
+/**
+ * One season on the career graph: his games that season that count (finished, with minutes),
+ * scored under the league's rules, and the season's averages.
+ */
+export function careerSeasonOf(
+  season: string,
+  lines: GameLine[],
+  scoring: Record<string, number>,
+  current: boolean,
+): { summary: CareerSeason; games: CareerGame[] } {
+  const played = lines.filter((line) => line.final && line.minutes > 0).sort((a, b) => a.date.localeCompare(b.date));
+  const games = played.map((line) => ({ season, date: line.date, points: fantasyPoints(line.stats, scoring) }));
+  const teams: string[] = [];
+  for (const line of played) if (line.team && teams.at(-1) !== line.team && !teams.includes(line.team)) teams.push(line.team);
+  const none = played.length === 0;
+  return {
+    games,
+    summary: {
+      season,
+      teams,
+      games: played.length,
+      fantasyAvg: none ? null : mean(games.map((game) => game.points)),
+      minutes: none ? null : mean(played.map((line) => line.minutes)),
+      averages: none ? null : (Object.fromEntries(STAT_KEYS.map((key) => [key, mean(played.map((line) => line.stats[key]))])) as unknown as StatLine),
+      current,
+    },
+  };
 }

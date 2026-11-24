@@ -411,6 +411,42 @@ export interface MissedGame {
   home: boolean | null;
 }
 
+/** One of a player's seasons on the career graph (regular season only). */
+export interface CareerSeason {
+  /** The season's starting year, as Sleeper names it ("2015" for 2015-16). */
+  season: string;
+  /** NBA teams he played for that season, in order. */
+  teams: string[];
+  games: number;
+  /** Null for a season he did not play. */
+  fantasyAvg: number | null;
+  minutes: number | null;
+  averages: StatLine | null;
+  /** This season, still being played. */
+  current: boolean;
+}
+
+/** One game on the career graph. */
+export interface CareerGame {
+  season: string;
+  date: string;
+  /** Fantasy points under the league's scoring. */
+  points: number;
+}
+
+/**
+ * A player's career for the career graph. "loading" while seasons not yet saved are fetched (the
+ * page asks again shortly); "error" when that fetch failed.
+ */
+export interface PlayerCareer {
+  status: "ready" | "loading" | "error";
+  error?: string;
+  /** Oldest first. */
+  seasons: CareerSeason[];
+  /** Every game he played, oldest first. */
+  games: CareerGame[];
+}
+
 export interface PlayerDetail {
   player: PlayerRef;
   /** The season these games are from, as Sleeper names it ("2026"); absent from older answers. */

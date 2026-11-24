@@ -528,6 +528,57 @@ describe("StatsService", async () => {
     expect(calls).toHaveLength(2);
   });
 
+  it("builds a career in the background, without waiting, and keeps it", async () => {
+    const mock = createMockStats(rawPlayers);
+    const asked: string[][] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const provider: StatsProvider = {
+      ...mock,
+      async fetchPlayerSeasons(playerId, seasons) {
+        asked.push(seasons);
+        await gate;
+        return mock.fetchPlayerSeasons!(playerId, seasons);
+      },
+    };
+    const storage = new MemoryStorage();
+    const service = new StatsService(provider, { storage });
+    await service.sync("2026");
+    await service.sync("2025");
+    const veteran = Object.values(players).find((player) => (player.yearsExp ?? 0) >= 6 && snapshot.teams.some((team) => team.starters.some((s) => s.player?.id === player.id)))!;
+
+    // First ask: older seasons are being fetched (all in one request), the answer does not wait.
+    expect((await service.career(snapshot, players, veteran.id))!.status).toBe("loading");
+    expect((await service.career(snapshot, players, veteran.id))!.status).toBe("loading");
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toHaveLength(veteran.yearsExp! - 1); // all but this season and last
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const career = (await service.career(snapshot, players, veteran.id))!;
+    expect(career.status).toBe("ready");
+    expect(career.seasons.map((season) => season.season)).toEqual(
+      Array.from({ length: veteran.yearsExp! + 1 }, (_, index) => String(2026 - veteran.yearsExp! + index)),
+    );
+    expect(career.seasons.at(-1)!.current).toBe(true);
+    expect(career.games).toHaveLength(career.seasons.reduce((sum, season) => sum + season.games, 0));
+    for (const season of career.seasons.filter((entry) => entry.games > 0)) {
+      const points = career.games.filter((game) => game.season === season.season).map((game) => game.points);
+      expect(season.fantasyAvg).toBeCloseTo(points.reduce((sum, value) => sum + value, 0) / points.length);
+    }
+
+    // Saved for good: a restarted server answers at once, and the season view reuses his games.
+    const restarted = new StatsService(provider, { storage });
+    await restarted.sync("2026");
+    await restarted.sync("2025");
+    expect((await restarted.career(snapshot, players, veteran.id))!.status).toBe("ready");
+    expect(asked).toHaveLength(1);
+
+    // A rookie's career is this season alone.
+    const rookie = Object.values(players).find((player) => player.yearsExp === 0 && snapshot.teams.some((team) => team.starters.some((s) => s.player?.id === player.id)));
+    if (rookie) expect((await service.career(snapshot, players, rookie.id))!.seasons.map((season) => season.season)).toEqual(["2026"]);
+  });
+
   it("asks only for recent days on later downloads and merges the result", async () => {
     const requests: (string | null)[] = [];
     let day = 1;

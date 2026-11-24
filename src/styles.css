@@ -2074,8 +2074,117 @@ th[aria-sort] .sort-button {
   font-weight: 700;
 }
 
+/* The career graph picked: the picker takes the accent, so the view reads as different from a season. */
+.season-pick select.is-career {
+  border-color: var(--accent);
+  color: var(--accent);
+  background-color: var(--accent-soft);
+}
+
 .player-draft {
   margin-top: 0.1rem;
+}
+
+/* ---- Career graph (player card) ---- */
+
+.career-chart svg {
+  overflow: visible;
+}
+
+.chart-axis-title {
+  fill: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.career-divider {
+  stroke: var(--line);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+}
+
+.career-average {
+  stroke: var(--muted);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+  stroke-linecap: round;
+}
+
+.career-average-label {
+  font-weight: 600;
+  fill: var(--text);
+  stroke: var(--surface);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+  paint-order: stroke;
+}
+
+.career-line {
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+
+.career-band {
+  fill: var(--accent-soft);
+}
+
+.career-season.is-active {
+  fill: var(--text);
+  font-weight: 700;
+}
+
+.key.key-dashed {
+  background: repeating-linear-gradient(90deg, var(--muted) 0 5px, transparent 5px 8px);
+}
+
+.career-caption {
+  display: grid;
+  gap: 0.3rem;
+  margin-top: 0.35rem;
+}
+
+.career-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 1rem;
+}
+
+.career-note {
+  min-height: 2.6em;
+  transition: color 160ms ease;
+}
+
+.career-note.is-focus {
+  color: var(--text);
+}
+
+.career-open {
+  text-decoration: none;
+  font-weight: 600;
+}
+
+@media (hover: hover) {
+  .career-open:hover {
+    text-decoration: underline;
+  }
+}
+
+.career-sofar {
+  font-size: 0.8125rem;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.career-teams {
+  white-space: nowrap;
+}
+
+.career-teams .team-tag + .team-tag {
+  margin-left: 0.4rem;
+}
+
+.career-table th[scope="row"] {
+  white-space: nowrap;
 }
 
 .injury-note {

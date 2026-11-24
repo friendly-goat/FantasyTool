@@ -567,6 +567,22 @@ app.get("/api/league/:leagueId/players/:playerId", async (req, res) => {
   }
 });
 
+// A player's career for the career graph. Never waits on the stats source: seasons not saved yet
+// are fetched in the background and the answer says "loading" until they are in.
+app.get("/api/league/:leagueId/players/:playerId/career", async (req, res) => {
+  try {
+    const [snapshot, players] = await Promise.all([getSnapshot(req.params.leagueId.trim()), getPlayers()]);
+    const career = await stats.career(snapshot.value, players.value, req.params.playerId);
+    if (!career) {
+      res.status(404).json({ error: "Sleeper has no player with that ID." });
+      return;
+    }
+    res.json(career);
+  } catch (error) {
+    sendError(res, error);
+  }
+});
+
 // The NBA side of this fantasy week: the schedule and each rostered player's games.
 
 app.get("/api/league/:leagueId/week", async (req, res) => {

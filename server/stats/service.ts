@@ -1,17 +1,18 @@
 import { createHash } from "node:crypto";
-import type { LeagueSnapshot, NbaGame, PlayerDetail, PlayerRef, PlayerStats, StatLine, StatsReport, WeekLine } from "../../shared/types.ts";
+import type { LeagueSnapshot, NbaGame, PlayerCareer, PlayerDetail, PlayerRef, PlayerStats, StatLine, StatsReport, WeekLine } from "../../shared/types.ts";
 import { fantasyPoints, ignoredSettings } from "../scoring.ts";
 import type { Storage } from "../storage.ts";
 import { matchPlayers, sameLastName } from "./match.ts";
 import { PLAYER_ID_OVERRIDES } from "./overrides.ts";
 import { type InjuryNews, readInjury } from "../../shared/injury.ts";
+import { seasonOfDate } from "../../shared/career.ts";
 import type { GameLine, InjuryReport, ScheduledGame, StatsProvider } from "./provider.ts";
 
 /** The injury report keyed by stats-source player ID, each entry read (dates, re-evaluations). */
 function injuriesBySource(report: InjuryReport[], today: string): Map<string, InjuryNews> {
   return new Map(report.map((entry) => [entry.playerId, readInjury(entry, today)]));
 }
-import { counts, lastSeasonLevels, playerLog, pointsAllowed, RECENT_WINDOW, regularSeasonLines, summarize, type LastSeason } from "./summary.ts";
+import { careerSeasonOf, counts, lastSeasonLevels, playerLog, pointsAllowed, RECENT_WINDOW, regularSeasonLines, summarize, type LastSeason } from "./summary.ts";
 
 // Keeps a season of game lines on disk and brings it up to date in the
 // background. The first sync downloads the whole season so far; later
@@ -50,6 +51,8 @@ function previousSeason(season: string): string {
 export const MAX_CAREER_SEASONS = 25;
 /** Older player seasons kept in memory once read. */
 const PAST_SEASONS_KEPT = 60;
+/** Players whose older seasons are kept in memory for the career graph. */
+const CAREERS_KEPT = 40;
 
 /**
  * The seasons a player can be viewed in, newest first. With Sleeper's years of experience: this
@@ -387,7 +390,8 @@ export class StatsService {
       const saved = await this.storage?.readEntry(key).catch(() => null);
       if (saved && Array.isArray(saved.value)) return saved.value as GameLine[];
       const provider = this.provider!;
-      const games = await provider.fetchPlayerSeason!(sourceId, season);
+      // His games may already be saved by the career graph; only the team schedules are new then.
+      const games = (await this.savedPlayerGames(sourceId, season)) ?? (await provider.fetchPlayerSeason!(sourceId, season));
       const teams = new Map<string, string | null>();
       for (const game of games) if (game.team && !teams.has(game.team)) teams.set(game.team, game.teamId ?? null);
       const schedules = await Promise.all(
@@ -413,6 +417,117 @@ export class StatsService {
   /** Older seasons already read, most recently used last. */
   private pastKept = new Map<string, GameLine[]>();
   private pastInFlight = new Map<string, Promise<GameLine[]>>();
+
+  /**
+   * His saved games in an older season, from the career graph's store or the season view's (which
+   * also holds his teams' game-less lines), or null when neither has it.
+   */
+  private async savedPlayerGames(sourceId: string, season: string): Promise<GameLine[] | null> {
+    const kept = this.careerKept.get(sourceId)?.get(season) ?? this.pastKept.get(`player-season-v1-${sourceId}-${season}`);
+    if (kept) return kept.filter((line) => line.playerId === sourceId);
+    if (!this.storage) return null;
+    for (const key of [`player-games-v1-${sourceId}-${season}`, `player-season-v1-${sourceId}-${season}`]) {
+      const saved = await this.storage.readEntry(key).catch(() => null);
+      if (saved && Array.isArray(saved.value)) return (saved.value as GameLine[]).filter((line) => line.playerId === sourceId);
+    }
+    return null;
+  }
+
+  /**
+   * A player's career for the career graph: every season in his list, this season and last from
+   * the box scores already saved, older ones from storage. Never waits on the stats source: older
+   * seasons not saved yet are fetched in the background (one paged request for all of them, then
+   * stored for good, an empty season too) and the answer says "loading" until they are in.
+   */
+  async career(snapshot: LeagueSnapshot, sleeperPlayers: Record<string, PlayerRef>, playerId: string): Promise<PlayerCareer | null> {
+    const sleeperPlayer = sleeperPlayers[playerId];
+    if (!sleeperPlayer) return null;
+    const current = snapshot.league.season;
+    const previous = previousSeason(current);
+    if (!this.provider) return { status: "ready", seasons: [], games: [] };
+
+    const lines = [...(await this.load(current)).lines.values()];
+    const scoring = snapshot.league.scoringSettings;
+    const prior = await this.load(previous);
+    const { matches } = this.context(sleeperPlayers, lines, prior, scoring);
+    const sourceId = matches.get(playerId);
+    if (!sourceId) return { status: "ready", seasons: [], games: [] };
+    const seasons = careerSeasons(current, sleeperPlayer.yearsExp, this.canFetchPastSeasons(), () =>
+      this.priorRegular(prior).some((line) => line.playerId === sourceId && line.minutes > 0),
+    );
+
+    const older = seasons.filter((season) => season !== current && season !== previous);
+    const olderLines = await this.careerLines(sourceId, older);
+    if (olderLines.status !== "ready") return { status: olderLines.status, error: olderLines.error, seasons: [], games: [] };
+    if (seasons.includes(previous) && prior.syncedAt === null) return { status: "loading", seasons: [], games: [] };
+
+    const linesOf = (season: string): GameLine[] =>
+      season === current
+        ? lines.filter((line) => line.playerId === sourceId && counts(line, snapshot.league.seasonStartDate))
+        : season === previous
+          ? this.priorRegular(prior).filter((line) => line.playerId === sourceId)
+          : (olderLines.lines.get(season) ?? []);
+    const built = [...seasons].reverse().map((season) => careerSeasonOf(season, linesOf(season), scoring, season === current));
+    return { status: "ready", seasons: built.map((season) => season.summary), games: built.flatMap((season) => season.games) };
+  }
+
+  /** His older seasons' games, once all are saved; otherwise starts fetching what is missing. */
+  private async careerLines(
+    sourceId: string,
+    seasons: string[],
+  ): Promise<{ status: "ready"; lines: Map<string, GameLine[]>; error?: undefined } | { status: "loading" | "error"; error?: string }> {
+    const kept = this.careerKept.get(sourceId) ?? new Map<string, GameLine[]>();
+    const missing: string[] = [];
+    for (const season of seasons) {
+      if (kept.has(season)) continue;
+      const saved = await this.savedPlayerGames(sourceId, season);
+      if (saved) kept.set(season, saved);
+      else missing.push(season);
+    }
+    this.careerKept.delete(sourceId);
+    this.careerKept.set(sourceId, kept);
+    while (this.careerKept.size > CAREERS_KEPT) this.careerKept.delete(this.careerKept.keys().next().value!);
+    if (missing.length === 0) return { status: "ready", lines: kept };
+
+    const failed = this.careerFailed.get(sourceId);
+    if (failed && this.now() - failed.at < RETRY_AFTER_MS) return { status: "error", error: failed.message };
+    if (!this.careerInFlight.has(sourceId)) {
+      const work = this.fetchCareer(sourceId, missing)
+        .then(() => {
+          this.careerFailed.delete(sourceId);
+        })
+        .catch((error: Error) => {
+          console.error(`[stats] could not fetch the career of ${sourceId}:`, error.message);
+          this.careerFailed.set(sourceId, { at: this.now(), message: "Could not fetch his earlier seasons. Try again in a few minutes." });
+        })
+        .finally(() => this.careerInFlight.delete(sourceId));
+      this.careerInFlight.set(sourceId, work);
+    }
+    return { status: "loading" };
+  }
+
+  /** Fetches his games in the given older seasons and stores each season for good. */
+  private async fetchCareer(sourceId: string, seasons: string[]): Promise<void> {
+    const provider = this.provider!;
+    const fetched = provider.fetchPlayerSeasons
+      ? await provider.fetchPlayerSeasons(sourceId, seasons)
+      : (await Promise.all(seasons.map((season) => provider.fetchPlayerSeason!(sourceId, season)))).flat();
+    const bySeason = new Map<string, GameLine[]>(seasons.map((season) => [season, []]));
+    for (const line of fetched) if (line.playerId === sourceId) bySeason.get(seasonOfDate(line.date))?.push(line);
+    const kept = this.careerKept.get(sourceId) ?? new Map<string, GameLine[]>();
+    for (const [season, games] of bySeason) {
+      await this.storage?.writeEntry(`player-games-v1-${sourceId}-${season}`, { savedAt: this.now(), value: games }).catch((error: Error) => {
+        console.error(`[stats] could not save ${sourceId}'s ${season} season:`, error.message);
+      });
+      kept.set(season, games);
+    }
+    this.careerKept.set(sourceId, kept);
+  }
+
+  /** Players' older seasons for the career graph, most recently used last. */
+  private careerKept = new Map<string, Map<string, GameLine[]>>();
+  private careerInFlight = new Map<string, Promise<void>>();
+  private careerFailed = new Map<string, { at: number; message: string }>();
 
   /** Last season's regular-season lines, worked out once per download of it. */
   private priorRegular(prior: SeasonData): GameLine[] {

@@ -39,16 +39,29 @@ const LAST_SEASON_GAMES = 40;
 /** Mock players whose index divides by this are rookies: no last season. */
 const ROOKIE_EVERY = 7;
 
-/** A simple earlier season: each player near this season's level, some clearly above or below. */
+/**
+ * An earlier season. Last season: each player near this season's level, some clearly above or
+ * below, 40 games. Older seasons (the career graph): a career arc that peaks in a different year
+ * for each player, form that drifts through the season, and a season length that varies by team.
+ */
 function lastSeasonLines(players: Record<string, unknown>, year: number): GameLine[] {
-  const random = seeded(23);
+  const lastSeason = year === Number(MOCK_SEASON) - 1;
+  const random = seeded(lastSeason ? 23 : 23 + year);
   const lines: GameLine[] = [];
   Object.values(players as Record<string, { player_id: string; full_name: string; team: string }>).forEach(
     (player, index) => {
       // Near this season's level: between 20% below and 25% above.
-      const level = talentOf(index) * (0.8 + fraction(index, 2) * 0.45);
+      const base = talentOf(index) * (0.8 + fraction(index, 2) * 0.45);
       if (index % ROOKIE_EVERY === 3) return;
-      for (let game = 0; game < LAST_SEASON_GAMES; game++) {
+      const ago = Number(MOCK_SEASON) - 1 - year;
+      const peakAgo = fraction(index, 7) * 7;
+      const arc = lastSeason ? 1 : Math.min(1.15, Math.max(0.4, 1.05 - 0.012 * (ago - peakAgo) ** 2));
+      // Teammates share a schedule, so a past season's missed games line up with the team's.
+      const teamIndex = Math.max(0, TEAMS.indexOf(player.team));
+      const seasonGames = lastSeason ? LAST_SEASON_GAMES : 30 + Math.floor(fraction(teamIndex + 1, year) * 52);
+      for (let game = 0; game < seasonGames; game++) {
+        const drift = lastSeason ? 0 : 0.12 * Math.sin(game / 7 + index);
+        const level = base * arc * (1 + drift);
         const roll = 0.7 + random() * 0.6;
         const pts = Math.round(18 * level * roll);
         lines.push({
@@ -147,6 +160,13 @@ export function mockInjuries(players: Record<string, unknown>, today = new Date(
 }
 
 export function createMockStats(players: Record<string, unknown>): StatsProvider {
+  // Every player sits a stretch in odd years: four games from the tenth.
+  const playerSeason = (playerId: string, season: string): GameLine[] => {
+    const year = Number(season);
+    return lastSeasonLines(players, year)
+      .filter((line) => line.playerId === playerId)
+      .filter((_, game) => year % 2 === 0 || game < 10 || game >= 14);
+  };
   return {
     name: "mock",
     async fetchSchedule(startDate, endDate) {
@@ -156,11 +176,10 @@ export function createMockStats(players: Record<string, unknown>): StatsProvider
       return mockInjuries(players);
     },
     async fetchPlayerSeason(playerId, season) {
-      // Every player sits a stretch in odd years: four games from the tenth.
-      const year = Number(season);
-      return lastSeasonLines(players, year)
-        .filter((line) => line.playerId === playerId)
-        .filter((_, game) => year % 2 === 0 || game < 10 || game >= 14);
+      return playerSeason(playerId, season);
+    },
+    async fetchPlayerSeasons(playerId, seasons) {
+      return seasons.flatMap((season) => playerSeason(playerId, season));
     },
     async fetchTeamSeason(team, season) {
       const dates = new Set(lastSeasonLines(players, Number(season)).filter((line) => line.team === team.abbreviation).map((line) => line.date));

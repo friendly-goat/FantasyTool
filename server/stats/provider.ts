@@ -74,5 +74,7 @@ export interface StatsProvider {
   /** One player's regular-season game lines in a past season (someone is waiting for them). */
   fetchPlayerSeason?(playerId: string, season: string): Promise<GameLine[]>;
   /** One team's regular-season games in a past season, by the source's team ID or abbreviation. */
+  /** One player's regular-season games over several seasons, in one go (the career graph). */
+  fetchPlayerSeasons?(playerId: string, seasons: string[]): Promise<GameLine[]>;
   fetchTeamSeason?(team: { id: string | null; abbreviation: string | null }, season: string): Promise<ScheduledGame[]>;
 }
