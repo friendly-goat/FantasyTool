@@ -53,6 +53,19 @@ export function teamGameDates(lines: GameLine[], seasonStart: string | null): Ma
   return new Map([...dates].map(([team, seen]) => [team, [...seen].sort()]));
 }
 
+/** Games in an NBA regular season, per team. */
+export const REGULAR_SEASON_TEAM_GAMES = 82;
+
+/**
+ * A finished season's regular-season lines: each team's first 82 game days (the play-in and
+ * playoffs come after, and the stored lines do not mark them).
+ */
+export function regularSeasonLines(lines: GameLine[]): GameLine[] {
+  const regular = new Map<string, Set<string>>();
+  for (const [team, dates] of teamGameDates(lines, null)) regular.set(team, new Set(dates.slice(0, REGULAR_SEASON_TEAM_GAMES)));
+  return lines.filter((line) => line.team !== null && regular.get(line.team)?.has(line.date));
+}
+
 /** What a player did last season: stats-source player ID -> games and fantasy average. */
 export type LastSeason = Map<string, { games: number; average: number }>;
 

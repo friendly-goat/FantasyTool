@@ -1,7 +1,7 @@
 import { nbaDay } from "../../shared/weeks.ts";
 import { useEffect, useRef, useState } from "react";
 import { newsOutText, returnOutlook } from "../../shared/injury.ts";
-import type { DraftBoard, LeagueSnapshot, PlayerDetail, PlayerGame, MissedGame, PlayerRef, StatsReport } from "../../shared/types.ts";
+import type { DraftBoard, LeagueSnapshot, PlayerDetail, PlayerGame, MissedGame, PlayerRef, PlayerStats, StatsReport } from "../../shared/types.ts";
 import { getDraft, getPlayerDetail } from "../api.ts";
 import { readSaved, savedKeys, writeSaved } from "../saved.ts";
 import { closeDialog } from "../closeDialog.ts";
@@ -61,6 +61,36 @@ function useDraftBoard(leagueId: string): DraftBoard | null | undefined {
   return board;
 }
 
+/** "2026-27 season" for Sleeper's season "2026". */
+function seasonName(year: number): string {
+  return `${year}-${String((year + 1) % 100).padStart(2, "0")} season`;
+}
+
+/**
+ * Last season's game log, fetched the first time it is picked and then kept for the visit (a
+ * finished season does not change). The server reads it from box scores it has already saved.
+ */
+function usePreviousSeason(leagueId: string, playerId: string, wanted: boolean): { detail: PlayerDetail | null; error: string | null } {
+  const key = `${leagueId}:${playerId}:previous`;
+  const [state, setState] = useState<{ key: string; detail: PlayerDetail | null; error: string | null }>({ key, detail: null, error: null });
+  useEffect(() => {
+    if (!wanted) return;
+    const saved = details.get(key);
+    if (saved) return setState({ key, detail: saved.detail, error: null });
+    let current = true;
+    getPlayerDetail(leagueId, playerId, "previous")
+      .then((loaded) => {
+        details.set(key, { detail: loaded, at: Date.now() });
+        if (current) setState({ key, detail: loaded, error: null });
+      })
+      .catch((cause) => current && setState({ key, detail: null, error: cause instanceof Error ? cause.message : "Could not load last season." }));
+    return () => {
+      current = false;
+    };
+  }, [key, wanted, leagueId, playerId]);
+  return state.key === key ? state : { detail: null, error: null };
+}
+
 /** Games he played and missed, newest first, for the game log. */
 type LogRow = { kind: "game"; game: PlayerGame } | { kind: "out"; game: MissedGame };
 function logRows(games: PlayerGame[], missed: MissedGame[]): LogRow[] {
@@ -118,6 +148,94 @@ function GameRow({ game, average }: { game: PlayerGame; average: number }) {
   );
 }
 
+/** The game log for one season: every game he played, and every game his team played without him. */
+function GameLog({
+  stats,
+  games,
+  missedGames,
+  loadingRows,
+}: {
+  stats: PlayerStats | null;
+  games: PlayerGame[] | null;
+  missedGames: MissedGame[] | null;
+  /** Rows to hold the space while the log loads. */
+  loadingRows: number;
+}) {
+  return (
+    <>
+      <h3 className="panel-heading">Game log</h3>
+      <div className="table-scroll">
+        <table className="players-table log-table">
+          <thead>
+            <tr>
+              <th scope="col">Date</th>
+              <th scope="col">Opponent</th>
+              <th scope="col" className="num">Fpts</th>
+              <th scope="col" className="num">Min</th>
+              <th scope="col" className="num">Pts</th>
+              <th scope="col" className="num">Reb</th>
+              <th scope="col" className="num">Ast</th>
+              <th scope="col" className="num">Stl</th>
+              <th scope="col" className="num">Blk</th>
+              <th scope="col" className="num">TO</th>
+            </tr>
+          </thead>
+          <tbody>
+            {/* Rows the size of the real ones hold the space until the log arrives. */}
+            {!games &&
+              Array.from({ length: Math.min(loadingRows, 82) }, (_, index) => (
+                <tr key={`loading-${index}`} className="log-loading" aria-hidden="true">
+                  <th scope="row">
+                    <span className="skeleton" />
+                  </th>
+                  <td>
+                    <span className="skeleton skeleton-wide" />
+                  </td>
+                  {Array.from({ length: 8 }, (_, cell) => (
+                    <td key={cell} className="num">
+                      <span className="skeleton" />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            {games &&
+              stats &&
+              logRows(games, missedGames ?? []).map((row) =>
+                row.kind === "out" ? (
+                  <tr key={row.game.date} className="log-out">
+                    <th scope="row">{formatGameDate(row.game.date)}</th>
+                    <td>{row.game.opponent ? `${row.game.home === false ? "at" : "vs"} ${row.game.opponent}` : "–"}</td>
+                    <td className="num log-fpts log-out-tag">Out</td>
+                    <td colSpan={7} />
+                  </tr>
+                ) : (
+                  <GameRow key={row.game.date} game={row.game} average={stats.fantasyAvg} />
+                ),
+              )}
+          </tbody>
+          {stats && (
+          <tfoot>
+            <tr>
+              <th scope="row" colSpan={2}>
+                Season average
+              </th>
+              <td className="num strong">{formatPoints(stats.fantasyAvg)}</td>
+              <td className="num">{formatAverage(stats.minutes)}</td>
+              <td className="num">{formatAverage(stats.averages.pts)}</td>
+              <td className="num">{formatAverage(stats.averages.reb)}</td>
+              <td className="num">{formatAverage(stats.averages.ast)}</td>
+              <td className="num">{formatAverage(stats.averages.stl)}</td>
+              <td className="num">{formatAverage(stats.averages.blk)}</td>
+              <td className="num">{formatAverage(stats.averages.tov)}</td>
+            </tr>
+          </tfoot>
+          )}
+        </table>
+      </div>
+    </>
+  );
+}
+
 export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [detail, setDetail] = useState<PlayerDetail | null>(null);
@@ -153,8 +271,13 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
   // rest of the page shows, so nothing changes when the detail arrives; the
   // detail adds the game log (and the numbers for a player the report lacks).
   const season = stats?.players[player.id] ?? detail?.stats ?? null;
-  const games = detail?.games ?? null;
-  const missedGames = detail?.missed ?? null;
+  // Which season the chart and game log show: this one, or last season's regular season.
+  const [which, setWhich] = useState<"current" | "previous">("current");
+  const previous = usePreviousSeason(snapshot.league.id, player.id, which === "previous");
+  const pastStats = previous.detail?.stats ?? null;
+  const games = which === "previous" ? (previous.detail?.games ?? null) : (detail?.games ?? null);
+  const missedGames = which === "previous" ? (previous.detail?.missed ?? null) : (detail?.missed ?? null);
+  const seasonYear = Number(snapshot.league.season) || new Date().getUTCFullYear();
   const draft = draftLine(snapshot, useDraftBoard(snapshot.league.id), player.id);
   const today = nbaDay(Date.now());
   const recentLabel = `Last ${stats?.recentWindow ?? 5}`;
@@ -256,11 +379,26 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
               </p>
             )}
 
-            <h3 className="panel-heading">Rest of season</h3>
+            <div className="panel-heading season-pick">
+              <select
+                aria-label="Season"
+                value={which}
+                onChange={(event) => setWhich(event.target.value as "current" | "previous")}
+              >
+                <option value="current">{seasonName(seasonYear)}</option>
+                <option value="previous">{seasonName(seasonYear - 1)}</option>
+              </select>
+            </div>
+            {which === "previous" && previous.error && <p className="notice notice-error">{previous.error}</p>}
+            {which === "previous" && previous.detail && !pastStats && (
+              <p className="notice">No regular-season games for him in {seasonName(seasonYear - 1)}.</p>
+            )}
+            {(which === "current" || pastStats || (!previous.detail && !previous.error)) && (
             <ProjectionChart
-              stats={season}
+              stats={which === "previous" ? (pastStats ?? season) : season}
               games={games}
               missedGames={missedGames}
+              finished={which === "previous"}
               absence={
                 // From today: the games he has missed since the report are on the chart already.
                 injury && outlook?.kind === "season"
@@ -275,6 +413,8 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
                     : null
               }
             />
+            )}
+            {which === "current" && (
             <p className="quiet panel-note">
               {season.projection.factors.length > 0 ? (
                 <>
@@ -301,74 +441,16 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
                     ? `He has missed his team's last ${season.missedStreak} games, so he is expected to play only ${percent.format(season.availability)} of the rest.`
                     : `Expected to play ${percent.format(season.availability)} of his team's remaining games.`}
             </p>
+            )}
 
-            <h3 className="panel-heading">Game log</h3>
-            <div className="table-scroll">
-              <table className="players-table log-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Date</th>
-                    <th scope="col">Opponent</th>
-                    <th scope="col" className="num">Fpts</th>
-                    <th scope="col" className="num">Min</th>
-                    <th scope="col" className="num">Pts</th>
-                    <th scope="col" className="num">Reb</th>
-                    <th scope="col" className="num">Ast</th>
-                    <th scope="col" className="num">Stl</th>
-                    <th scope="col" className="num">Blk</th>
-                    <th scope="col" className="num">TO</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {/* Rows the size of the real ones hold the space until the log arrives. */}
-                  {!games &&
-                    Array.from({ length: Math.min(season.games, 82) }, (_, index) => (
-                      <tr key={`loading-${index}`} className="log-loading" aria-hidden="true">
-                        <th scope="row">
-                          <span className="skeleton" />
-                        </th>
-                        <td>
-                          <span className="skeleton skeleton-wide" />
-                        </td>
-                        {Array.from({ length: 8 }, (_, cell) => (
-                          <td key={cell} className="num">
-                            <span className="skeleton" />
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  {games &&
-                    logRows(games, missedGames ?? []).map((row) =>
-                      row.kind === "out" ? (
-                        <tr key={row.game.date} className="log-out">
-                          <th scope="row">{formatGameDate(row.game.date)}</th>
-                          <td>{row.game.opponent ? `${row.game.home === false ? "at" : "vs"} ${row.game.opponent}` : "–"}</td>
-                          <td colSpan={8} className="log-out-cell">
-                            <span className="log-out-tag">Out</span>
-                          </td>
-                        </tr>
-                      ) : (
-                        <GameRow key={row.game.date} game={row.game} average={season.fantasyAvg} />
-                      ),
-                    )}
-                </tbody>
-                <tfoot>
-                  <tr>
-                    <th scope="row" colSpan={2}>
-                      Season average
-                    </th>
-                    <td className="num strong">{formatPoints(season.fantasyAvg)}</td>
-                    <td className="num">{formatAverage(season.minutes)}</td>
-                    <td className="num">{formatAverage(season.averages.pts)}</td>
-                    <td className="num">{formatAverage(season.averages.reb)}</td>
-                    <td className="num">{formatAverage(season.averages.ast)}</td>
-                    <td className="num">{formatAverage(season.averages.stl)}</td>
-                    <td className="num">{formatAverage(season.averages.blk)}</td>
-                    <td className="num">{formatAverage(season.averages.tov)}</td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
+            {(which === "current" || pastStats || (!previous.detail && !previous.error)) && (
+            <GameLog
+              stats={which === "previous" ? pastStats : season}
+              games={games}
+              missedGames={missedGames}
+              loadingRows={which === "previous" ? (season.projection.lastSeason?.games ?? 20) : season.games}
+            />
+            )}
           </>
         )}
 

@@ -411,6 +411,8 @@ export interface MissedGame {
 
 export interface PlayerDetail {
   player: PlayerRef;
+  /** The season these games are from, as Sleeper names it ("2026"); absent from older answers. */
+  season?: string;
   /** Null when the player has no counted games this season. */
   stats: PlayerStats | null;
   /** Newest first. */

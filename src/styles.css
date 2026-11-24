@@ -2045,22 +2045,27 @@ th[aria-sort] .sort-button {
   border-color: var(--muted);
 }
 
-/* A game he missed in the game log: the date and opponent, then Out in red across the stats. */
+/* A game he missed in the game log: the date and opponent, then Out in red in the Fpts column. */
 .log-out th,
 .log-out td {
   color: var(--muted);
 }
 
-.log-table .log-out-cell {
-  text-align: left;
+.log-table .log-out .log-out-tag {
+  color: var(--loss);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
 }
 
-.log-out-tag {
-  color: var(--loss);
-  font-size: 0.75rem;
+/* The season picker over the chart: a dropdown that reads as the section's heading. */
+.season-pick select {
+  padding: 0.3rem 2.25rem 0.3rem 0.65rem;
+  border: 1px solid var(--field-line);
+  border-radius: var(--radius-small);
+  background-color: var(--surface);
+  font-size: 1.0625rem;
   font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .player-draft {

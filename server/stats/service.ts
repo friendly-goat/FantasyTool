@@ -11,7 +11,7 @@ import type { GameLine, InjuryReport, StatsProvider } from "./provider.ts";
 function injuriesBySource(report: InjuryReport[], today: string): Map<string, InjuryNews> {
   return new Map(report.map((entry) => [entry.playerId, readInjury(entry, today)]));
 }
-import { counts, lastSeasonLevels, playerLog, pointsAllowed, RECENT_WINDOW, summarize, type LastSeason } from "./summary.ts";
+import { counts, lastSeasonLevels, playerLog, pointsAllowed, RECENT_WINDOW, regularSeasonLines, summarize, type LastSeason } from "./summary.ts";
 
 // Keeps a season of game lines on disk and brings it up to date in the
 // background. The first sync downloads the whole season so far; later
@@ -273,21 +273,39 @@ export class StatsService {
     snapshot: LeagueSnapshot,
     sleeperPlayers: Record<string, PlayerRef>,
     playerId: string,
+    /** "previous": last season's regular season, from the box scores already saved (no outside request). */
+    which: "current" | "previous" = "current",
   ): Promise<PlayerDetail | null> {
     const player = sleeperPlayers[playerId];
     if (!player) return null;
-    if (!this.provider) return { player, stats: null, games: [], missed: [] };
+    const season = which === "previous" ? previousSeason(snapshot.league.season) : snapshot.league.season;
+    if (!this.provider) return { player, season, stats: null, games: [], missed: [] };
 
-    const season = snapshot.league.season;
-    const lines = [...(await this.load(season)).lines.values()];
+    const lines = [...(await this.load(snapshot.league.season)).lines.values()];
     const scoring = snapshot.league.scoringSettings;
-    const prior = await this.load(previousSeason(season));
+    const prior = await this.load(previousSeason(snapshot.league.season));
     const { matches, lastSeason } = this.context(sleeperPlayers, lines, prior, scoring);
+    if (which === "previous") {
+      return { player, season, ...playerLog(player, matches.get(playerId), this.priorRegular(prior), scoring, null) };
+    }
     return {
       player,
+      season,
       ...playerLog(player, matches.get(playerId), lines, scoring, snapshot.league.seasonStartDate, lastSeason),
     };
   }
+
+  /** Last season's regular-season lines, worked out once per download of it. */
+  private priorRegular(prior: SeasonData): GameLine[] {
+    if (prior.syncedAt === null) return [];
+    const kept = this.priorRegularKept;
+    if (kept && kept.syncedAt === prior.syncedAt && kept.size === prior.lines.size) return kept.lines;
+    const lines = regularSeasonLines([...prior.lines.values()]);
+    this.priorRegularKept = { syncedAt: prior.syncedAt, size: prior.lines.size, lines };
+    return lines;
+  }
+
+  private priorRegularKept: { syncedAt: number; size: number; lines: GameLine[] } | null = null;
 
   /** Whether the stats source can supply the NBA schedule. */
   hasSchedule(): boolean {

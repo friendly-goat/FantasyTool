@@ -188,7 +188,9 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   as gray bands (`timeline`, `PAST_ABSENCE_GAMES` in `ProjectionChart.tsx`),
   the current one from his first missed game; the game log lists every missed
   game as Out (`missedGames` in `server/stats/summary.ts`, `PlayerDetail.missed`);
-  the card shows his draft pick from the saved draft board. Hover effects live
+  the card shows his draft pick from the saved draft board, and a season
+  picker for last season's regular-season log (`?season=previous`, from saved
+  box scores, `regularSeasonLines`). Hover effects live
   inside `@media (hover: hover)` only.
 - The player card's depth chart (`shared/depthChart.ts`, `DepthChart.tsx`) is
   worked out from recent minutes (no source publishes one), minutes colored

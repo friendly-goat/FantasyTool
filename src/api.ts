@@ -80,8 +80,10 @@ export function getStats(leagueId: string, retry = false): Promise<StatsReport> 
   return getJson(`/api/league/${encodeURIComponent(leagueId)}/stats${retry ? "?retry=1" : ""}`);
 }
 
-export function getPlayerDetail(leagueId: string, playerId: string): Promise<PlayerDetail> {
-  return getJson(`/api/league/${encodeURIComponent(leagueId)}/players/${encodeURIComponent(playerId)}`);
+/** One player's numbers and game log: this season, or last season's regular season. */
+export function getPlayerDetail(leagueId: string, playerId: string, season: "current" | "previous" = "current"): Promise<PlayerDetail> {
+  const query = season === "previous" ? "?season=previous" : "";
+  return getJson(`/api/league/${encodeURIComponent(leagueId)}/players/${encodeURIComponent(playerId)}${query}`);
 }
 
 /** The NBA side of a fantasy week (the current one when `week` is left out): schedule and box scores. */

@@ -92,6 +92,7 @@ export function ProjectionChart({
   games,
   missedGames = null,
   absence = null,
+  finished = false,
 }: {
   stats: PlayerStats;
   /** Null while the game log loads: the chart keeps its size and caption, and the scores fill in. */
@@ -99,21 +100,25 @@ export function ProjectionChart({
   /** His team's games he missed, newest first; null while loading or from an older server. */
   missedGames?: MissedGame[] | null;
   absence?: Absence | null;
+  /** A finished season: his games and missed stretches only, no projection or current absence. */
+  finished?: boolean;
 }) {
   const loading = games === null || games.length === 0;
   const played = loading ? [] : [...games].reverse(); // oldest first
+  if (finished) absence = null;
   const { slots, trailing } = timeline(played, loading ? [] : (missedGames ?? []), absence !== null);
   const bands = bandsOf(slots);
   const pastBands = trailing > 0 ? bands.slice(0, -1) : bands;
   const projection = stats.projection;
   const remaining = Math.max(1, SEASON_GAMES - stats.teamGames);
   const missed = absence ? Math.min(remaining, absence.games) : 0;
-  const seasonOver = absence !== null && absence.backLabel === null;
+  // A finished season ends with his games: nothing is projected.
+  const seasonOver = finished || (absence !== null && absence.backLabel === null);
   const playRate = absence ? (stats.playRate ?? stats.availability) : stats.availability;
   const ahead = seasonOver ? 0 : Math.max(1, Math.round((remaining - missed) * playRate));
   // While loading, the season so far takes the space his games will.
   const shownPlayed = loading ? stats.games : slots.length;
-  const total = shownPlayed + missed + ahead;
+  const total = finished ? Math.max(2, shownPlayed) : shownPlayed + missed + ahead;
   const top = Math.max(10, ...played.map((game) => game.fantasyPoints), projection.perGame) * 1.1;
 
   const x = (index: number) => PAD.left + ((WIDTH - PAD.left - PAD.right) * index) / Math.max(1, total - 1);
@@ -151,7 +156,9 @@ export function ProjectionChart({
           {played.length} games played, averaging {formatPoints(stats.fantasyAvg)}.{" "}
           {pastBands.length > 0 &&
             `Missed ${pastBands.map((band) => `${band.to - band.from + 1} games from ${formatGameDate(band.first)}`).join(", ")}. `}
-          {seasonOver
+          {finished
+            ? ""
+            : seasonOver
             ? "Out for the rest of the season."
             : `${absence ? `Out for about ${outNowGames} games, then projected` : "Projected"} ${formatPoints(projection.perGame)} a game over about ${ahead} more games.`}
         </desc>
@@ -181,9 +188,11 @@ export function ProjectionChart({
             Loading games…
           </text>
         )}
-        <text className="chart-label" x={endX} y={HEIGHT - 8} textAnchor="end">
-          Season end
-        </text>
+        {!finished && (
+          <text className="chart-label" x={endX} y={HEIGHT - 8} textAnchor="end">
+            Season end
+          </text>
+        )}
 
         {/* Earlier absences: five games or more missed in a row */}
         {pastBands.map((band) => {
@@ -262,6 +271,7 @@ export function ProjectionChart({
             <span className="key key-out" /> {seasonOver ? "Out for the season" : `Out for about ${outNowGames} games`}
           </>
         )}
+        {finished && played.length > 0 && <> {played.length} games, averaging {formatPoints(stats.fantasyAvg)}.</>}
         {!seasonOver && (
           <>
             <span className={`key key-projection ${tone}`} /> Projection, {trendWord}: {formatPoints(projection.perGame)} a

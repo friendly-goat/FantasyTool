@@ -7,7 +7,7 @@ import { matchPlayers, normalizeName, sameLastName } from "./match.ts";
 import { createMockStats } from "./mock.ts";
 import type { GameLine, StatsProvider } from "./provider.ts";
 import { StatsService } from "./service.ts";
-import { playerLog, pointsAllowed, summarize } from "./summary.ts";
+import { playerLog, pointsAllowed, regularSeasonLines, summarize } from "./summary.ts";
 
 const EMPTY: StatLine = {
   pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tov: 0, tpm: 0, tpa: 0,
@@ -192,6 +192,20 @@ describe("pointsAllowed", () => {
 
   it("is empty without finished games", () => {
     expect(pointsAllowed([], { pts: 1 })).toEqual({});
+  });
+});
+
+describe("regularSeasonLines", () => {
+  it("keeps each team's first 82 game days, leaving out the play-in and playoffs after them", () => {
+    const lines: GameLine[] = [];
+    for (let day = 0; day < 90; day++) {
+      const date = new Date(Date.UTC(2025, 9, 21 + day)).toISOString().slice(0, 10);
+      lines.push(gameLine({ key: `b${day}`, date, team: "BOS" }));
+      if (day < 82) lines.push(gameLine({ key: `w${day}`, playerId: "2", date, team: "WAS" }));
+    }
+    const regular = regularSeasonLines(lines);
+    expect(regular.filter((line) => line.team === "BOS")).toHaveLength(82);
+    expect(regular.filter((line) => line.team === "WAS")).toHaveLength(82);
   });
 });
 

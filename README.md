@@ -757,6 +757,14 @@ since his last game start the current (amber) absence, which runs on to his
 expected return counted from today. The card also shows where he went in this
 league's draft, from the draft board saved on the device.
 
+The chart's heading is a season picker: this season (with the projection) or
+last season's regular season (`GET /api/league/:id/players/:playerId?season=previous`).
+Last season's box scores are downloaded once and kept in storage, never fetched
+again, so last season's log costs no outside request: the server cuts them to
+each team's first 82 game days (`regularSeasonLines`; the stored lines do not
+mark the play-in and playoffs), worked out once per download, and the page keeps
+each player's answer for the visit.
+
 ### Depth chart (player card)
 
 At the bottom of a player's card, his NBA team position by position
