@@ -248,6 +248,9 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   download to the same visual size (`server/logoShape.ts`; bump the cache key
   and `LOGO_VERSION` in `TeamTag.tsx` if that changes); the NBA team table is
   `shared/nbaTeams.ts`. Never commit logo files to the repo.
+- Picking one player from many uses the type-ahead `PlayerSearch`
+  (`src/components/PlayerSearch.tsx`, matching and ranking in
+  `shared/playerSearch.ts`), not a long dropdown.
 - Positions are always colored chips (`PositionChip`, `PositionChips`), never
   plain text like "PF/C". Colors are the `--pos-*` tokens in `src/styles.css`,
   matching Sleeper's: PG pink, SG orange, SF green, PF blue, C purple.

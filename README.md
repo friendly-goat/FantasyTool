@@ -277,6 +277,23 @@ the labels. "A real change" in a label means the same as a B- or better.
 
 ### Finding trades
 
+**Picking a player to get.** "Get a specific player" uses a type-ahead box
+(`PlayerSearch.tsx`, matching in `shared/playerSearch.ts`) instead of a
+dropdown. Before anything is typed it lists the best players on other teams.
+As you type, matching players appear at once, ranked by how well they match
+(exact name, then the start of the first or last name or both, then words in
+another order, initials such as "sga", letters inside a name, and last a typo
+such as "jokci"), then by weekly value, so the player you mean is usually first
+after two or three letters. Accents, case and punctuation are ignored
+("doncic", "oneale", "gilgeous alexander"); typos are forgiven only once four
+letters are typed and only when nothing matches properly. Matched letters are
+in bold. A name on your team or a free agent shows below, greyed out, with the
+reason, so a player who "isn't there" explains himself. Arrow keys, Enter
+(takes the first match) and Escape work; a tap or click picks. The picked
+player becomes a chip that can be cleared or changed. On a phone the box moves
+up the screen when tapped so the suggestions fit above the keyboard, and rows
+are taller to tap.
+
 `findTrades` in `shared/trade.ts`, with `shared/insight.ts`. Trades are ranked
 by the weekly points they add for you multiplied by the estimated chance they
 are accepted, with any chance of 70% or more counting as 70% (`CHANCE_ENOUGH`:

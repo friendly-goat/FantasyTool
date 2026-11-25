@@ -3196,6 +3196,262 @@ th[aria-sort] .sort-button {
   white-space: nowrap;
 }
 
+/* ---- Player search (type-ahead) ---- */
+
+.player-search {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1 1 20rem;
+  min-width: min(20rem, 100%);
+  max-width: 30rem;
+}
+
+.ps-field {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--field-line);
+  border-radius: var(--radius-small);
+  background: var(--surface);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.ps-field:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.ps-icon {
+  flex: none;
+  width: 1.05rem;
+  height: 1.05rem;
+  margin-left: 0.65rem;
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+
+.ps-field input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.45rem 0.5rem;
+  border: 0;
+  background: transparent;
+  outline: none;
+}
+
+.ps-field input::placeholder {
+  color: var(--muted);
+}
+
+.ps-clear {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  margin-right: 0.2rem;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.ps-clear svg {
+  width: 0.8rem;
+  height: 0.8rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.ps-chosen {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-small);
+  background: var(--accent-soft);
+}
+
+.ps-chosen-main {
+  flex: 1;
+  min-width: 0;
+  padding: 0.35rem 0.65rem;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ps-chosen .ps-clear {
+  color: var(--text);
+}
+
+/* From the keyboard, the chip shows focus as the box does, not as a square outline. */
+.ps-chosen:has(:focus-visible) {
+  box-shadow: 0 0 0 3px var(--accent-soft), 0 0 0 1px var(--accent);
+}
+
+.ps-chosen button:focus-visible {
+  outline: none;
+}
+
+.ps-chosen .ps-clear:focus-visible {
+  background: var(--accent-soft);
+}
+
+.ps-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 40;
+  border: 1px solid var(--line);
+  border-radius: calc(var(--radius-small) + 2px);
+  background: var(--surface);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+:root[data-theme="light"] .ps-popover {
+  box-shadow: 0 14px 36px rgba(20, 30, 60, 0.16);
+}
+
+.ps-list {
+  max-height: min(25rem, 60vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0.3rem;
+}
+
+.ps-group {
+  padding: 0.45rem 0.55rem 0.2rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.ps-option {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.55rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.ps-option.is-active {
+  background: var(--accent-soft);
+}
+
+.ps-option.is-unavailable {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.ps-player {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.ps-name {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  overflow: hidden;
+  font-weight: 500;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.ps-name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ps-hit {
+  background: none;
+  color: inherit;
+  font-weight: 750;
+}
+
+.ps-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: 400;
+}
+
+.ps-owner {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.ps-value {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.25;
+}
+
+.ps-value strong {
+  color: var(--text);
+  font-size: 0.9375rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.ps-empty {
+  padding: 0.85rem 0.9rem;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+@media (hover: hover) {
+  .ps-clear:hover {
+    background: var(--surface-raised);
+    color: var(--text);
+  }
+}
+
+@media (max-width: 720px) {
+  .player-search {
+    flex-basis: 100%;
+    max-width: none;
+  }
+
+  .ps-field input {
+    padding: 0.6rem 0.5rem;
+  }
+
+  .ps-clear {
+    width: 2.5rem;
+    height: 2.5rem;
+  }
+
+  /* Room above the phone's keyboard, with bigger rows to tap. */
+  .ps-list {
+    max-height: min(42vh, 21rem);
+  }
+
+  .ps-option {
+    padding: 0.65rem 0.6rem;
+  }
+}
+
 .finder-switch.is-locked {
   color: var(--muted);
 }

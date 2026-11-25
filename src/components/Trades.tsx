@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { PlayerSearch } from "./PlayerSearch.tsx";
 import { rosterPlayers } from "../../shared/analysis.ts";
 import { deepestSpot, POSITIONS, positionProfile, type TeamSituation, thinnestSpot } from "../../shared/insight.ts";
 import { bestNineLineup, type ModelPlayer, type Pickup, type StrengthModel } from "../../shared/strength.ts";
@@ -587,6 +588,14 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
       .flatMap((player) => model.players.get(player.id) ?? [])
       .filter((player) => player.games > 0)
       .sort((x, y) => y.expected - x.expected);
+  // Players a search for one player can't trade for: yours, and free agents (pick them up instead).
+  const rostered = new Set(snapshot.teams.flatMap((each) => rosterPlayers(each).map((player) => player.id)));
+  const notTradable = [
+    ...withGames(myTeam).map((player) => ({ player, reason: "On your team" })),
+    ...[...model.players.values()]
+      .filter((player) => player.games > 0 && !rostered.has(player.id))
+      .map((player) => ({ player, reason: "Free agent: pick him up instead" })),
+  ];
   const ready =
     goal === "best" || goal === "position" || goal === "injured" || (goal === "send" && sendId) || (goal === "get" && getId);
 
@@ -726,19 +735,17 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
           </label>
         )}
         {goal === "get" && (
-          <label>
-            Player
-            <select value={getId} onChange={(event) => { setGetId(event.target.value); setFound(null); }}>
-              <option value="">Choose a player on another team</option>
-              {others.map((other) => (
-                <optgroup key={other.rosterId} label={other.teamName}>
-                  {withGames(other).map((player) => (
-                    <option key={player.id} value={player.id}>{player.name} ({player.positions.join("/")})</option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-          </label>
+          <PlayerSearch
+            label="Player"
+            options={others.flatMap((other) => withGames(other).map((player) => ({ player, owner: other.teamName })))}
+            unavailable={notTradable}
+            value={getId}
+            onChange={(id) => {
+              setGetId(id);
+              setFound(null);
+            }}
+            startLabel="Best players on other teams"
+          />
         )}
         <button type="button" className="button" disabled={searching || !ready} onClick={findIdeas}>
           Find trades
