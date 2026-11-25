@@ -290,7 +290,11 @@ letters are typed and only when nothing matches properly. Matched letters are
 in bold. A name on your team or a free agent shows below, greyed out, with the
 reason, so a player who "isn't there" explains himself. Arrow keys, Enter
 (takes the first match) and Escape work; a tap or click picks. The picked
-player becomes a chip that can be cleared or changed. On a phone the box moves
+player becomes a chip that can be cleared or changed. Each player shows how
+long he is out ("Out 7 weeks", `outLabel`) where the report says so. When the
+player you pick is out with a long injury (`isLongInjury`), the Injured players
+switch turns on and locks, as it does for "trade for an injured player", and
+the search lets injured players in. On a phone the box moves
 up the screen when tapped so the suggestions fit above the keyboard, and rows
 are taller to tap.
 
@@ -844,7 +848,13 @@ schedules for those seasons, one paged request per team (`fetchTeamSeasons`,
 about a page a season), stored for good under `team-season-v1-{team}-{season}`
 and shared by every player on that team that season (the season view uses the
 same store), so later careers need fewer requests. Until then the answer
-says "loading" and the card asks again every 2.5 seconds. The season view reuses
+says "loading" and the card asks again every 2.5 seconds. So the first look is
+not slow either, the server warms careers itself: while no games are on, each
+round of the keep-fresh loop fetches one rostered player's career not yet saved
+(`warmCareers`, never alongside a visitor's fetch, checking at most 20 players
+a round), so within a few hours of a deploy every rostered player's career is
+saved, and a player picked up later is saved within minutes. Saved data is
+shared by everyone using the app. The season view reuses
 those saved games, fetching only the team schedules. Display only.
 
 ### Depth chart (player card)

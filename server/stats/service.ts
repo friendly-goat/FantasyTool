@@ -51,6 +51,8 @@ function previousSeason(season: string): string {
 export const MAX_CAREER_SEASONS = 25;
 /** Older player seasons kept in memory once read. */
 const PAST_SEASONS_KEPT = 60;
+/** Players looked at, at most, in one round of warming careers (each one a few storage reads). */
+const CAREER_CHECKS_PER_WARM = 20;
 /** Players whose older seasons are kept in memory for the career graph. */
 const CAREERS_KEPT = 40;
 /** Team schedules for finished seasons kept in memory once read (30 teams, a few seasons each). */
@@ -591,6 +593,56 @@ export class StatsService {
     }
     for (const { team, seasons: teamSeasons } of wanted.values()) await this.fetchTeamSeasons(team, teamSeasons);
   }
+
+  /**
+   * Fetches, in the background, one player's career not saved yet, so the career graph opens at
+   * once the first time anyone looks. Goes through the given players (those on the league's
+   * rosters) in order, skipping those already saved, and starts at most one player's fetch per
+   * call, waiting for it; never while a visitor's career is being fetched. Looks at no more than
+   * CAREER_CHECKS_PER_WARM players a call, so a restart rechecks storage a little at a time.
+   * Returns the player warmed, or null when there was nothing to do (or the source failed).
+   */
+  async warmCareers(snapshot: LeagueSnapshot, sleeperPlayers: Record<string, PlayerRef>, playerIds: string[]): Promise<string | null> {
+    if (!this.provider || !this.canFetchPastSeasons() || this.warming || this.careerInFlight.size > 0) return null;
+    this.warming = true;
+    try {
+      const current = snapshot.league.season;
+      const previous = previousSeason(current);
+      const lines = [...(await this.load(current)).lines.values()];
+      const prior = await this.load(previous);
+      const { matches } = this.context(sleeperPlayers, lines, prior, snapshot.league.scoringSettings);
+      let checked = 0;
+      for (const playerId of playerIds) {
+        if (this.careerWarmed.has(playerId)) continue;
+        if (++checked > CAREER_CHECKS_PER_WARM) return null;
+        const player = sleeperPlayers[playerId];
+        const sourceId = matches.get(playerId);
+        const older = player && sourceId
+          ? careerSeasons(current, player.yearsExp, true, () => false).filter((season) => season !== current && season !== previous)
+          : [];
+        if (!sourceId || older.length === 0) {
+          this.careerWarmed.add(playerId);
+          continue;
+        }
+        const state = await this.careerLines(sourceId, older);
+        if (state.status === "ready") {
+          this.careerWarmed.add(playerId);
+          continue;
+        }
+        // The source is failing: try again on a later round rather than start every player.
+        if (state.status === "error") return null;
+        await this.careerInFlight.get(sourceId);
+        return playerId;
+      }
+      return null;
+    } finally {
+      this.warming = false;
+    }
+  }
+
+  /** Players whose careers are known to be saved (checked once per server start). */
+  private careerWarmed = new Set<string>();
+  private warming = false;
 
   /** Players' older seasons for the career graph, most recently used last. */
   private careerKept = new Map<string, Map<string, GameLine[]>>();

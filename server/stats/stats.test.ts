@@ -584,6 +584,30 @@ describe("StatsService", async () => {
     if (rookie) expect((await service.career(snapshot, players, rookie.id))!.seasons.map((season) => season.season)).toEqual(["2026"]);
   });
 
+  it("warms careers in the background, one player a round, then leaves them alone", async () => {
+    const mock = createMockStats(rawPlayers);
+    let fetches = 0;
+    const provider: StatsProvider = {
+      ...mock,
+      async fetchPlayerSeasons(playerId, seasons) {
+        fetches++;
+        return mock.fetchPlayerSeasons!(playerId, seasons);
+      },
+    };
+    const service = new StatsService(provider, { storage: new MemoryStorage() });
+    await service.sync("2026");
+    await service.sync("2025");
+    const rostered = snapshot.teams.flatMap((team) => team.starters.flatMap((s) => (s.player ? [s.player.id] : [])));
+    const veterans = rostered.filter((id) => (players[id]?.yearsExp ?? 0) >= 4).slice(0, 2);
+    const order = [rostered.find((id) => players[id]?.yearsExp === 0) ?? veterans[0]!, ...veterans];
+
+    expect(await service.warmCareers(snapshot, players, order)).toBe(veterans[0]);
+    expect((await service.career(snapshot, players, veterans[0]!))!.status).toBe("ready");
+    expect(await service.warmCareers(snapshot, players, order)).toBe(veterans[1]);
+    expect(await service.warmCareers(snapshot, players, order)).toBeNull();
+    expect(fetches).toBe(2);
+  });
+
   it("asks only for recent days on later downloads and merges the result", async () => {
     const requests: (string | null)[] = [];
     let day = 1;

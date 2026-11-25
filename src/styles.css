@@ -2174,14 +2174,31 @@ th[aria-sort] .sort-button {
   font-size: 0.75rem;
 }
 
-/* On a phone the color key stacks: its title, then the bar with its ends. */
+/* On a phone the key reads top to bottom, the width of the graph: one line per legend item, then
+   the color key's title over a full-width bar with its ends beneath. */
 @media (max-width: 720px) {
+  .career-legend {
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
   .career-scale {
-    grid-template-columns: minmax(0, 18rem);
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 0.3rem;
+    margin-top: 0.2rem;
   }
 
   .career-scale-title {
     grid-row: auto;
+  }
+
+  .career-scale-bar {
+    height: 8px;
+    border-radius: 4px;
+  }
+
+  .career-note {
+    margin-top: 0.4rem;
   }
 }
 

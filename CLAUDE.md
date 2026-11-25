@@ -132,7 +132,8 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   decided once before the trade, never below the team as it stands); findTrades leaves long injuries (`isLongInjury`, 10+ days, not a few
   games) out of trade pieces by default (named players exempt); the finder's
   "Injured players" switch is off by default and sets `includeInjured` only
-  when on (locked on for "trade for an injured player"), so the default stays
+  when on (locked on for "trade for an injured player", and for "get a
+  specific player" when he is a long injury), so the default stays
   the shared best search. The top moves rest on that search plus the
   `getInjured` one (one place for the best injured trade, one for a pickup
   when none earns it); every search's answer is kept per team and options
@@ -201,8 +202,9 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   career fills the graph left to right, colored green to red by the share of
   games missed nearby (`missedTone`, window grows with the career); `/career`
   never waits (background fetch, "loading", stored for good under
-  `player-games-v1-…`, team schedules shared under `team-season-v1-…`). No
-  emoji in the picker. Display only. Hover
+  `player-games-v1-…`, team schedules shared under `team-season-v1-…`;
+  rostered players' careers warmed one per quiet keep-fresh round,
+  `warmCareers`). No emoji in the picker. Display only. Hover
   effects live inside `@media (hover: hover)` only.
 - The player card's depth chart (`shared/depthChart.ts`, `DepthChart.tsx`) is
   worked out from recent minutes (no source publishes one), minutes colored

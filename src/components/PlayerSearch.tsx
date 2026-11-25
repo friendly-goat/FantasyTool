@@ -16,12 +16,15 @@ import { TeamTag } from "./TeamTag.tsx";
 export interface SearchOption {
   player: ModelPlayer;
   owner: string;
+  /** How long he is out ("Out 7 weeks"), in place of the injury report's status; null for none. */
+  tag?: string | null;
 }
 
 /** A player who matches but cannot be picked here, and why ("On your team"). */
 export interface UnavailableOption {
   player: ModelPlayer;
   reason: string;
+  tag?: string | null;
 }
 
 /** Suggestions shown at most, typed or not. */
@@ -50,14 +53,15 @@ function Highlighted({ name, match }: { name: string; match: NameMatch | null })
 }
 
 /** One player in the list or the chip: name and injury, then position, NBA team and fantasy team. */
-function PlayerLine({ player, match, note }: { player: ModelPlayer; match: NameMatch | null; note: string }) {
+function PlayerLine({ player, match, note, tag }: { player: ModelPlayer; match: NameMatch | null; note: string; tag?: string | null }) {
+  const shown = tag === undefined ? player.injuryStatus : tag;
   return (
     <span className="ps-player">
       <span className="ps-name">
         <span className="ps-name-text">
           <Highlighted name={player.name} match={match} />
         </span>
-        {player.injuryStatus && <span className="injury">{player.injuryStatus}</span>}
+        {shown && <span className="injury">{shown}</span>}
       </span>
       <span className="ps-meta">
         <PositionChips positions={player.positions} />
@@ -244,7 +248,7 @@ export function PlayerSearch({
       {chosen ? (
         <div className="ps-chosen">
           <button type="button" ref={chosenButton} className="ps-chosen-main" onClick={edit} aria-label={`${label}: ${chosen.player.name}. Change`}>
-            <PlayerLine player={chosen.player} match={null} note={chosen.owner} />
+            <PlayerLine player={chosen.player} match={null} note={chosen.owner} tag={chosen.tag} />
           </button>
           <button type="button" className="ps-clear" onClick={edit} aria-label={`Clear ${chosen.player.name}`}>
             <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -327,7 +331,7 @@ export function PlayerSearch({
                     onPointerMove={() => index !== active && setActive(index)}
                     onClick={() => pick(row.option, false)}
                   >
-                    <PlayerLine player={row.option.player} match={row.match} note={row.option.owner} />
+                    <PlayerLine player={row.option.player} match={row.match} note={row.option.owner} tag={row.option.tag} />
                     <span className="ps-value">
                       <strong>{formatPoints(row.option.player.expected)}</strong>
                       <span>a week</span>
@@ -335,7 +339,7 @@ export function PlayerSearch({
                   </li>
                 ) : (
                   <li key={`out-${row.option.player.id}`} id={`${listId}-${index}`} role="option" aria-disabled="true" aria-selected={false} className="ps-option is-unavailable">
-                    <PlayerLine player={row.option.player} match={row.match} note={row.option.reason} />
+                    <PlayerLine player={row.option.player} match={row.match} note={row.option.reason} tag={row.option.tag} />
                   </li>
                 ),
               )}

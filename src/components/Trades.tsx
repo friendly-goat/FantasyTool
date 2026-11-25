@@ -5,6 +5,7 @@ import { deepestSpot, POSITIONS, positionProfile, type TeamSituation, thinnestSp
 import { bestNineLineup, type ModelPlayer, type Pickup, type StrengthModel } from "../../shared/strength.ts";
 import {
   outLabel,
+  isLongInjury,
   acceptance,
   evaluateTrade,
   chanceWord,
@@ -471,9 +472,11 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
   const [sendId, setSendId] = useState("");
   const [getId, setGetId] = useState("");
   // Players with a long injury in the ideas (off by default, as in the top moves). Trading for an
-  // injured player keeps it on.
+  // injured player keeps it on, and so does asking for one particular player who is out long.
   const [injuredOn, setInjuredOn] = useState(false);
-  const injuredLocked = goal === "injured";
+  const wantedPlayer = goal === "get" && getId && model ? model.players.get(getId) : undefined;
+  const wantedInjured = Boolean(wantedPlayer && model && isLongInjury(model, wantedPlayer));
+  const injuredLocked = goal === "injured" || wantedInjured;
   const includeInjured = injuredLocked || injuredOn;
   // Both sides start closed; opening an idea in the builder opens both.
   const [openSides, setOpenSides] = useState({ a: false, b: false });
@@ -591,10 +594,10 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
   // Players a search for one player can't trade for: yours, and free agents (pick them up instead).
   const rostered = new Set(snapshot.teams.flatMap((each) => rosterPlayers(each).map((player) => player.id)));
   const notTradable = [
-    ...withGames(myTeam).map((player) => ({ player, reason: "On your team" })),
+    ...withGames(myTeam).map((player) => ({ player, reason: "On your team", tag: outLabel(model, player) })),
     ...[...model.players.values()]
       .filter((player) => player.games > 0 && !rostered.has(player.id))
-      .map((player) => ({ player, reason: "Free agent: pick him up instead" })),
+      .map((player) => ({ player, reason: "Free agent: pick him up instead", tag: outLabel(model, player) })),
   ];
   const ready =
     goal === "best" || goal === "position" || goal === "injured" || (goal === "send" && sendId) || (goal === "get" && getId);
@@ -630,7 +633,8 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
               ? { getInjured: true }
               : {};
     // Only set when long injuries are let in, so the default stays the shared best-trades search.
-    const options: FinderOptions = includeInjured && !injuredLocked ? { ...goalOptions, includeInjured: true } : goalOptions;
+    // Trading for an injured player lets injured players in already; otherwise the switch decides.
+    const options: FinderOptions = includeInjured && goal !== "injured" ? { ...goalOptions, includeInjured: true } : goalOptions;
     const request = { options, goal, playerId: goal === "get" ? getId : goal === "send" ? sendId : "" };
     // Right after the app opens, the latest data may still be on its way: wait a moment for it
     // rather than show ideas that are overtaken a second later.
@@ -687,7 +691,9 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
             className={`finder-switch${injuredLocked ? " is-locked" : ""}`}
             title={
               injuredLocked
-                ? "Always on when trading for an injured player"
+                ? wantedInjured
+                  ? "Always on when the player you want is out injured"
+                  : "Always on when trading for an injured player"
                 : includeInjured
                   ? "Players out with a long injury can be part of a trade"
                   : "Players out a week and a half or more are left out (a player you name is still allowed)"
@@ -737,7 +743,9 @@ export function Trades({ snapshot, model, situations, myRosterId, incoming = nul
         {goal === "get" && (
           <PlayerSearch
             label="Player"
-            options={others.flatMap((other) => withGames(other).map((player) => ({ player, owner: other.teamName })))}
+            options={others.flatMap((other) =>
+              withGames(other).map((player) => ({ player, owner: other.teamName, tag: outLabel(model, player) })),
+            )}
             unavailable={notTradable}
             value={getId}
             onChange={(id) => {
