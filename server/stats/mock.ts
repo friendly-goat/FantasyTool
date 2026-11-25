@@ -271,6 +271,20 @@ export function createMockStats(players: Record<string, unknown>): StatsProvider
               },
             };
             if (!fromDate || date >= fromDate) lines.push(line);
+            // With MOCK_LIVE_GAMES=1 (for trying the live row), some players are in a game now.
+            if (process.env.MOCK_LIVE_GAMES === "1" && game === GAMES_PER_PLAYER - 1 && index % 3 === 0 && !sat) {
+              const next = new Date(`${date}T00:00:00Z`);
+              next.setUTCDate(next.getUTCDate() + 2);
+              lines.push({
+                ...line,
+                key: `live:p${player.player_id}`,
+                date: next.toISOString().slice(0, 10),
+                final: false,
+                status: "3rd Qtr 4:12",
+                minutes: Math.round(line.minutes * 0.6),
+                stats: { ...line.stats, pts: Math.round(line.stats.pts * 0.6), reb: Math.round(line.stats.reb * 0.6), ast: Math.round(line.stats.ast * 0.6) },
+              });
+            }
           }
         },
       );

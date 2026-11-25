@@ -19,6 +19,8 @@ export interface GameLine {
   date: string;
   /** False while a game is still being played. */
   final: boolean;
+  /** While the game is being played, where it stands ("3rd Qtr 4:12"), when the source says. */
+  status?: string | null;
   minutes: number;
   stats: StatLine;
 }

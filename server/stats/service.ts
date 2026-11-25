@@ -378,7 +378,14 @@ export class StatsService {
     // Only a season in his list is ever looked up, so a made-up year never reaches the stats source.
     if (!seasons.includes(season)) return empty;
     if (season === current) {
-      return { player, season, seasons, ...playerLog(player, sourceId, lines, scoring, snapshot.league.seasonStartDate, lastSeason) };
+      return {
+        player,
+        season,
+        seasons,
+        ...playerLog(player, sourceId, lines, scoring, snapshot.league.seasonStartDate, lastSeason),
+        lastSeason: sourceId ? (lastSeason.get(sourceId) ?? null) : null,
+        ...(yearsExp !== undefined ? { rookie: yearsExp === 0 } : {}),
+      };
     }
     if (season === previous) {
       return { player, season, seasons, ...playerLog(player, sourceId, this.priorRegular(prior), scoring, null) };

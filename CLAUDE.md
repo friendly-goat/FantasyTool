@@ -193,6 +193,10 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   as gray bands (`timeline`, `PAST_ABSENCE_GAMES` in `ProjectionChart.tsx`),
   the current one from his first missed game; the game log lists every missed
   game as Out (`missedGames` in `server/stats/summary.ts`, `PlayerDetail.missed`);
+  the card's last figure is Last season (`PlayerDetail.lastSeason`) or a
+  Rookie badge (`PlayerDetail.rookie`); a game in progress tops the log with a
+  red dot and "Live" (`PlayerDetail.live`, never counted until final, the
+  card asking again every 30 s);
   the card shows his draft pick from the saved draft board, and a season
   picker with his own seasons (`PlayerDetail.seasons`, `careerSeasons` from
   Sleeper's `years_exp`, kept server-side only; a rookie sees this season

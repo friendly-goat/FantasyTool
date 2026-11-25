@@ -243,6 +243,33 @@ describe("teamLines", () => {
   });
 });
 
+describe("playerLog live game", () => {
+  it("shows the game he is playing now, with his numbers so far, apart from the games that count", () => {
+    const lines = [
+      gameLine({ key: "a", date: "2026-11-20", pts: 20 }),
+      gameLine({ key: "b", date: "2026-11-24", pts: 12, final: false, minutes: 18, opponent: "NYK", home: false, status: "3rd Qtr 4:12" }),
+    ];
+    const log = playerLog(sleeper("x", "Ada Stone", "BOS"), "1", lines, { pts: 1 });
+    expect(log.games).toHaveLength(1);
+    expect(log.live).toMatchObject({ date: "2026-11-24", opponent: "NYK", home: false, minutes: 18, fantasyPoints: 12, status: "3rd Qtr 4:12" });
+    expect(log.stats!.games).toBe(1);
+  });
+
+  it("shows no live game before he takes the court, or once it is final", () => {
+    const benched = [gameLine({ key: "a", date: "2026-11-20", pts: 20 }), gameLine({ key: "b", date: "2026-11-24", final: false, minutes: 0 })];
+    expect(playerLog(sleeper("x", "Ada Stone", "BOS"), "1", benched, { pts: 1 }).live).toBeNull();
+    const done = [gameLine({ key: "a", date: "2026-11-20", pts: 20 })];
+    expect(playerLog(sleeper("x", "Ada Stone", "BOS"), "1", done, { pts: 1 }).live).toBeNull();
+  });
+
+  it("shows a debut in progress even with no finished games yet", () => {
+    const debut = [gameLine({ key: "b", date: "2026-11-24", pts: 8, final: false, minutes: 10 })];
+    const log = playerLog(sleeper("x", "Ada Stone", "BOS"), "1", debut, { pts: 1 });
+    expect(log.stats).toBeNull();
+    expect(log.live?.fantasyPoints).toBe(8);
+  });
+});
+
 describe("playerLog", () => {
   const player = sleeper("a", "Ada Stone", "BOS");
 
@@ -263,7 +290,7 @@ describe("playerLog", () => {
   });
 
   it("returns nothing for a player without a match or games", () => {
-    expect(playerLog(player, undefined, [], { pts: 1 })).toEqual({ stats: null, games: [], missed: [] });
+    expect(playerLog(player, undefined, [], { pts: 1 })).toEqual({ stats: null, games: [], missed: [], live: null });
   });
 
   it("lists his team's games he missed, a no-minutes game included, against the team he was on", () => {
@@ -497,8 +524,12 @@ describe("StatsService", async () => {
     expect(detail.seasons![0]).toBe("2026");
     expect(detail.seasons!.at(-1)).toBe(String(2026 - veteran.yearsExp!));
     expect(detail.player).not.toHaveProperty("yearsExp");
+    expect(detail.rookie).toBe(false);
+    expect(detail.lastSeason?.games).toBeGreaterThan(0);
     const rookie = Object.values(players).find((player) => player.yearsExp === 0)!;
-    expect((await service.playerDetail(snapshot, players, rookie.id))!.seasons).toEqual(["2026"]);
+    const rookieDetail = (await service.playerDetail(snapshot, players, rookie.id))!;
+    expect(rookieDetail.seasons).toEqual(["2026"]);
+    expect(rookieDetail.rookie).toBe(true);
 
     // Last season comes from the saved box scores: no request for it.
     const last = (await service.playerDetail(snapshot, players, veteran.id, "2025"))!;

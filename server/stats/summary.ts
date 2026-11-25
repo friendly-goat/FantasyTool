@@ -1,5 +1,5 @@
 import type { InjuryNews } from "../../shared/injury.ts";
-import { type CareerGame, type CareerSeason, FANTASY_SOURCES, type FantasySource, type MissedGame, type PlayerGame, type PlayerRef, type PlayerStats, type StatLine } from "../../shared/types.ts";
+import { type CareerGame, type CareerSeason, FANTASY_SOURCES, type FantasySource, type LiveGame, type MissedGame, type PlayerGame, type PlayerRef, type PlayerStats, type StatLine } from "../../shared/types.ts";
 import { lockInValue, lockInValues } from "../../shared/lockin.ts";
 import { availabilityOutlook, projectPlayer } from "../../shared/projection.ts";
 import { fantasyPoints, fantasySources, sleeperDisplayedAverage } from "../scoring.ts";
@@ -235,9 +235,8 @@ export function playerLog(
   scoring: Record<string, number>,
   seasonStart: string | null = null,
   lastSeason: LastSeason = new Map(),
-): { stats: PlayerStats | null; games: PlayerGame[]; missed: MissedGame[] } {
+): { stats: PlayerStats | null; games: PlayerGame[]; missed: MissedGame[]; live: LiveGame | null } {
   const games = sourceId ? (countedGames(lines, seasonStart).get(sourceId) ?? []) : [];
-  if (games.length === 0) return { stats: null, games: [], missed: [] };
 
   // Opponents may be stored as IDs only; learn each team's abbreviation
   // from the lines of the players on it.
@@ -245,6 +244,26 @@ export function playerLog(
   for (const line of lines) {
     if (line.teamId && line.team) abbreviations.set(line.teamId, line.team);
   }
+  const opponentOf = (game: GameLine) => game.opponent ?? (game.opponentId ? (abbreviations.get(game.opponentId) ?? null) : null);
+
+  // A game he is playing in right now (on the court already), with his numbers so far.
+  const playing = sourceId
+    ? lines
+        .filter((line) => line.playerId === sourceId && !line.final && line.minutes > 0 && (seasonStart === null || line.date >= seasonStart))
+        .sort((a, b) => b.date.localeCompare(a.date))[0]
+    : undefined;
+  const live: LiveGame | null = playing
+    ? {
+        date: playing.date,
+        opponent: opponentOf(playing),
+        home: playing.home ?? null,
+        minutes: playing.minutes,
+        stats: playing.stats,
+        fantasyPoints: fantasyPoints(playing.stats, scoring),
+        status: playing.status ?? null,
+      }
+    : null;
+  if (games.length === 0) return { stats: null, games: [], missed: [], live };
 
   const teamDates = teamGameDates(lines, seasonStart);
   return {
@@ -256,13 +275,14 @@ export function playerLog(
     games: games
       .map((game) => ({
         date: game.date,
-        opponent: game.opponent ?? (game.opponentId ? (abbreviations.get(game.opponentId) ?? null) : null),
+        opponent: opponentOf(game),
         home: game.home ?? null,
         minutes: game.minutes,
         stats: game.stats,
         fantasyPoints: fantasyPoints(game.stats, scoring),
       }))
       .reverse(),
+    live,
   };
 }
 

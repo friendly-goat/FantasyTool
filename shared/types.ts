@@ -451,12 +451,24 @@ export interface PlayerCareer {
   missed: { season: string; date: string }[];
 }
 
+/** A game he is playing in right now: his numbers so far, and where the game stands. */
+export interface LiveGame extends PlayerGame {
+  /** "3rd Qtr 4:12", when the stats source says; null otherwise. */
+  status: string | null;
+}
+
 export interface PlayerDetail {
   player: PlayerRef;
   /** The season these games are from, as Sleeper names it ("2026"); absent from older answers. */
   season?: string;
   /** The seasons he can be viewed in, newest first (from his years in the league); absent from older answers. */
   seasons?: string[];
+  /** A game he is in right now, with his numbers so far (this season only). */
+  live?: LiveGame | null;
+  /** His fantasy average last season under the league's scoring, and games played (this season only). */
+  lastSeason?: { games: number; average: number } | null;
+  /** In his first NBA season (from Sleeper's years of experience); absent when unknown. */
+  rookie?: boolean;
   /** Null when the player has no counted games this season. */
   stats: PlayerStats | null;
   /** Newest first. */

@@ -764,6 +764,22 @@ locked it". On Heroku's Eco dyno the server sleeps after 30 minutes without
 visits and nothing is refreshed while it sleeps; keep it awake on game nights
 with `KEEP_AWAKE_URL` and `KEEP_AWAKE_HOURS` (see "Waking up").
 
+### Last season and live games (player card)
+
+The card's figures end with **Last season**: his fantasy average last season
+under the league's scoring (`PlayerDetail.lastSeason`, from the saved box
+scores), "Did not play" when he has no games then, or a Rookie badge for a
+player in his first season (`PlayerDetail.rookie`, from Sleeper's years of
+experience, which stays on the server).
+
+When he is in a game right now (on the court already), the game log starts
+with that game: a red dot, "Live", where the game stands ("3rd Qtr 4:12")
+when the stats source says, and his numbers so far (`PlayerDetail.live`, from
+the box scores the server keeps up to date while games are on). It is not
+counted in his averages until it is final. An open card asks again every 30
+seconds while he is playing. With `MOCK_LIVE_GAMES=1` the sample league has
+games in progress, for trying it out.
+
 ### Missed games (player card)
 
 The player detail lists every game his team finished this season that he did

@@ -35,6 +35,7 @@ interface RawRow {
     id?: number;
     date?: string;
     status?: string;
+    time?: string | null;
     // The teams arrive either as IDs or as nested objects, depending on the endpoint.
     home_team_id?: number;
     visitor_team_id?: number;
@@ -166,6 +167,7 @@ export function toGameLine(row: RawRow): GameLine | null {
     home,
     date,
     final: status ? /^final/i.test(status) : true,
+    ...(status && !/^final/i.test(status) ? { status: statusText("in_progress", status, row.game?.time) } : {}),
     minutes: parseMinutes(row.min),
     stats: {
       pts: row.pts ?? 0,

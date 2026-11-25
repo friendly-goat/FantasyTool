@@ -2407,6 +2407,83 @@ th[aria-sort] .sort-button {
   font-variant-numeric: tabular-nums;
 }
 
+/* "Last season" for a player in his first season. */
+.rookie-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.12rem 0.6rem 0.12rem 0.45rem;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 1rem;
+  font-weight: 800;
+  vertical-align: middle;
+}
+
+.rookie-badge svg {
+  width: 0.95rem;
+  height: 0.95rem;
+  fill: currentColor;
+}
+
+.figures .figure-quiet {
+  color: var(--muted);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.figures dd .skeleton {
+  display: inline-block;
+  width: 3.5rem;
+  height: 1.1rem;
+  vertical-align: middle;
+}
+
+/* A game being played right now, at the top of the game log. Opaque, so the pinned date cell
+   matches the rest of the row as the table scrolls sideways. */
+.log-table .log-live th,
+.log-table .log-live td,
+.table-scroll .players-table tbody .log-live th[scope="row"] {
+  background: color-mix(in oklab, var(--loss) 7%, var(--surface));
+  background-clip: padding-box;
+}
+
+.live-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--loss);
+  font-weight: 700;
+}
+
+.live-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--loss);
+  animation: live-pulse 1.6s ease-in-out infinite;
+}
+
+.live-status {
+  display: block;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-dot {
+    animation: none;
+  }
+}
+
 .panel-note {
   margin-top: 0.75rem;
   max-width: 44rem;

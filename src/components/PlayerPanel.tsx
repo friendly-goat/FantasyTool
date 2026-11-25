@@ -1,7 +1,7 @@
 import { nbaDay } from "../../shared/weeks.ts";
 import { useEffect, useRef, useState } from "react";
 import { newsOutText, returnOutlook } from "../../shared/injury.ts";
-import type { DraftBoard, LeagueSnapshot, PlayerCareer, PlayerDetail, PlayerGame, MissedGame, PlayerRef, PlayerStats, StatsReport } from "../../shared/types.ts";
+import type { DraftBoard, LeagueSnapshot, LiveGame, PlayerCareer, PlayerDetail, PlayerGame, MissedGame, PlayerRef, PlayerStats, StatsReport } from "../../shared/types.ts";
 import { getDraft, getPlayerCareer, getPlayerDetail } from "../api.ts";
 import { CareerChart } from "./CareerChart.tsx";
 import { readSaved, savedKeys, writeSaved } from "../saved.ts";
@@ -181,6 +181,9 @@ function fantasyTeamOf(snapshot: LeagueSnapshot, playerId: string): string | nul
   return null;
 }
 
+/** How often an open card asks again while he is in a game. */
+const LIVE_POLL_MS = 30_000;
+
 /** Rows held for a finished season's log while it loads. */
 const PAST_LOADING_ROWS = 30;
 
@@ -222,16 +225,55 @@ function GameRow({ game, average }: { game: PlayerGame; average: number }) {
   );
 }
 
+/** The game he is playing right now, at the top of the log: a red dot, "Live", and his numbers so far. */
+function LiveRow({ game }: { game: LiveGame }) {
+  return (
+    <tr className="log-live">
+      <th scope="row">
+        <span className="live-tag">
+          <span className="live-dot" aria-hidden="true" />
+          Live
+        </span>
+        {game.status && <span className="live-status">{game.status}</span>}
+      </th>
+      <td>{game.opponent ? `${game.home === false ? "at" : "vs"} ${game.opponent}` : "–"}</td>
+      <td className="num log-fpts strong">{formatPoints(game.fantasyPoints)}</td>
+      <td className="num">{Math.round(game.minutes)}</td>
+      <td className="num">{game.stats.pts}</td>
+      <td className="num">{game.stats.reb}</td>
+      <td className="num">{game.stats.ast}</td>
+      <td className="num">{game.stats.stl}</td>
+      <td className="num">{game.stats.blk}</td>
+      <td className="num">{game.stats.tov}</td>
+    </tr>
+  );
+}
+
+/** "Rookie", with a star, in the last-season figure of a player in his first season. */
+function RookieBadge() {
+  return (
+    <span className="rookie-badge" title="First NBA season">
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M8 1.6l1.95 3.96 4.37.64-3.16 3.08.75 4.35L8 11.58l-3.91 2.05.75-4.35L1.68 6.2l4.37-.64z" />
+      </svg>
+      Rookie
+    </span>
+  );
+}
+
 /** The game log for one season: every game he played, and every game his team played without him. */
 function GameLog({
   stats,
   games,
   missedGames,
   loadingRows,
+  live = null,
 }: {
   stats: PlayerStats | null;
   games: PlayerGame[] | null;
   missedGames: MissedGame[] | null;
+  /** A game he is playing right now (this season only), shown first. */
+  live?: LiveGame | null;
   /** Rows to hold the space while the log loads. */
   loadingRows: number;
 }) {
@@ -272,6 +314,7 @@ function GameLog({
                   ))}
                 </tr>
               ))}
+            {games && live && <LiveRow game={live} />}
             {games &&
               stats &&
               logRows(games, missedGames ?? []).map((row) =>
@@ -330,7 +373,8 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
     setError(null);
     // A player opened before shows at once; an older copy is refreshed behind it.
     setDetail(saved?.detail ?? null);
-    if (saved && Date.now() - saved.at < DETAIL_MINUTES * 60_000) return;
+    // A game in progress is never served from the visit's copy: its numbers move.
+    if (saved && !saved.detail.live && Date.now() - saved.at < DETAIL_MINUTES * 60_000) return;
     getPlayerDetail(snapshot.league.id, player.id)
       .then((loaded) => {
         details.set(key, { detail: loaded, at: Date.now() });
@@ -341,6 +385,23 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
       current = false;
     };
   }, [snapshot.league.id, player.id]);
+
+  // While he is in a game, ask again every LIVE_POLL_MS so the live row keeps up.
+  const isLive = Boolean(detail?.live);
+  useEffect(() => {
+    if (!isLive) return;
+    const key = `${snapshot.league.id}:${player.id}`;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      void getPlayerDetail(snapshot.league.id, player.id)
+        .then((loaded) => {
+          details.set(key, { detail: loaded, at: Date.now() });
+          setDetail(loaded);
+        })
+        .catch(() => undefined);
+    }, LIVE_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [isLive, snapshot.league.id, player.id]);
 
   const shown = detail?.player ?? player;
   const fantasyTeam = fantasyTeamOf(snapshot, player.id);
@@ -458,6 +519,20 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
                 <dt>Minutes</dt>
                 <dd>{formatAverage(season.minutes)}</dd>
               </div>
+              <div>
+                <dt>Last season</dt>
+                <dd>
+                  {!detail ? (
+                    <span className="skeleton" aria-label="Loading" />
+                  ) : detail.rookie ? (
+                    <RookieBadge />
+                  ) : detail.lastSeason ? (
+                    formatPoints(detail.lastSeason.average)
+                  ) : (
+                    <span className="figure-quiet">Did not play</span>
+                  )}
+                </dd>
+              </div>
             </dl>
         )}
 
@@ -535,6 +610,7 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
               stats={pastYear ? pastStats : season}
               games={games}
               missedGames={missedGames}
+              live={pastYear ? null : (detail?.live ?? null)}
               loadingRows={
                 pastYear === String(seasonYear - 1)
                   ? (season?.projection.lastSeason?.games ?? PAST_LOADING_ROWS)
