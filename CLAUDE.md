@@ -147,6 +147,10 @@ Analysis tool for one Sleeper NBA fantasy league. React + TypeScript frontend
   (`bestNineLineup`, picked by weekly value, the nine "best nine alone"
   counts), never the lineup set in Sleeper; full health (used by the
   acceptance chance) still picks its nine by value when fit.
+- Opening a team from another view (`openTeam` in `src/App.tsx`: Standings,
+  Team strength, Matchups) shows a "Back to …" button on Teams (`cameFrom`,
+  `useBackToClose`), returning to that view at its scroll position; a tab
+  tap clears it.
 - A fantasy team's name in the trade area renders with `TeamName`
   (`OpenTeamContext`), opening `TeamPanel` (charts and roster, no team
   switching).

@@ -17,6 +17,8 @@ interface Props {
   myRosterId: number | null;
   selectedRosterId: number | null;
   onSelect: (rosterId: number) => void;
+  /** Set when a team was opened from another view (Team strength, say): a Back button to it. */
+  back?: { label: string; onBack: () => void } | null;
 }
 
 interface LineProps {
@@ -116,7 +118,7 @@ export function TeamRoster({ team, stats }: { team: Team; stats: StatsReport | n
   );
 }
 
-export function Teams({ snapshot, modelSnapshot, model, strengths, stats, myRosterId, selectedRosterId, onSelect }: Props) {
+export function Teams({ snapshot, modelSnapshot, model, strengths, stats, myRosterId, selectedRosterId, onSelect, back }: Props) {
   const team =
     snapshot.teams.find((candidate) => candidate.rosterId === selectedRosterId) ?? snapshot.teams[0];
   const players = stats?.players ?? NO_PLAYERS;
@@ -126,7 +128,15 @@ export function Teams({ snapshot, modelSnapshot, model, strengths, stats, myRost
   if (!team) return <p className="quiet">This league has no teams yet.</p>;
 
   return (
-    <section className="teams" aria-label="Teams">
+    <section className={`teams${back ? " has-back" : ""}`} aria-label="Teams">
+      {back && (
+        <button type="button" className="back-link" onClick={back.onBack}>
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M10 3L5 8l5 5" />
+          </svg>
+          Back to {back.label}
+        </button>
+      )}
       <ul className="team-rail">
         {snapshot.teams.map((candidate) => (
           <li key={candidate.rosterId}>

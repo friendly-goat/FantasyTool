@@ -843,6 +843,48 @@ code {
   align-items: start;
 }
 
+.teams.has-back {
+  grid-template-areas:
+    "back back"
+    "head head"
+    "charts charts"
+    "rail roster";
+}
+
+/* Back to where the team was opened from (Team strength, Standings, Matchups). */
+.back-link {
+  grid-area: back;
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 2.25rem;
+  margin: -0.5rem 0 -0.75rem -0.2rem;
+  padding: 0.25rem 0.6rem 0.25rem 0.2rem;
+  border: 0;
+  border-radius: var(--radius-small);
+  background: transparent;
+  color: var(--accent);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.back-link svg {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+@media (hover: hover) {
+  .back-link:hover {
+    background: var(--accent-soft);
+  }
+}
+
 .teams > .team-rail {
   grid-area: rail;
   position: sticky;
@@ -5150,6 +5192,20 @@ th[aria-sort] .sort-button {
       "charts"
       "roster";
     gap: 1rem;
+  }
+
+  .teams.has-back {
+    grid-template-areas:
+      "back"
+      "rail"
+      "head"
+      "charts"
+      "roster";
+  }
+
+  .back-link {
+    min-height: 2.75rem;
+    margin: -0.5rem 0 -0.5rem -0.2rem;
   }
 
   .team-rail {

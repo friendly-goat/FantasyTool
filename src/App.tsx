@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { teamSituations } from "../shared/insight.ts";
 import { buildModel, leagueStrength } from "../shared/strength.ts";
 import { registerModel } from "./search.ts";
@@ -43,6 +43,7 @@ import { Teams } from "./components/Teams.tsx";
 import { Trades } from "./components/Trades.tsx";
 import { formatAgo, formatDate } from "./format.ts";
 import { useTheme } from "./theme.ts";
+import { useBackToClose } from "./sheetGestures.ts";
 
 // My team and Trades are the heart of the app and lead the desktop bar, set apart.
 // Matchups is kept but hidden from the navigation for now: Sleeper's own matchup screen is
@@ -81,6 +82,24 @@ export function App() {
   /** The server could not be reached on the last try; saved data is on screen. */
   const [offline, setOffline] = useState(false);
   const [view, setView] = useState<View>("My team");
+  // Where a team was opened from (Standings, Team strength, Matchups), for the Teams page's Back
+  // button: that view, its name, and how far down it was scrolled.
+  const [cameFrom, setCameFrom] = useState<{ view: View; label: string; scroll: number } | null>(null);
+  const returnScroll = useRef<number | null>(null);
+  const goBack = () => {
+    if (!cameFrom) return;
+    returnScroll.current = cameFrom.scroll;
+    setView(cameFrom.view);
+    setCameFrom(null);
+  };
+  // The phone's back gesture (or the browser's Back) goes back the same way.
+  useBackToClose(cameFrom !== null && view === "Teams", goBack);
+  // Back lands where the page was left.
+  useLayoutEffect(() => {
+    if (returnScroll.current === null) return;
+    window.scrollTo({ top: returnScroll.current, behavior: "instant" });
+    returnScroll.current = null;
+  }, [view]);
   const [myRosterId, setMyRosterId] = useState<number | null>(null);
   const [choosingTeam, setChoosingTeam] = useState(false);
   /** Sleeper user ID from the league picker, used once to find the user's team. */
@@ -424,8 +443,13 @@ export function App() {
   }
 
   function openTeam(rosterId: number) {
+    if (view !== "Teams") {
+      const label = view === "Rankings" ? (rankingMode === "strength" ? "Team strength" : "Standings") : view;
+      setCameFrom({ view, label, scroll: window.scrollY });
+    }
     setSelectedRosterId(rosterId);
     setView("Teams");
+    window.scrollTo({ top: 0, behavior: "instant" });
   }
 
   if (session && !signedIn) {
@@ -452,6 +476,7 @@ export function App() {
   const myTeam = snapshot?.teams.find((team) => team.rosterId === myRosterId);
   const selectView = (name: View) => {
     setView(name);
+    setCameFrom(null); // a tab starts fresh: no way back to where a team was opened from
     setOpenMatchupId(null); // the Matchups tab opens on the list
   };
   const signOutNow = () => {
@@ -643,6 +668,7 @@ export function App() {
                 myRosterId={myRosterId}
                 selectedRosterId={selectedRosterId}
                 onSelect={setSelectedRosterId}
+                back={cameFrom ? { label: cameFrom.label, onBack: goBack } : null}
               />
             )}
             {view === "Players" && <Players snapshot={snapshot} stats={stats} />}

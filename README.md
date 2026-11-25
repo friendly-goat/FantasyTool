@@ -1261,7 +1261,10 @@ button, so the browser used to hand focus to a dropdown tapped earlier and
 scroll the page to it, or draw a box around the name), one opened from the
 keyboard hands focus back to its button, the scroll position is put back, and the app keeps its own scroll position on Back
 (`history.scrollRestoration` is manual). The page behind a sheet does not scroll, tapping the tab you are on scrolls back to the
-top, buttons and links show a pressed state, and the player card's chart is
+top, buttons and links show a pressed state, a team opened from Standings,
+Team strength or Matchups gets a "Back to …" button on Teams (and Back, the
+gesture or the browser's, does the same) that returns to that view where it was
+scrolled, and the player card's chart is
 drawn at the card's real width (`useWidth`) so its labels stay readable. Secondary table columns are hidden,
 wide tables keep player names in view while they scroll, notes fold away under
 "About these numbers", and the trade rosters start folded so the trade finder
