@@ -519,20 +519,28 @@ export function PlayerPanel({ snapshot, stats, player, onClose }: Props) {
                 <dt>Minutes</dt>
                 <dd>{formatAverage(season.minutes)}</dd>
               </div>
-              <div>
-                <dt>Last season</dt>
-                <dd>
-                  {!detail ? (
-                    <span className="skeleton" aria-label="Loading" />
-                  ) : detail.rookie ? (
+              {detail?.rookie ? (
+                // A rookie has no last season: the badge alone, in the middle of the box.
+                <div className="figure-rookie">
+                  <dt className="visually-hidden">Experience</dt>
+                  <dd>
                     <RookieBadge />
-                  ) : detail.lastSeason ? (
-                    formatPoints(detail.lastSeason.average)
-                  ) : (
-                    <span className="figure-quiet">Did not play</span>
-                  )}
-                </dd>
-              </div>
+                  </dd>
+                </div>
+              ) : (
+                <div>
+                  <dt>Last season</dt>
+                  <dd>
+                    {!detail ? (
+                      <span className="skeleton" aria-label="Loading" />
+                    ) : detail.lastSeason ? (
+                      formatPoints(detail.lastSeason.average)
+                    ) : (
+                      <span className="figure-quiet">Did not play</span>
+                    )}
+                  </dd>
+                </div>
+              )}
             </dl>
         )}
 

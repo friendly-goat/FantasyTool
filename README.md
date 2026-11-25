@@ -768,8 +768,8 @@ with `KEEP_AWAKE_URL` and `KEEP_AWAKE_HOURS` (see "Waking up").
 
 The card's figures end with **Last season**: his fantasy average last season
 under the league's scoring (`PlayerDetail.lastSeason`, from the saved box
-scores), "Did not play" when he has no games then, or a Rookie badge for a
-player in his first season (`PlayerDetail.rookie`, from Sleeper's years of
+scores), "Did not play" when he has no games then, or, for a player in his
+first season, a Rookie badge alone in the box (no "Last season" label) (`PlayerDetail.rookie`, from Sleeper's years of
 experience, which stays on the server).
 
 When he is in a game right now (on the court already), the game log starts

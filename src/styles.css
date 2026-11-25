@@ -2427,6 +2427,11 @@ th[aria-sort] .sort-button {
   fill: currentColor;
 }
 
+.figures .figure-rookie {
+  display: flex;
+  align-items: center;
+}
+
 .figures .figure-quiet {
   color: var(--muted);
   font-size: 1rem;
